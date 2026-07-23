@@ -1,0 +1,78 @@
+# MorphDrop — .gitignore
+
+# ===========================
+# Android / Gradle
+# ===========================
+*.iml
+.gradle
+/local.properties
+/.idea
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# ===========================
+# App build outputs
+# ===========================
+/app/build
+/app/release
+*.apk
+*.aab
+*.jks
+*.keystore
+
+# ===========================
+# Documentation (not for repo)
+# ===========================
+/docs/
+*.md
+!README.md
+
+# ===========================
+# IDE
+# ===========================
+/.idea/*
+!/.idea/codeStyles
+!/.idea/codeStyles/codeStyleConfig.xml
+*.swp
+*~
+
+# ===========================
+# OS generated files
+# ===========================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# ===========================
+# Node/npm (if using any tools)
+# ===========================
+node_modules/
+package-lock.json
+
+# ===========================
+# Python (if using scripts)
+# ===========================
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+env/
+venv/
+.venv/
+
+# ===========================
+# Temporary files
+# ===========================
+*.tmp
+*.temp
+*.log
+*.bak
+*.orig

@@ -1,0 +1,31 @@
+# Add project specific R8 rules here.
+# AGP will combine all keep rule files in src/main/keepRules to pass to R8
+#
+# For more details, see
+#   https://d.android.com/r/tools/r8/keep-rules
+
+# PDFBox Android ProGuard Rules
+-keep class org.apache.pdfbox.** { *; }
+-keep class org.apache.fontbox.** { *; }
+-keep class com.tom_roush.pdfbox.** { *; }
+-dontwarn org.apache.**
+-dontwarn com.tom_roush.**
+
+# Apache POI ProGuard Rules
+-keep class org.apache.poi.** { *; }
+-keep class org.apache.xmlbeans.** { *; }
+-keep class org.apache.commons.** { *; }
+-keep class schemas.** { *; }
+-dontwarn org.apache.**
+-dontwarn schemas.**
+
+# Kotlin Coroutines
+-keep class kotlinx.coroutines.** { *; }
+-dontwarn kotlinx.coroutines.**
+
+# If your project uses WebView with JS, uncomment the following
+# and specify the fully qualified class name to the JavaScript interface
+# class:
+#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
+#   public *;
+#}
