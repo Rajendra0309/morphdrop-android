@@ -2,8 +2,10 @@ package com.morphdrop.app.ui.navigation
 
 import androidx.compose.runtime.Composable
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.navArgument
 import com.morphdrop.app.ui.screens.conversion.ConversionConfigScreen
 import com.morphdrop.app.ui.screens.history.HistoryScreen
 import com.morphdrop.app.ui.screens.home.HomeScreen
@@ -18,12 +20,30 @@ fun NavGraph(navController: NavHostController) {
         startDestination = Screen.Home.route
     ) {
         composable(Screen.Home.route) {
-            HomeScreen()
+            HomeScreen(
+                onNavigateToConfig = { conversionTypeId ->
+                    navController.navigate(Screen.ConversionConfig.createRoute(conversionTypeId))
+                },
+                onNavigateToSettings = {
+                    navController.navigate(Screen.Settings.route)
+                }
+            )
         }
-        composable(Screen.ConversionConfig.route) {
-            ConversionConfigScreen()
+        composable(
+            route = Screen.ConversionConfig.route,
+            arguments = listOf(navArgument("conversionTypeId") { type = NavType.StringType })
+        ) {
+            ConversionConfigScreen(
+                onNavigateBack = { navController.popBackStack() },
+                onNavigateToProcessing = { conversionTypeId ->
+                    navController.navigate(Screen.Processing.createRoute(conversionTypeId))
+                }
+            )
         }
-        composable(Screen.Processing.route) {
+        composable(
+            route = Screen.Processing.route,
+            arguments = listOf(navArgument("conversionTypeId") { type = NavType.StringType })
+        ) {
             ProcessingScreen()
         }
         composable(Screen.Result.route) {

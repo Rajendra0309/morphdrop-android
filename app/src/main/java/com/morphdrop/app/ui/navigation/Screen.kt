@@ -1,10 +1,14 @@
 package com.morphdrop.app.ui.navigation
 
 sealed class Screen(val route: String) {
-    object Home : Screen("home")
-    object ConversionConfig : Screen("config")
-    object Processing : Screen("processing")
-    object Result : Screen("result")
-    object History : Screen("history")
-    object Settings : Screen("settings")
+    data object Home : Screen("home")
+    data object ConversionConfig : Screen("config/{conversionTypeId}") {
+        fun createRoute(conversionTypeId: String) = "config/$conversionTypeId"
+    }
+    data object Processing : Screen("processing/{conversionTypeId}") {
+        fun createRoute(conversionTypeId: String) = "processing/$conversionTypeId"
+    }
+    data object Result : Screen("result")
+    data object History : Screen("history")
+    data object Settings : Screen("settings")
 }
