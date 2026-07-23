@@ -19,7 +19,7 @@ import java.io.ByteArrayOutputStream
 import javax.inject.Inject
 
 class ImagesToPdfUseCase @Inject constructor(
-    @ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context
 ) {
     enum class PageSize(val rect: PDRectangle) {
         A4(PDRectangle.A4),

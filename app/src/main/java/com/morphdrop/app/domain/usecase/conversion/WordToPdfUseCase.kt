@@ -18,7 +18,7 @@ import java.io.ByteArrayOutputStream
 import javax.inject.Inject
 
 class WordToPdfUseCase @Inject constructor(
-    @ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context
 ) {
     companion object {
         private const val MARGIN = 50f

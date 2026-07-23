@@ -14,7 +14,7 @@ import java.io.ByteArrayOutputStream
 import javax.inject.Inject
 
 class PdfToWordUseCase @Inject constructor(
-    @ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context
 ) {
     suspend operator fun invoke(
         pdfUri: Uri,

@@ -25,7 +25,7 @@
 
 - 🛡️ **100% Offline** — Zero internet permissions required. Files never leave your device.
 - ⚡ **Core Conversions** — PDF to Images, Images to PDF, Word to PDF, and more.
-- 📄 **Advanced PDF Tools** — Merge, Split, Compress, and Password protect PDF files (Coming Soon).
+- 📄 **Advanced PDF Tools** — Merge, Split, Compress, Rotate, Reorder, and Password protect PDF files.
 - ✨ **Modern UI** — Built with Jetpack Compose and Material 3 with Dynamic Color support.
 - 🔄 **Background Processing** — Conversions run in the background using WorkManager.
 - 📱 **Material You** — Dynamic theming based on your device's wallpaper.

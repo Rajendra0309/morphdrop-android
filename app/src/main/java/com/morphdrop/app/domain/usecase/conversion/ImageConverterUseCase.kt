@@ -12,7 +12,7 @@ import java.io.ByteArrayOutputStream
 import javax.inject.Inject
 
 class ImageConverterUseCase @Inject constructor(
-    @ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context
 ) {
     class InvalidImageException : Exception("Failed to decode source image")
 
