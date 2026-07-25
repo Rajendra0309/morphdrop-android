@@ -11,8 +11,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.morphdrop.app.domain.model.FileType
@@ -23,19 +26,38 @@ fun FormatBadge(
     modifier: Modifier = Modifier,
     backgroundColor: Color = fileType.color
 ) {
+    val isLight = MaterialTheme.colorScheme.background.luminance() > 0.5f
+    val finalBgColor = if (isLight) {
+        // Darken the background more aggressively for better contrast on white
+        backgroundColor.copy(alpha = 1f).let {
+            Color(
+                red = (it.red * 0.65f),
+                green = (it.green * 0.65f),
+                blue = (it.blue * 0.65f),
+                alpha = 1f
+            )
+        }
+    } else {
+        backgroundColor
+    }
+
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(6.dp))
-            .background(backgroundColor)
-            .padding(horizontal = 6.dp, vertical = 2.dp),
+            .background(finalBgColor)
+            .padding(horizontal = 8.dp, vertical = 2.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(
             text = fileType.displayName.uppercase(),
-            color = Color.White,
+            color = if (finalBgColor.luminance() > 0.5f) Color.Black else Color.White,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Visible,
+            textAlign = TextAlign.Center,
             style = MaterialTheme.typography.labelSmall.copy(
                 fontFamily = FontFamily.Monospace,
-                fontWeight = FontWeight.Bold,
+                fontWeight = FontWeight.ExtraBold,
                 fontSize = 10.sp,
                 letterSpacing = 0.5.sp
             )
@@ -49,19 +71,37 @@ fun FormatBadge(
     backgroundColor: Color,
     modifier: Modifier = Modifier
 ) {
+    val isLight = MaterialTheme.colorScheme.background.luminance() > 0.5f
+    val finalBgColor = if (isLight) {
+        backgroundColor.copy(alpha = 1f).let {
+            Color(
+                red = (it.red * 0.65f),
+                green = (it.green * 0.65f),
+                blue = (it.blue * 0.65f),
+                alpha = 1f
+            )
+        }
+    } else {
+        backgroundColor
+    }
+
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(6.dp))
-            .background(backgroundColor)
-            .padding(horizontal = 6.dp, vertical = 2.dp),
+            .background(finalBgColor)
+            .padding(horizontal = 8.dp, vertical = 2.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(
             text = text.uppercase(),
-            color = Color.White,
+            color = if (finalBgColor.luminance() > 0.5f) Color.Black else Color.White,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Visible,
+            textAlign = TextAlign.Center,
             style = MaterialTheme.typography.labelSmall.copy(
                 fontFamily = FontFamily.Monospace,
-                fontWeight = FontWeight.Bold,
+                fontWeight = FontWeight.ExtraBold,
                 fontSize = 10.sp,
                 letterSpacing = 0.5.sp
             )

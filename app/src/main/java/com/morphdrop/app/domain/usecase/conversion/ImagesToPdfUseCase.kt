@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import com.morphdrop.app.domain.repository.SettingsRepository
 import com.morphdrop.app.util.FileHelper
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
@@ -19,7 +20,8 @@ import java.io.ByteArrayOutputStream
 import javax.inject.Inject
 
 class ImagesToPdfUseCase @Inject constructor(
-    @param:ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context,
+    private val settingsRepository: SettingsRepository
 ) {
     enum class PageSize(val rect: PDRectangle) {
         A4(PDRectangle.A4),
@@ -46,44 +48,47 @@ class ImagesToPdfUseCase @Inject constructor(
             for (uri in imageUris) {
                 val bitmap = loadAndDownsampleBitmap(uri) ?: continue
 
-                val rect = when {
-                    pageSize == PageSize.FIT_IMAGE -> PDRectangle(bitmap.width.toFloat(), bitmap.height.toFloat())
-                    orientation == Orientation.LANDSCAPE -> PDRectangle(pageSize.rect.height, pageSize.rect.width)
-                    else -> pageSize.rect
+                try {
+                    val rect = when {
+                        pageSize == PageSize.FIT_IMAGE -> PDRectangle(bitmap.width.toFloat(), bitmap.height.toFloat())
+                        orientation == Orientation.LANDSCAPE -> PDRectangle(pageSize.rect.height, pageSize.rect.width)
+                        else -> pageSize.rect
+                    }
+
+                    val page = PDPage(rect)
+                    document.addPage(page)
+
+                    val pdImage = if (bitmap.hasAlpha()) {
+                        LosslessFactory.createFromImage(document, bitmap)
+                    } else {
+                        JPEGFactory.createFromImage(document, bitmap, 0.9f)
+                    }
+
+                    val contentStream = PDPageContentStream(document, page)
+
+                    // Scale image to fit page while maintaining aspect ratio
+                    val pageW = rect.width
+                    val pageH = rect.height
+                    val imgW = bitmap.width.toFloat()
+                    val imgH = bitmap.height.toFloat()
+                    val scale = minOf(pageW / imgW, pageH / imgH)
+                    val drawW = imgW * scale
+                    val drawH = imgH * scale
+                    val x = (pageW - drawW) / 2
+                    val y = (pageH - drawH) / 2
+
+                    contentStream.drawImage(pdImage, x, y, drawW, drawH)
+                    contentStream.close()
+                } finally {
+                    bitmap.recycle()
                 }
-
-                val page = PDPage(rect)
-                document.addPage(page)
-
-                val pdImage = if (bitmap.hasAlpha()) {
-                    LosslessFactory.createFromImage(document, bitmap)
-                } else {
-                    JPEGFactory.createFromImage(document, bitmap, 0.9f)
-                }
-
-                val contentStream = PDPageContentStream(document, page)
-
-                // Scale image to fit page while maintaining aspect ratio
-                val pageW = rect.width
-                val pageH = rect.height
-                val imgW = bitmap.width.toFloat()
-                val imgH = bitmap.height.toFloat()
-                val scale = minOf(pageW / imgW, pageH / imgH)
-                val drawW = imgW * scale
-                val drawH = imgH * scale
-                val x = (pageW - drawW) / 2
-                val y = (pageH - drawH) / 2
-
-                contentStream.drawImage(pdImage, x, y, drawW, drawH)
-                contentStream.close()
-                bitmap.recycle()
             }
 
             if (document.numberOfPages == 0) throw EmptyImageListException()
 
             val baos = ByteArrayOutputStream()
             document.save(baos)
-            FileHelper.saveToCache(context, outputFileName, baos.toByteArray())
+            FileHelper.saveToFile(context, settingsRepository, outputFileName, baos.toByteArray())
         } finally {
             document.close()
         }
@@ -95,7 +100,7 @@ class ImagesToPdfUseCase @Inject constructor(
             context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
 
             var sampleSize = 1
-            val maxDim = 4096
+            val maxDim = 2048
             while ((options.outWidth / sampleSize) > maxDim || (options.outHeight / sampleSize) > maxDim) {
                 sampleSize *= 2
             }

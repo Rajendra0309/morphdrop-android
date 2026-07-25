@@ -4,15 +4,18 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
+import com.morphdrop.app.domain.repository.SettingsRepository
 import com.morphdrop.app.util.FileHelper
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import javax.inject.Inject
 
 class PdfToImagesUseCase @Inject constructor(
-    @param:ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context,
+    private val settingsRepository: SettingsRepository
 ) {
     sealed class PdfException(message: String) : Exception(message) {
         class EmptyPdf : PdfException("PDF has no pages")
@@ -26,7 +29,9 @@ class PdfToImagesUseCase @Inject constructor(
         quality: Int = 100,
         pageRange: IntRange? = null
     ): List<Uri> = withContext(Dispatchers.IO) {
-        val outputDir = "pdf_to_images_${System.currentTimeMillis()}"
+        com.tom_roush.pdfbox.android.PDFBoxResourceLoader.init(context)
+        val baseFolder = settingsRepository.outputFolderName.first()
+        val outputDir = "$baseFolder/pdf_to_images_${System.currentTimeMillis()}"
         FileHelper.createOutputDirectory(context, outputDir)
         val results = mutableListOf<Uri>()
 

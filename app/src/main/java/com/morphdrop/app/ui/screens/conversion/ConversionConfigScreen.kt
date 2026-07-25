@@ -5,7 +5,10 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -22,18 +25,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.UploadFile
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -42,24 +41,37 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.morphdrop.app.domain.model.ConversionType
 import com.morphdrop.app.ui.components.FormatBadge
+import com.morphdrop.app.ui.components.GlassCard
+import com.morphdrop.app.ui.components.PrimaryButton
+import com.morphdrop.app.ui.theme.LocalLiquidState
+import com.morphdrop.app.ui.theme.MorphDropTheme
+import com.morphdrop.app.ui.theme.NeonEmerald
+import com.morphdrop.app.ui.theme.TextPrimary
+import com.morphdrop.app.ui.theme.TextSecondary
 import com.morphdrop.app.util.FileHelper
+import io.github.fletchmckee.liquid.LiquidState
+import io.github.fletchmckee.liquid.rememberLiquidState
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConversionConfigScreen(
     onNavigateBack: () -> Unit = {},
-    onNavigateToProcessing: (conversionTypeId: String) -> Unit = {},
+    onNavigateToProcessing: (conversionTypeId: String, workId: String) -> Unit = { _, _ -> },
     viewModel: ConversionConfigViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val liquidState = LocalLiquidState.current
 
     val mimeFilter = when (state.conversionType?.inputType?.extension) {
         "pdf" -> arrayOf("application/pdf")
@@ -84,29 +96,69 @@ fun ConversionConfigScreen(
         }
     }
 
-    // Auto-launch file picker on first entry
     LaunchedEffect(Unit) {
         if (state.selectedFileUri == null) {
             filePicker.launch(mimeFilter)
         }
     }
 
+    ConversionConfigScreenContent(
+        state = state,
+        liquidState = liquidState,
+        onNavigateBack = onNavigateBack,
+        onPickFile = { filePicker.launch(mimeFilter) },
+        onOutputFormatChanged = viewModel::onOutputFormatChanged,
+        onQualityChanged = viewModel::onQualityChanged,
+        onPageRangeStartChanged = viewModel::onPageRangeStartChanged,
+        onPageRangeEndChanged = viewModel::onPageRangeEndChanged,
+        onOutputFileNameChanged = viewModel::onOutputFileNameChanged,
+        onConvert = {
+            val workId = viewModel.startConversion(context)
+            if (workId != null && state.conversionType != null) {
+                onNavigateToProcessing(state.conversionType!!.id, workId.toString())
+            }
+        }
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ConversionConfigScreenContent(
+    state: ConversionConfigState,
+    liquidState: LiquidState,
+    onNavigateBack: () -> Unit,
+    onPickFile: () -> Unit,
+    onOutputFormatChanged: (String) -> Unit,
+    onQualityChanged: (Int) -> Unit,
+    onPageRangeStartChanged: (String) -> Unit,
+    onPageRangeEndChanged: (String) -> Unit,
+    onOutputFileNameChanged: (String) -> Unit,
+    onConvert: () -> Unit
+) {
     Scaffold(
+        containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
                 title = {
                     Text(
                         text = state.conversionType?.name ?: "Configure",
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 24.sp,
+                        color = TextPrimary,
+                        letterSpacing = (-0.5).sp
                     )
                 },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = TextPrimary
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
+                    containerColor = Color.Transparent
                 )
             )
         }
@@ -121,13 +173,9 @@ fun ConversionConfigScreen(
         ) {
             Spacer(modifier = Modifier.height(8.dp))
 
-            // File Preview Card
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
-                )
+            GlassCard(
+                liquidState = liquidState,
+                modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
                     modifier = Modifier
@@ -135,161 +183,262 @@ fun ConversionConfigScreen(
                         .padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.InsertDriveFile,
-                        contentDescription = null,
-                        tint = state.conversionType?.inputType?.color ?: MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(40.dp)
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(NeonEmerald.copy(alpha = 0.15f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.InsertDriveFile,
+                            contentDescription = null,
+                            tint = NeonEmerald,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(16.dp))
                     if (state.selectedFileUri != null) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = state.selectedFileName,
-                                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 16.sp,
+                                color = TextPrimary,
                                 maxLines = 1
                             )
                             Text(
                                 text = FileHelper.formatFileSize(state.selectedFileSize),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                fontSize = 13.sp,
+                                color = TextSecondary
                             )
                         }
                         state.conversionType?.inputType?.let { FormatBadge(fileType = it) }
                     } else {
                         Text(
                             text = "No file selected",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 15.sp,
+                            color = TextSecondary,
                             modifier = Modifier.weight(1f)
                         )
                     }
                 }
             }
 
-            // Pick file button
-            Button(
-                onClick = { filePicker.launch(mimeFilter) },
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                )
+            GlassCard(
+                liquidState = liquidState,
+                onClick = onPickFile,
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Icon(Icons.Default.UploadFile, contentDescription = null, modifier = Modifier.size(20.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(if (state.selectedFileUri != null) "Change File" else "Select File")
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.UploadFile,
+                        contentDescription = null,
+                        tint = NeonEmerald,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = if (state.selectedFileUri != null) "Change File" else "Select Input File",
+                        fontWeight = FontWeight.Bold,
+                        color = NeonEmerald
+                    )
+                }
             }
 
-            // Output Format Chips
             if (state.availableOutputFormats.size > 1) {
                 Text(
                     text = "Output Format",
-                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
+                    fontWeight = FontWeight.Black,
+                    fontSize = 20.sp,
+                    color = TextPrimary
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     state.availableOutputFormats.forEach { format ->
-                        FilterChip(
-                            selected = state.outputFormat == format,
-                            onClick = { viewModel.onOutputFormatChanged(format) },
-                            label = { Text(format.uppercase()) }
-                        )
+                        val isSelected = state.outputFormat == format
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(
+                                    if (isSelected) NeonEmerald else Color.White.copy(alpha = 0.25f)
+                                )
+                                .clickable { onOutputFormatChanged(format) }
+                                .padding(horizontal = 16.dp, vertical = 8.dp)
+                        ) {
+                            Text(
+                                text = format.uppercase(),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp,
+                                color = if (isSelected) Color.Black else TextPrimary
+                            )
+                        }
                     }
                 }
             }
 
-            // Quality Slider
             AnimatedVisibility(visible = state.showQualitySlider) {
-                Column {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = "Quality",
-                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
-                        )
-                        Text(
-                            text = "${state.quality}%",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.primary
+                GlassCard(
+                    liquidState = liquidState,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "Quality",
+                                fontWeight = FontWeight.Black,
+                                fontSize = 20.sp,
+                                color = TextPrimary
+                            )
+                            Text(
+                                text = "${state.quality}%",
+                                fontWeight = FontWeight.Bold,
+                                color = NeonEmerald
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Slider(
+                            value = state.quality.toFloat(),
+                            onValueChange = { onQualityChanged(it.toInt()) },
+                            valueRange = 1f..100f,
+                            colors = SliderDefaults.colors(
+                                thumbColor = NeonEmerald,
+                                activeTrackColor = NeonEmerald,
+                                inactiveTrackColor = NeonEmerald.copy(alpha = 0.24f)
+                            )
                         )
                     }
-                    Slider(
-                        value = state.quality.toFloat(),
-                        onValueChange = { viewModel.onQualityChanged(it.toInt()) },
-                        valueRange = 1f..100f,
-                        steps = 0
-                    )
                 }
             }
 
-            // Page Range
             AnimatedVisibility(visible = state.showPageRange) {
-                Column {
+                GlassCard(
+                    liquidState = liquidState,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            text = "Page Range (Optional)",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                            color = TextPrimary
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            OutlinedTextField(
+                                value = state.pageRangeStart,
+                                onValueChange = { onPageRangeStartChanged(it.filter { c -> c.isDigit() }) },
+                                label = { Text("From", color = TextSecondary) },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(12.dp),
+                                singleLine = true,
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = NeonEmerald,
+                                    unfocusedBorderColor = Color.White.copy(alpha = 0.4f),
+                                    focusedTextColor = TextPrimary,
+                                    unfocusedTextColor = TextPrimary
+                                )
+                            )
+                            OutlinedTextField(
+                                value = state.pageRangeEnd,
+                                onValueChange = { onPageRangeEndChanged(it.filter { c -> c.isDigit() }) },
+                                label = { Text("To", color = TextSecondary) },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(12.dp),
+                                singleLine = true,
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = NeonEmerald,
+                                    unfocusedBorderColor = Color.White.copy(alpha = 0.4f),
+                                    focusedTextColor = TextPrimary,
+                                    unfocusedTextColor = TextPrimary
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+
+            GlassCard(
+                liquidState = liquidState,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
                     Text(
-                        text = "Page Range (optional)",
-                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
+                        text = "Output File Name",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
+                        color = TextPrimary
                     )
                     Spacer(modifier = Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        OutlinedTextField(
-                            value = state.pageRangeStart,
-                            onValueChange = { viewModel.onPageRangeStartChanged(it.filter { c -> c.isDigit() }) },
-                            label = { Text("From") },
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(12.dp),
-                            singleLine = true
+                    OutlinedTextField(
+                        value = state.outputFileName,
+                        onValueChange = { onOutputFileNameChanged(it) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = NeonEmerald,
+                            unfocusedBorderColor = Color.White.copy(alpha = 0.4f),
+                            focusedTextColor = TextPrimary,
+                            unfocusedTextColor = TextPrimary
                         )
-                        OutlinedTextField(
-                            value = state.pageRangeEnd,
-                            onValueChange = { viewModel.onPageRangeEndChanged(it.filter { c -> c.isDigit() }) },
-                            label = { Text("To") },
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(12.dp),
-                            singleLine = true
-                        )
-                    }
+                    )
                 }
             }
-
-            // Output File Name
-            OutlinedTextField(
-                value = state.outputFileName,
-                onValueChange = { viewModel.onOutputFileNameChanged(it) },
-                label = { Text("Output File Name") },
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                singleLine = true
-            )
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Convert Button
-            Button(
-                onClick = {
-                    state.conversionType?.id?.let { onNavigateToProcessing(it) }
-                },
+            PrimaryButton(
+                text = "Convert",
                 enabled = state.isConvertEnabled,
+                onClick = onConvert,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(56.dp),
-                shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary
-                )
-            ) {
-                Text(
-                    text = "Convert",
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 18.sp
-                    )
-                )
-            }
+                    .height(54.dp)
+            )
 
             Spacer(modifier = Modifier.height(24.dp))
         }
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun ConversionConfigScreenPreview() {
+    MorphDropTheme {
+        ConversionConfigScreenContent(
+            state = ConversionConfigState(
+                conversionType = ConversionType.defaultList.first(),
+                selectedFileUri = Uri.parse("content://mock"),
+                selectedFileName = "Sample_Document.pdf",
+                selectedFileSize = 1024L * 1024L * 2,
+                availableOutputFormats = listOf("png", "jpg"),
+                outputFormat = "png",
+                showQualitySlider = true,
+                quality = 85,
+                showPageRange = true,
+                pageRangeStart = "1",
+                pageRangeEnd = "10",
+                outputFileName = "Sample_Document_Converted",
+                isConvertEnabled = true
+            ),
+            liquidState = rememberLiquidState(),
+            onNavigateBack = {},
+            onPickFile = {},
+            onOutputFormatChanged = {},
+            onQualityChanged = {},
+            onPageRangeStartChanged = {},
+            onPageRangeEndChanged = {},
+            onOutputFileNameChanged = {},
+            onConvert = {}
+        )
     }
 }

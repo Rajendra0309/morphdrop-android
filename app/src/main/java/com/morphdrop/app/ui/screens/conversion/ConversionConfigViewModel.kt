@@ -100,6 +100,33 @@ class ConversionConfigViewModel @Inject constructor(
         return start..end
     }
 
+    fun startConversion(context: android.content.Context): java.util.UUID? {
+        val currentState = _state.value
+        val uri = currentState.selectedFileUri ?: return null
+        val type = currentState.conversionType ?: return null
+
+        val dataBuilder = androidx.work.Data.Builder()
+            .putString(com.morphdrop.app.worker.ConversionWorker.KEY_CONVERSION_TYPE, type.id)
+            .putString(com.morphdrop.app.worker.ConversionWorker.KEY_INPUT_URI, uri.toString())
+            .putString(com.morphdrop.app.worker.ConversionWorker.KEY_OUTPUT_FILE_NAME, currentState.outputFileName)
+            .putString(com.morphdrop.app.worker.ConversionWorker.KEY_TARGET_FORMAT, currentState.outputFormat)
+            .putInt(com.morphdrop.app.worker.ConversionWorker.KEY_QUALITY, currentState.quality)
+
+        if (currentState.pageRangeStart.isNotBlank() && currentState.pageRangeEnd.isNotBlank()) {
+            dataBuilder.putString(
+                com.morphdrop.app.worker.ConversionWorker.KEY_PAGE_RANGE,
+                "${currentState.pageRangeStart}-${currentState.pageRangeEnd}"
+            )
+        }
+
+        val workRequest = androidx.work.OneTimeWorkRequestBuilder<com.morphdrop.app.worker.ConversionWorker>()
+            .setInputData(dataBuilder.build())
+            .build()
+
+        androidx.work.WorkManager.getInstance(context).enqueue(workRequest)
+        return workRequest.id
+    }
+
     private fun isImageOutput(type: ConversionType): Boolean {
         return type.outputType in listOf(FileType.PNG, FileType.JPG, FileType.WEBP, FileType.BMP) ||
                 type.id == "compress_images"

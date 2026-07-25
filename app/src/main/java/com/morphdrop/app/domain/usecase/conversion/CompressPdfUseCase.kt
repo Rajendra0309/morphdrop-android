@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import com.morphdrop.app.domain.repository.SettingsRepository
 import com.morphdrop.app.util.FileHelper
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.cos.COSName
@@ -29,7 +30,8 @@ enum class CompressionLevel(val quality: Float, val scaleFactor: Float) {
 }
 
 class CompressPdfUseCase @Inject constructor(
-    @param:ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context,
+    private val settingsRepository: SettingsRepository
 ) {
     suspend operator fun invoke(
         pdfUri: Uri,
@@ -67,7 +69,7 @@ class CompressPdfUseCase @Inject constructor(
             val baos = ByteArrayOutputStream()
             document.save(baos)
             val bytes = baos.toByteArray()
-            val outputUri = FileHelper.saveToCache(context, outputFileName, bytes)
+            val outputUri = FileHelper.saveToFile(context, settingsRepository, outputFileName, bytes)
 
             CompressResult(
                 outputUri = outputUri,

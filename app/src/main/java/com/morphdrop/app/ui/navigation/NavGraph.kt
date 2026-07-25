@@ -1,5 +1,10 @@
 package com.morphdrop.app.ui.navigation
 
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.runtime.Composable
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -9,6 +14,10 @@ import androidx.navigation.navArgument
 import com.morphdrop.app.ui.screens.conversion.ConversionConfigScreen
 import com.morphdrop.app.ui.screens.history.HistoryScreen
 import com.morphdrop.app.ui.screens.home.HomeScreen
+import com.morphdrop.app.ui.screens.pdf.MergePdfScreen
+import com.morphdrop.app.ui.screens.pdf.PdfPageEditorScreen
+import com.morphdrop.app.ui.screens.pdf.PdfPasswordScreen
+import com.morphdrop.app.ui.screens.pdf.SplitPdfScreen
 import com.morphdrop.app.ui.screens.processing.ProcessingScreen
 import com.morphdrop.app.ui.screens.result.ResultScreen
 import com.morphdrop.app.ui.screens.settings.SettingsScreen
@@ -17,15 +26,31 @@ import com.morphdrop.app.ui.screens.settings.SettingsScreen
 fun NavGraph(navController: NavHostController) {
     NavHost(
         navController = navController,
-        startDestination = Screen.Home.route
+        startDestination = Screen.Home.route,
+        enterTransition = {
+            slideInHorizontally(initialOffsetX = { 1000 }, animationSpec = tween(400)) + fadeIn(animationSpec = tween(400))
+        },
+        exitTransition = {
+            slideOutHorizontally(targetOffsetX = { -1000 }, animationSpec = tween(400)) + fadeOut(animationSpec = tween(400))
+        },
+        popEnterTransition = {
+            slideInHorizontally(initialOffsetX = { -1000 }, animationSpec = tween(400)) + fadeIn(animationSpec = tween(400))
+        },
+        popExitTransition = {
+            slideOutHorizontally(targetOffsetX = { 1000 }, animationSpec = tween(400)) + fadeOut(animationSpec = tween(400))
+        }
     ) {
         composable(Screen.Home.route) {
             HomeScreen(
                 onNavigateToConfig = { conversionTypeId ->
-                    navController.navigate(Screen.ConversionConfig.createRoute(conversionTypeId))
-                },
-                onNavigateToSettings = {
-                    navController.navigate(Screen.Settings.route)
+                    val route = when (conversionTypeId) {
+                        "merge_pdf" -> Screen.MergePdf.route
+                        "split_pdf" -> Screen.SplitPdf.route
+                        "protect_pdf" -> Screen.PdfPassword.route
+                        "page_editor" -> Screen.PdfPageEditor.route
+                        else -> Screen.ConversionConfig.createRoute(conversionTypeId)
+                    }
+                    navController.navigate(route)
                 }
             )
         }
@@ -35,25 +60,77 @@ fun NavGraph(navController: NavHostController) {
         ) {
             ConversionConfigScreen(
                 onNavigateBack = { navController.popBackStack() },
-                onNavigateToProcessing = { conversionTypeId ->
-                    navController.navigate(Screen.Processing.createRoute(conversionTypeId))
+                onNavigateToProcessing = { conversionTypeId, workId ->
+                    navController.navigate(Screen.Processing.createRoute(conversionTypeId, workId))
                 }
             )
         }
         composable(
             route = Screen.Processing.route,
-            arguments = listOf(navArgument("conversionTypeId") { type = NavType.StringType })
+            arguments = listOf(
+                navArgument("conversionTypeId") { type = NavType.StringType },
+                navArgument("workId") { type = NavType.StringType }
+            )
         ) {
-            ProcessingScreen()
+            ProcessingScreen(
+                onConversionFinished = { workId ->
+                    navController.navigate(Screen.Result.createRoute(workId)) {
+                        popUpTo(Screen.Home.route) { inclusive = false }
+                    }
+                },
+                onNavigateBack = { navController.popBackStack() }
+            )
         }
         composable(Screen.Result.route) {
-            ResultScreen()
+            ResultScreen(
+                onNavigateToHome = {
+                    navController.navigate(Screen.Home.route) {
+                        popUpTo(Screen.Home.route) { inclusive = true }
+                    }
+                }
+            )
+        }
+        composable(Screen.MergePdf.route) {
+            MergePdfScreen(
+                onNavigateBack = { navController.popBackStack() },
+                onMergeStarted = { workId ->
+                    navController.navigate(Screen.Processing.createRoute("merge_pdf", workId))
+                }
+            )
+        }
+        composable(Screen.SplitPdf.route) {
+            SplitPdfScreen(
+                onNavigateBack = { navController.popBackStack() },
+                onSplitStarted = { workId ->
+                    navController.navigate(Screen.Processing.createRoute("split_pdf", workId))
+                }
+            )
+        }
+        composable(Screen.PdfPageEditor.route) {
+            PdfPageEditorScreen(
+                onNavigateBack = { navController.popBackStack() },
+                onSaveStarted = { workId ->
+                    navController.navigate(Screen.Processing.createRoute("page_editor", workId))
+                }
+            )
+        }
+        composable(Screen.PdfPassword.route) {
+            PdfPasswordScreen(
+                onNavigateBack = { navController.popBackStack() },
+                onProtectStarted = { workId ->
+                    navController.navigate(Screen.Processing.createRoute("protect_pdf", workId))
+                }
+            )
         }
         composable(Screen.History.route) {
-            HistoryScreen()
+            HistoryScreen(
+                onNavigateBack = { navController.popBackStack() }
+            )
         }
         composable(Screen.Settings.route) {
-            SettingsScreen()
+            SettingsScreen(
+                onNavigateBack = { navController.popBackStack() }
+            )
         }
     }
 }

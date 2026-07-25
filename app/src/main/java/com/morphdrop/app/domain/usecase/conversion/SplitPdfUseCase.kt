@@ -2,17 +2,20 @@ package com.morphdrop.app.domain.usecase.conversion
 
 import android.content.Context
 import android.net.Uri
+import com.morphdrop.app.domain.repository.SettingsRepository
 import com.morphdrop.app.util.FileHelper
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import javax.inject.Inject
 
 class SplitPdfUseCase @Inject constructor(
-    @param:ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context,
+    private val settingsRepository: SettingsRepository
 ) {
     sealed class SplitException(message: String) : Exception(message) {
         class InvalidRange : SplitException("No valid page ranges provided")
@@ -49,7 +52,8 @@ class SplitPdfUseCase @Inject constructor(
             if (sourceDoc.isEncrypted) throw SplitException.PasswordProtected()
             val totalPages = sourceDoc.numberOfPages
 
-            val folderName = "split_pdf_${System.currentTimeMillis()}"
+            val baseFolder = settingsRepository.outputFolderName.first()
+            val folderName = "$baseFolder/split_pdf_${System.currentTimeMillis()}"
             FileHelper.createOutputDirectory(context, folderName)
 
             for ((index, range) in pageRanges.withIndex()) {

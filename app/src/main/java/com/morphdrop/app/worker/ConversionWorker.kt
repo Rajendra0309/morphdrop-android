@@ -14,6 +14,7 @@ import com.morphdrop.app.domain.usecase.conversion.ExcelToPdfUseCase
 import com.morphdrop.app.domain.usecase.conversion.ImageConverterUseCase
 import com.morphdrop.app.domain.usecase.conversion.ImagesToPdfUseCase
 import com.morphdrop.app.domain.usecase.conversion.MergePdfUseCase
+import com.morphdrop.app.domain.usecase.conversion.PdfPageEditorUseCase
 import com.morphdrop.app.domain.usecase.conversion.PdfPasswordUseCase
 import com.morphdrop.app.domain.usecase.conversion.PdfToImagesUseCase
 import com.morphdrop.app.domain.usecase.conversion.PdfToWordUseCase
@@ -46,6 +47,7 @@ class ConversionWorker @AssistedInject constructor(
     private val rotatePdfPagesUseCase: RotatePdfPagesUseCase,
     private val reorderPdfPagesUseCase: ReorderPdfPagesUseCase,
     private val pdfPasswordUseCase: PdfPasswordUseCase,
+    private val pdfPageEditorUseCase: PdfPageEditorUseCase,
     private val historyRepository: HistoryRepository,
     private val notificationHelper: NotificationHelper
 ) : CoroutineWorker(appContext, workerParams) {
@@ -130,7 +132,7 @@ class ConversionWorker @AssistedInject constructor(
                     listOf(powerPointToPdfUseCase(uri))
                 }
 
-                "image_convert" -> {
+                "image_converter" -> {
                     val uri = Uri.parse(requireNotNull(inputUriString))
                     val targetFormat = inputData.getString(KEY_TARGET_FORMAT) ?: "jpg"
                     val quality = inputData.getInt(KEY_QUALITY, 90)
@@ -175,7 +177,7 @@ class ConversionWorker @AssistedInject constructor(
                     listOf(reorderPdfPagesUseCase(uri, newOrder = orderList))
                 }
 
-                "pdf_password" -> {
+                "protect_pdf" -> {
                     val uri = Uri.parse(requireNotNull(inputUriString))
                     val password = requireNotNull(inputData.getString(KEY_PASSWORD))
                     val actionStr = inputData.getString(KEY_ACTION) ?: "ADD_PASSWORD"
@@ -185,6 +187,20 @@ class ConversionWorker @AssistedInject constructor(
                         PdfPasswordUseCase.Action.ADD_PASSWORD
                     }
                     listOf(pdfPasswordUseCase(uri, password = password, action = action))
+                }
+
+                "page_editor" -> {
+                    val uri = Uri.parse(requireNotNull(inputUriString))
+                    val pageOrderStr = requireNotNull(inputData.getString(KEY_PAGE_ORDER))
+                    val orderList = pageOrderStr.split(",").map { it.trim().toInt() }
+                    val rotationsStr = inputData.getString("page_rotations") ?: ""
+                    val rotationsMap = rotationsStr.split(",")
+                        .filter { it.isNotBlank() }
+                        .associate { 
+                            val parts = it.split(":")
+                            parts[0].toInt() to parts[1].toInt()
+                        }
+                    listOf(pdfPageEditorUseCase(uri, newOrder = orderList, rotations = rotationsMap))
                 }
 
                 else -> throw IllegalArgumentException("Unsupported conversion type: $conversionType")

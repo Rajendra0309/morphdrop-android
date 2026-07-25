@@ -122,6 +122,15 @@ data class ConversionType(
                 icon = Icons.Default.Lock,
                 category = CATEGORY_PDF_TOOLS
             ),
+            ConversionType(
+                id = "page_editor",
+                name = "Organize PDF",
+                description = "Reorder, rotate, and delete pages from PDF",
+                inputType = FileType.PDF,
+                outputType = FileType.PDF,
+                icon = Icons.Default.Transform,
+                category = CATEGORY_PDF_TOOLS
+            ),
 
             // Image Tools
             ConversionType(

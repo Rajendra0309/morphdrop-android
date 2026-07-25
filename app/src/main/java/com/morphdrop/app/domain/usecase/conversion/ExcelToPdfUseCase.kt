@@ -2,6 +2,7 @@ package com.morphdrop.app.domain.usecase.conversion
 
 import android.content.Context
 import android.net.Uri
+import com.morphdrop.app.domain.repository.SettingsRepository
 import com.morphdrop.app.util.FileHelper
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
@@ -19,7 +20,8 @@ import java.io.ByteArrayOutputStream
 import javax.inject.Inject
 
 class ExcelToPdfUseCase @Inject constructor(
-    @param:ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context,
+    private val settingsRepository: SettingsRepository
 ) {
     companion object {
         private const val MARGIN = 40f
@@ -123,7 +125,7 @@ class ExcelToPdfUseCase @Inject constructor(
 
             val baos = ByteArrayOutputStream()
             pdfDoc.save(baos)
-            FileHelper.saveToCache(context, outputFileName, baos.toByteArray())
+            FileHelper.saveToFile(context, settingsRepository, outputFileName, baos.toByteArray())
         } finally {
             pdfDoc.close()
             workbook.close()

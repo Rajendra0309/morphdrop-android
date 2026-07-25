@@ -5,6 +5,8 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.OpenableColumns
 import android.webkit.MimeTypeMap
+import com.morphdrop.app.domain.repository.SettingsRepository
+import kotlinx.coroutines.flow.first
 import java.io.File
 import java.io.FileNotFoundException
 import java.io.InputStream
@@ -26,21 +28,36 @@ object FileHelper {
         return Uri.fromFile(file)
     }
 
-    fun saveToFile(context: Context, directoryUri: Uri, fileName: String, data: ByteArray): Uri {
-        val directoryPath = directoryUri.path ?: context.cacheDir.path
-        val dir = File(directoryPath)
-        if (!dir.exists()) dir.mkdirs()
-        val file = File(dir, fileName)
-        file.writeBytes(data)
-        return Uri.fromFile(file)
+    suspend fun saveToFile(context: Context, settingsRepository: SettingsRepository, fileName: String, data: ByteArray): Uri {
+        val folderName = settingsRepository.outputFolderName.first()
+        return saveToFile(context, folderName, fileName, data)
     }
 
     fun saveToFile(context: Context, folderName: String, fileName: String, data: ByteArray): Uri {
-        val dir = File(context.cacheDir, folderName)
-        if (!dir.exists()) dir.mkdirs()
-        val file = File(dir, fileName)
-        file.writeBytes(data)
-        return Uri.fromFile(file)
+        val resolver = context.contentResolver
+        val mimeType = MimeTypeMap.getSingleton().getMimeTypeFromExtension(getFileExtension(fileName)) ?: "application/octet-stream"
+        
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            val contentValues = android.content.ContentValues().apply {
+                put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                put(android.provider.MediaStore.MediaColumns.MIME_TYPE, mimeType)
+                put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS + "/" + folderName)
+            }
+            
+            val collection = android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI
+            val uri = resolver.insert(collection, contentValues) ?: throw FileNotFoundException("Could not create MediaStore entry")
+            
+            resolver.openOutputStream(uri)?.use { it.write(data) }
+            return uri
+        } else {
+            @Suppress("DEPRECATION")
+            val dir = File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), folderName)
+            if (!dir.exists()) dir.mkdirs()
+            val file = File(dir, fileName)
+            file.writeBytes(data)
+            
+            return Uri.fromFile(file)
+        }
     }
 
     fun saveToUri(context: Context, outputUri: Uri, data: ByteArray) {
@@ -92,7 +109,7 @@ object FileHelper {
     fun openFile(context: Context, uri: Uri): Intent {
         return Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(uri, getMimeType(context, uri))
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
         }
     }
 
@@ -100,7 +117,7 @@ object FileHelper {
         val intent = Intent(Intent.ACTION_SEND).apply {
             type = getMimeType(context, uri)
             putExtra(Intent.EXTRA_STREAM, uri)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
         }
         return Intent.createChooser(intent, "Share file via")
     }

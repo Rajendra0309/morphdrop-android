@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import com.morphdrop.app.domain.repository.SettingsRepository
 import com.morphdrop.app.util.FileHelper
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -12,7 +13,8 @@ import java.io.ByteArrayOutputStream
 import javax.inject.Inject
 
 class ImageConverterUseCase @Inject constructor(
-    @param:ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context,
+    private val settingsRepository: SettingsRepository
 ) {
     class InvalidImageException : Exception("Failed to decode source image")
 
@@ -37,7 +39,7 @@ class ImageConverterUseCase @Inject constructor(
             val baos = ByteArrayOutputStream()
             bitmap.compress(format, quality, baos)
 
-            FileHelper.saveToCache(context, outputFileName, baos.toByteArray())
+            FileHelper.saveToFile(context, settingsRepository, outputFileName, baos.toByteArray())
         } finally {
             bitmap.recycle()
             inputStream.close()

@@ -1,0 +1,58 @@
+package com.morphdrop.app.ui.screens.pdf
+
+import android.content.Context
+import android.net.Uri
+import androidx.lifecycle.ViewModel
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.workDataOf
+import com.morphdrop.app.worker.ConversionWorker
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import java.util.UUID
+import javax.inject.Inject
+
+data class PdfPageEditorState(
+    val selectedFile: Uri? = null,
+    val pages: List<PageData> = emptyList()
+)
+
+@HiltViewModel
+class PdfPageEditorViewModel @Inject constructor() : ViewModel() {
+    private val _state = MutableStateFlow(PdfPageEditorState())
+    val state: StateFlow<PdfPageEditorState> = _state.asStateFlow()
+
+    fun onFileSelected(uri: Uri) {
+        // In a real app, we'd load the page count/thumbnails here.
+        // For Phase 4, we'll assume the screen provides the list of PageData.
+        _state.update { it.copy(selectedFile = uri) }
+    }
+
+    fun onPagesUpdated(pages: List<PageData>) {
+        _state.update { it.copy(pages = pages) }
+    }
+
+    fun startEditing(context: Context, pages: List<PageData>): UUID? {
+        val currentState = _state.value
+        val uri = currentState.selectedFile ?: return null
+
+        val pageOrder = pages.map { it.number - 1 }.joinToString(",")
+        val rotations = pages.filter { it.rotation != 0 }
+            .joinToString(",") { "${it.number - 1}:${it.rotation}" }
+
+        val workRequest = OneTimeWorkRequestBuilder<ConversionWorker>()
+            .setInputData(workDataOf(
+                ConversionWorker.KEY_CONVERSION_TYPE to "page_editor",
+                ConversionWorker.KEY_INPUT_URI to uri.toString(),
+                ConversionWorker.KEY_PAGE_ORDER to pageOrder,
+                "page_rotations" to rotations
+            ))
+            .build()
+
+        WorkManager.getInstance(context).enqueue(workRequest)
+        return workRequest.id
+    }
+}

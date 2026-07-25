@@ -1,11 +1,11 @@
 package com.morphdrop.app.ui.components
 
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -25,20 +24,24 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.morphdrop.app.domain.model.ConversionType
+import com.morphdrop.app.ui.theme.LiquidGlassConfig
+import io.github.fletchmckee.liquid.LiquidState
+import io.github.fletchmckee.liquid.liquid
 
 @Composable
 fun ConversionCard(
@@ -46,101 +49,122 @@ fun ConversionCard(
     onClick: () -> Unit,
     onFavoriteToggle: () -> Unit,
     modifier: Modifier = Modifier,
-    isCompact: Boolean = false
+    liquidState: LiquidState? = null,
+    isCompact: Boolean = false,
+    descriptionPrefix: String = ""
 ) {
+    val isLight = MaterialTheme.colorScheme.background.luminance() > 0.5f
+    val shape = RoundedCornerShape(20.dp)
     val interactionSource = remember { MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
 
-    val scale by animateFloatAsState(
-        targetValue = if (isPressed) 0.96f else 1.0f,
-        animationSpec = tween(durationMillis = 150),
-        label = "card_scale"
-    )
+    val cardModifier = modifier
+        .semantics {
+            contentDescription = "$descriptionPrefix Tool: ${conversionType.name}. ${conversionType.description}"
+        }
+        .clip(shape)
+        .then(
+            if (liquidState != null) {
+                val config = LiquidGlassConfig.CardConfig
+                Modifier.liquid(liquidState) {
+                    frost = config.frost
+                    refraction = config.refraction
+                    curve = config.curve
+                    edge = config.edge
+                    tint = config.tint
+                    saturation = config.saturation
+                    dispersion = config.dispersion
+                    contrast = config.contrast
+                    this.shape = shape
+                }
+            } else Modifier
+        )
+        .clickable(
+            interactionSource = interactionSource,
+            indication = null,
+            onClick = onClick
+        )
 
     Card(
-        modifier = modifier
-            .scale(scale)
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                onClick = onClick
-            ),
-        shape = RoundedCornerShape(16.dp),
+        modifier = cardModifier,
+        shape = shape,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+            containerColor = if (liquidState != null) {
+                MaterialTheme.colorScheme.surface.copy(alpha = if (isLight) 0.6f else 0.2f)
+            } else {
+                MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
+            }
         ),
-        elevation = CardDefaults.cardElevation(
-            defaultElevation = 2.dp,
-            pressedElevation = 0.dp
-        )
+        border = BorderStroke(
+            width = if (isLight) 1.dp else 1.dp,
+            color = if (isLight) {
+                MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+            } else {
+                MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
+            }
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.SpaceBetween
+                .padding(if (isCompact) 14.dp else 18.dp), // Increased padding to prevent clipping
+            verticalArrangement = Arrangement.spacedBy(if (isCompact) 8.dp else 12.dp)
         ) {
-            // Header: Icon + Title + Heart
+            // Header: Icon + Heart
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Surface(
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                    modifier = Modifier.size(40.dp)
+                Box(
+                    modifier = Modifier
+                        .size(if (isCompact) 32.dp else 40.dp)
+                        .clip(CircleShape)
+                        .background(conversionType.inputType.color.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = conversionType.icon,
-                        contentDescription = conversionType.name,
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                        modifier = Modifier
-                            .padding(8.dp)
-                            .size(24.dp)
+                        contentDescription = null,
+                        tint = conversionType.inputType.color,
+                        modifier = Modifier.size(if (isCompact) 18.dp else 24.dp)
                     )
                 }
 
                 IconButton(
                     onClick = onFavoriteToggle,
-                    modifier = Modifier.size(32.dp)
+                    modifier = Modifier.size(if (isCompact) 32.dp else 40.dp)
                 ) {
                     Icon(
                         imageVector = if (conversionType.isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
-                        contentDescription = "Favorite",
-                        tint = if (conversionType.isFavorite) Color(0xFFE91E63) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                        modifier = Modifier.size(20.dp)
+                        contentDescription = if (conversionType.isFavorite) "Remove ${conversionType.name} from $descriptionPrefix favorites" else "Add ${conversionType.name} to $descriptionPrefix favorites",
+                        tint = if (conversionType.isFavorite) Color(0xFFE91E63) else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(if (isCompact) 18.dp else 22.dp)
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
-
             // Title
             Text(
                 text = conversionType.name,
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp
-                ),
+                fontWeight = FontWeight.Bold,
+                fontSize = if (isCompact) 14.sp else 16.sp,
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
 
-            Spacer(modifier = Modifier.height(4.dp))
-
             // Description
-            Text(
-                text = conversionType.description,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.height(36.dp)
-            )
-
-            Spacer(modifier = Modifier.height(12.dp))
+            if (!isCompact) {
+                Text(
+                    text = conversionType.description,
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.height(36.dp)
+                )
+            }
 
             // Badges row: input -> output
             Row(
@@ -154,7 +178,7 @@ fun ConversionCard(
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier
                         .padding(horizontal = 6.dp)
-                        .size(12.dp)
+                        .size(if (isCompact) 10.dp else 12.dp)
                 )
 
                 FormatBadge(fileType = conversionType.outputType)

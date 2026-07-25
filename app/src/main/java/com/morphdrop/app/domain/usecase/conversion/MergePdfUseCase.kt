@@ -2,22 +2,27 @@ package com.morphdrop.app.domain.usecase.conversion
 
 import android.content.Context
 import android.net.Uri
+import com.morphdrop.app.domain.repository.SettingsRepository
 import com.morphdrop.app.util.FileHelper
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import javax.inject.Inject
 
 class MergePdfUseCase @Inject constructor(
-    @param:ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context,
+    private val settingsRepository: SettingsRepository
 ) {
     sealed class MergeException(message: String) : Exception(message) {
         class EmptyList : MergeException("No PDF files selected to merge")
         class CorruptFile(val uri: Uri) : MergeException("Corrupt or invalid PDF file: $uri")
         class PasswordProtected(val uri: Uri) : MergeException("PDF is password-protected: $uri")
+        class DiskFull : MergeException("Insufficient storage space to save merged file")
+        class GeneralIO(message: String) : MergeException(message)
     }
 
     suspend operator fun invoke(
@@ -63,8 +68,16 @@ class MergePdfUseCase @Inject constructor(
             if (mergedDoc.numberOfPages == 0) throw MergeException.EmptyList()
 
             val baos = ByteArrayOutputStream()
-            mergedDoc.save(baos)
-            FileHelper.saveToCache(context, outputFileName, baos.toByteArray())
+            try {
+                mergedDoc.save(baos)
+                val folderName = settingsRepository.outputFolderName.first()
+                FileHelper.saveToFile(context, folderName, outputFileName, baos.toByteArray())
+            } catch (e: java.io.IOException) {
+                if (e.message?.contains("ENOSPC", ignoreCase = true) == true) {
+                    throw MergeException.DiskFull()
+                }
+                throw MergeException.GeneralIO(e.message ?: "Failed to save merged PDF")
+            }
         } finally {
             mergedDoc.close()
         }
