@@ -71,7 +71,7 @@ fun ProcessingScreen(
     }
 
     val animatedProgress by animateFloatAsState(
-        targetValue = uiState.progress / 100f,
+        targetValue = uiState.progress.coerceIn(0f, 1f),
         animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
         label = "progress"
     )
@@ -98,9 +98,9 @@ fun ProcessingScreen(
     )
 
     LaunchedEffect(uiState.isCompleted) {
-        if (uiState.isCompleted) {
+        if (uiState.isCompleted && viewModel.workIdString != null) {
             haptic.success()
-            onConversionFinished(viewModel.workIdString)
+            onConversionFinished(viewModel.workIdString!!)
         }
     }
 

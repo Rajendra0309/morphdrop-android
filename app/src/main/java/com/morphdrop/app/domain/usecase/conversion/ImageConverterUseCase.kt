@@ -25,10 +25,11 @@ class ImageConverterUseCase @Inject constructor(
         outputFileName: String = "converted_image_${System.currentTimeMillis()}.$outputFormat"
     ): Uri = withContext(Dispatchers.IO) {
         val inputStream = FileHelper.readFileFromUri(context, inputUri)
-        val bitmap = BitmapFactory.decodeStream(inputStream)
-            ?: throw InvalidImageException()
-
+        var bitmap: Bitmap? = null
         try {
+            bitmap = BitmapFactory.decodeStream(inputStream)
+                ?: throw InvalidImageException()
+
             val format = when (outputFormat.lowercase()) {
                 "png" -> Bitmap.CompressFormat.PNG
                 "webp" -> Bitmap.CompressFormat.WEBP_LOSSY
@@ -41,8 +42,8 @@ class ImageConverterUseCase @Inject constructor(
 
             FileHelper.saveToFile(context, settingsRepository, outputFileName, baos.toByteArray())
         } finally {
-            bitmap.recycle()
-            inputStream.close()
+            bitmap?.recycle()
+            try { inputStream.close() } catch (_: Exception) {}
         }
     }
 }

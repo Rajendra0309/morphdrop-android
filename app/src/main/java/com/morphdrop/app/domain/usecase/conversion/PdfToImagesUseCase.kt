@@ -29,17 +29,31 @@ class PdfToImagesUseCase @Inject constructor(
         quality: Int = 100,
         pageRange: IntRange? = null
     ): List<Uri> = withContext(Dispatchers.IO) {
-        com.tom_roush.pdfbox.android.PDFBoxResourceLoader.init(context)
         val baseFolder = settingsRepository.outputFolderName.first()
-        val outputDir = "$baseFolder/pdf_to_images_${System.currentTimeMillis()}"
+        val rawFileName = FileHelper.getFileName(context, pdfUri)
+        val nameWithoutExt = if (rawFileName.contains(".")) rawFileName.substringBeforeLast(".") else rawFileName
+        val folderName = if (nameWithoutExt.isBlank() || nameWithoutExt == "Input File") {
+            "pdf_to_images_${System.currentTimeMillis()}"
+        } else {
+            "${nameWithoutExt}_images"
+        }
+        val outputDir = "$baseFolder/$folderName"
         FileHelper.createOutputDirectory(context, outputDir)
         val results = mutableListOf<Uri>()
 
         val fileDescriptor = try {
             context.contentResolver.openFileDescriptor(pdfUri, "r")
                 ?: throw PdfException.CorruptPdf()
-        } catch (e: SecurityException) {
-            throw PdfException.CorruptPdf()
+        } catch (e: Exception) {
+            val cacheFile = java.io.File(context.cacheDir, "temp_pdf_${System.currentTimeMillis()}.pdf")
+            try {
+                FileHelper.readFileFromUri(context, pdfUri).use { input ->
+                    cacheFile.outputStream().use { output -> input.copyTo(output) }
+                }
+                android.os.ParcelFileDescriptor.open(cacheFile, android.os.ParcelFileDescriptor.MODE_READ_ONLY)
+            } catch (ex: Exception) {
+                throw PdfException.CorruptPdf()
+            }
         }
 
         val renderer = try {
@@ -65,6 +79,8 @@ class PdfToImagesUseCase @Inject constructor(
                 val width = page.width * 2
                 val height = page.height * 2
                 val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                val canvas = android.graphics.Canvas(bitmap)
+                canvas.drawColor(android.graphics.Color.WHITE)
 
                 page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
                 page.close()

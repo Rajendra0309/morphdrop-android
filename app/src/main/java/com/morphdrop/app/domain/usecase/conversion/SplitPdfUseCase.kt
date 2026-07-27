@@ -29,7 +29,6 @@ class SplitPdfUseCase @Inject constructor(
     ): List<Uri> = withContext(Dispatchers.IO) {
         if (pageRanges.isEmpty()) throw SplitException.InvalidRange()
 
-        PDFBoxResourceLoader.init(context)
         val outputUris = mutableListOf<Uri>()
 
         val inputStream = try {

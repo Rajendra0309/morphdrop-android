@@ -16,5 +16,6 @@ enum class FileType(
     JPG("JPG", "jpg", Color(0xFFE91E63)),
     WEBP("WEBP", "webp", Color(0xFF00BCD4)),
     BMP("BMP", "bmp", Color(0xFF673AB7)),
-    TXT("TXT", "txt", Color(0xFF607D8B))
+    TXT("TXT", "txt", Color(0xFF607D8B)),
+    MD("MD", "md", Color(0xFF00E676))
 }

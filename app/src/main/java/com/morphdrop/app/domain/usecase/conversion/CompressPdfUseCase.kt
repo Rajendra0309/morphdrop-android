@@ -38,8 +38,6 @@ class CompressPdfUseCase @Inject constructor(
         compressionLevel: CompressionLevel = CompressionLevel.MEDIUM,
         outputFileName: String = "compressed_${System.currentTimeMillis()}.pdf"
     ): CompressResult = withContext(Dispatchers.IO) {
-        PDFBoxResourceLoader.init(context)
-
         val originalSize = FileHelper.getFileSize(context, pdfUri)
         val inputStream = FileHelper.readFileFromUri(context, pdfUri)
         val document = PDDocument.load(inputStream)

@@ -3,6 +3,8 @@ package com.morphdrop.app.domain.usecase.conversion
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Matrix
+import android.media.ExifInterface
 import android.net.Uri
 import com.morphdrop.app.domain.repository.SettingsRepository
 import com.morphdrop.app.util.FileHelper
@@ -26,12 +28,12 @@ class ImagesToPdfUseCase @Inject constructor(
     enum class PageSize(val rect: PDRectangle) {
         A4(PDRectangle.A4),
         LETTER(PDRectangle.LETTER),
-        FIT_IMAGE(PDRectangle.A4) // placeholder, actual size set from image
+        FIT_IMAGE(PDRectangle.A4)
     }
 
     enum class Orientation { PORTRAIT, LANDSCAPE }
 
-    class EmptyImageListException : Exception("No images provided")
+    class EmptyImageListException : Exception("No valid images provided for PDF creation")
 
     suspend operator fun invoke(
         imageUris: List<Uri>,
@@ -39,10 +41,18 @@ class ImagesToPdfUseCase @Inject constructor(
         orientation: Orientation = Orientation.PORTRAIT,
         outputFileName: String = "images_to_pdf_${System.currentTimeMillis()}.pdf"
     ): Uri = withContext(Dispatchers.IO) {
+        if (!PDFBoxResourceLoader.isReady()) {
+            PDFBoxResourceLoader.init(context)
+        }
+
         if (imageUris.isEmpty()) throw EmptyImageListException()
 
-        PDFBoxResourceLoader.init(context)
         val document = PDDocument()
+        val sanitizedFileName = if (outputFileName.endsWith(".pdf", ignoreCase = true)) {
+            outputFileName
+        } else {
+            "$outputFileName.pdf"
+        }
 
         try {
             for (uri in imageUris) {
@@ -66,7 +76,6 @@ class ImagesToPdfUseCase @Inject constructor(
 
                     val contentStream = PDPageContentStream(document, page)
 
-                    // Scale image to fit page while maintaining aspect ratio
                     val pageW = rect.width
                     val pageH = rect.height
                     val imgW = bitmap.width.toFloat()
@@ -88,16 +97,20 @@ class ImagesToPdfUseCase @Inject constructor(
 
             val baos = ByteArrayOutputStream()
             document.save(baos)
-            FileHelper.saveToFile(context, settingsRepository, outputFileName, baos.toByteArray())
+            FileHelper.saveToFile(context, settingsRepository, sanitizedFileName, baos.toByteArray())
         } finally {
-            document.close()
+            try {
+                document.close()
+            } catch (_: Exception) {}
         }
     }
 
     private fun loadAndDownsampleBitmap(uri: Uri): Bitmap? {
         return try {
             val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
+            FileHelper.readFileFromUri(context, uri).use { BitmapFactory.decodeStream(it, null, options) }
+
+            if (options.outWidth <= 0 || options.outHeight <= 0) return null
 
             var sampleSize = 1
             val maxDim = 2048
@@ -106,9 +119,36 @@ class ImagesToPdfUseCase @Inject constructor(
             }
 
             val decodeOptions = BitmapFactory.Options().apply { inSampleSize = sampleSize }
-            context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, decodeOptions) }
+            val rawBitmap = FileHelper.readFileFromUri(context, uri).use { BitmapFactory.decodeStream(it, null, decodeOptions) }
+                ?: return null
+
+            val rotatedBitmap = rotateBitmapIfRequired(uri, rawBitmap)
+            rotatedBitmap
         } catch (e: Exception) {
             null
+        }
+    }
+
+    private fun rotateBitmapIfRequired(uri: Uri, bitmap: Bitmap): Bitmap {
+        return try {
+            FileHelper.readFileFromUri(context, uri).use { inputStream ->
+                val exif = ExifInterface(inputStream)
+                val orientation = exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
+                val matrix = Matrix()
+                when (orientation) {
+                    ExifInterface.ORIENTATION_ROTATE_90 -> matrix.postRotate(90f)
+                    ExifInterface.ORIENTATION_ROTATE_180 -> matrix.postRotate(180f)
+                    ExifInterface.ORIENTATION_ROTATE_270 -> matrix.postRotate(270f)
+                    else -> return bitmap
+                }
+                val rotated = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+                if (rotated != bitmap) {
+                    bitmap.recycle()
+                }
+                rotated
+            }
+        } catch (_: Exception) {
+            bitmap
         }
     }
 }

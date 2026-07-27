@@ -25,8 +25,6 @@ class ReorderPdfPagesUseCase @Inject constructor(
     ): Uri = withContext(Dispatchers.IO) {
         if (newOrder.isEmpty()) throw InvalidPageOrderException()
 
-        PDFBoxResourceLoader.init(context)
-
         val inputStream = FileHelper.readFileFromUri(context, pdfUri)
         val sourceDoc = PDDocument.load(inputStream)
         val newDoc = PDDocument()

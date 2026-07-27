@@ -35,8 +35,6 @@ class PdfPasswordUseCase @Inject constructor(
     ): Uri = withContext(Dispatchers.IO) {
         if (password.isEmpty()) throw PasswordException.InvalidAction()
 
-        PDFBoxResourceLoader.init(context)
-
         val inputStream = FileHelper.readFileFromUri(context, pdfUri)
 
         val document = try {

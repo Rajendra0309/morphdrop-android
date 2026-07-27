@@ -46,6 +46,7 @@ class MergePdfViewModel @Inject constructor() : ViewModel() {
         val workRequest = OneTimeWorkRequestBuilder<ConversionWorker>()
             .setInputData(workDataOf(
                 ConversionWorker.KEY_CONVERSION_TYPE to "merge_pdf",
+                ConversionWorker.KEY_INPUT_URI to currentState.selectedFiles.first().toString(),
                 ConversionWorker.KEY_INPUT_URIS to currentState.selectedFiles.map { it.toString() }.toTypedArray(),
                 ConversionWorker.KEY_OUTPUT_FILE_NAME to (if (currentState.outputFileName.isBlank()) "merged_${System.currentTimeMillis()}.pdf" else currentState.outputFileName)
             ))

@@ -73,31 +73,27 @@ fun ConversionConfigScreen(
     val context = LocalContext.current
     val liquidState = LocalLiquidState.current
 
-    val mimeFilter = when (state.conversionType?.inputType?.extension) {
-        "pdf" -> arrayOf("application/pdf")
-        "docx" -> arrayOf("application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-        "xlsx" -> arrayOf("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-        "pptx" -> arrayOf("application/vnd.openxmlformats-officedocument.presentationml.presentation")
-        "txt" -> arrayOf("text/plain")
-        "png" -> arrayOf("image/png", "image/jpeg", "image/webp", "image/*")
-        "jpg" -> arrayOf("image/jpeg", "image/png", "image/webp", "image/*")
+    val mimeFilter = when (state.conversionType?.id) {
+        "word_to_pdf" -> arrayOf("application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/msword")
+        "excel_to_pdf" -> arrayOf("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.ms-excel", "text/csv")
+        "ppt_to_pdf" -> arrayOf("application/vnd.openxmlformats-officedocument.presentationml.presentation", "application/vnd.ms-powerpoint")
+        "text_to_pdf" -> arrayOf("text/plain")
+        "md_to_pdf" -> arrayOf("text/markdown", "text/x-markdown", "text/plain")
+        "pdf_to_images", "split_pdf", "compress_pdf", "protect_pdf", "organize_pdf", "merge_pdf" -> arrayOf("application/pdf")
+        "images_to_pdf", "compress_images", "image_converter" -> arrayOf("image/*")
         else -> arrayOf("*/*")
     }
 
     val filePicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { uri: Uri? ->
-        uri?.let {
-            val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
-            context.contentResolver.takePersistableUriPermission(it, flags)
-            val name = FileHelper.getFileName(context, it)
-            val size = FileHelper.getFileSize(context, it)
-            viewModel.onFileSelected(it, name, size)
+        contract = ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris: List<Uri> ->
+        if (uris.isNotEmpty()) {
+            viewModel.onFilesSelected(context, uris)
         }
     }
 
     LaunchedEffect(Unit) {
-        if (state.selectedFileUri == null) {
+        if (state.selectedFileUris.isEmpty()) {
             filePicker.launch(mimeFilter)
         }
     }
@@ -172,6 +168,23 @@ fun ConversionConfigScreenContent(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Spacer(modifier = Modifier.height(8.dp))
+
+            AnimatedVisibility(visible = state.errorMessage != null) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color(0xFFE53935).copy(alpha = 0.25f))
+                        .padding(14.dp)
+                ) {
+                    Text(
+                        text = state.errorMessage ?: "",
+                        color = Color(0xFFFF8A80),
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
 
             GlassCard(
                 liquidState = liquidState,
@@ -417,8 +430,8 @@ fun ConversionConfigScreenPreview() {
         ConversionConfigScreenContent(
             state = ConversionConfigState(
                 conversionType = ConversionType.defaultList.first(),
-                selectedFileUri = Uri.parse("content://mock"),
-                selectedFileName = "Sample_Document.pdf",
+                selectedFileUris = listOf(Uri.parse("content://mock")),
+                selectedFileNames = listOf("Sample_Document.pdf"),
                 selectedFileSize = 1024L * 1024L * 2,
                 availableOutputFormats = listOf("png", "jpg"),
                 outputFormat = "png",

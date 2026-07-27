@@ -13,6 +13,7 @@ import com.morphdrop.app.domain.usecase.conversion.CompressionLevel
 import com.morphdrop.app.domain.usecase.conversion.ExcelToPdfUseCase
 import com.morphdrop.app.domain.usecase.conversion.ImageConverterUseCase
 import com.morphdrop.app.domain.usecase.conversion.ImagesToPdfUseCase
+import com.morphdrop.app.domain.usecase.conversion.MdToPdfUseCase
 import com.morphdrop.app.domain.usecase.conversion.MergePdfUseCase
 import com.morphdrop.app.domain.usecase.conversion.PdfPageEditorUseCase
 import com.morphdrop.app.domain.usecase.conversion.PdfPasswordUseCase
@@ -22,6 +23,7 @@ import com.morphdrop.app.domain.usecase.conversion.PowerPointToPdfUseCase
 import com.morphdrop.app.domain.usecase.conversion.ReorderPdfPagesUseCase
 import com.morphdrop.app.domain.usecase.conversion.RotatePdfPagesUseCase
 import com.morphdrop.app.domain.usecase.conversion.SplitPdfUseCase
+import com.morphdrop.app.domain.usecase.conversion.TextToPdfUseCase
 import com.morphdrop.app.domain.usecase.conversion.WordToPdfUseCase
 import com.morphdrop.app.util.FileHelper
 import com.morphdrop.app.util.NotificationHelper
@@ -40,6 +42,8 @@ class ConversionWorker @AssistedInject constructor(
     private val pdfToWordUseCase: PdfToWordUseCase,
     private val excelToPdfUseCase: ExcelToPdfUseCase,
     private val powerPointToPdfUseCase: PowerPointToPdfUseCase,
+    private val textToPdfUseCase: TextToPdfUseCase,
+    private val mdToPdfUseCase: MdToPdfUseCase,
     private val imageConverterUseCase: ImageConverterUseCase,
     private val mergePdfUseCase: MergePdfUseCase,
     private val splitPdfUseCase: SplitPdfUseCase,
@@ -70,16 +74,9 @@ class ConversionWorker @AssistedInject constructor(
     }
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
-        val notificationId = id.hashCode()
         val conversionType = inputData.getString(KEY_CONVERSION_TYPE) ?: "File Conversion"
         val startTime = System.currentTimeMillis()
-
-        val foregroundInfo = notificationHelper.createForegroundInfo(
-            notificationId,
-            conversionType,
-            0
-        )
-        setForeground(foregroundInfo)
+        val notificationId = id.hashCode()
 
         val inputUriString = inputData.getString(KEY_INPUT_URI)
         val inputUrisArray = inputData.getStringArray(KEY_INPUT_URIS)
@@ -92,6 +89,16 @@ class ConversionWorker @AssistedInject constructor(
         }
 
         try {
+            try {
+                val foregroundInfo = notificationHelper.createForegroundInfo(
+                    notificationId,
+                    conversionType,
+                    0
+                )
+                setForeground(foregroundInfo)
+            } catch (_: Throwable) {
+                // Foreground service may be constrained by OS policy or missing permission
+            }
             notificationHelper.showProgressNotification(notificationId, conversionType, 10)
             setProgress(workDataOf("progress" to 10))
 
@@ -105,7 +112,7 @@ class ConversionWorker @AssistedInject constructor(
                     pdfToImagesUseCase(pdfUri = uri, outputFormat = formatStr, quality = quality, pageRange = pageRange)
                 }
 
-                "images_to_pdf" -> {
+                "images_to_pdf", "image_to_pdf" -> {
                     val uris = inputUrisArray?.map { Uri.parse(it) }
                         ?: listOf(Uri.parse(requireNotNull(inputUriString)))
                     val outName = inputData.getString(KEY_OUTPUT_FILE_NAME) ?: "converted_${System.currentTimeMillis()}.pdf"
@@ -132,6 +139,18 @@ class ConversionWorker @AssistedInject constructor(
                     listOf(powerPointToPdfUseCase(uri))
                 }
 
+                "txt_to_pdf", "text_to_pdf" -> {
+                    val uri = Uri.parse(requireNotNull(inputUriString))
+                    val outName = inputData.getString(KEY_OUTPUT_FILE_NAME) ?: "text_to_pdf_${System.currentTimeMillis()}.pdf"
+                    listOf(textToPdfUseCase(uri, outputFileName = outName))
+                }
+
+                "md_to_pdf", "markdown_to_pdf" -> {
+                    val uri = Uri.parse(requireNotNull(inputUriString))
+                    val outName = inputData.getString(KEY_OUTPUT_FILE_NAME) ?: "md_to_pdf_${System.currentTimeMillis()}.pdf"
+                    listOf(mdToPdfUseCase(uri, outputFileName = outName))
+                }
+
                 "image_converter" -> {
                     val uri = Uri.parse(requireNotNull(inputUriString))
                     val targetFormat = inputData.getString(KEY_TARGET_FORMAT) ?: "jpg"
@@ -139,8 +158,24 @@ class ConversionWorker @AssistedInject constructor(
                     listOf(imageConverterUseCase(inputUri = uri, outputFormat = targetFormat, quality = quality))
                 }
 
-                "merge_pdf" -> {
-                    val uris = requireNotNull(inputUrisArray).map { Uri.parse(it) }
+                "compress_images" -> {
+                    val uris = inputUrisArray?.map { Uri.parse(it) }
+                        ?: listOf(Uri.parse(requireNotNull(inputUriString)))
+                    val targetFormat = inputData.getString(KEY_TARGET_FORMAT) ?: "jpg"
+                    val quality = inputData.getInt(KEY_QUALITY, 60)
+                    uris.mapIndexed { idx, u ->
+                        imageConverterUseCase(
+                            inputUri = u,
+                            outputFormat = targetFormat,
+                            quality = quality,
+                            outputFileName = "compressed_${idx}_${System.currentTimeMillis()}.$targetFormat"
+                        )
+                    }
+                }
+
+                "merge_pdf", "merge_pdfs" -> {
+                    val uris = inputUrisArray?.map { Uri.parse(it) }
+                        ?: listOf(Uri.parse(requireNotNull(inputUriString)))
                     val outName = inputData.getString(KEY_OUTPUT_FILE_NAME) ?: "merged_${System.currentTimeMillis()}.pdf"
                     listOf(mergePdfUseCase(uris, outputFileName = outName))
                 }

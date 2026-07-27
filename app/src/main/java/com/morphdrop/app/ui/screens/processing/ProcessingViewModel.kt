@@ -28,8 +28,8 @@ class ProcessingViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
-    private val conversionTypeId: String = checkNotNull(savedStateHandle["conversionTypeId"])
-    val workIdString: String = checkNotNull(savedStateHandle["workId"])
+    private val conversionTypeId: String? = savedStateHandle["conversionTypeId"]
+    val workIdString: String? = savedStateHandle["workId"]
     private val _uiState = MutableStateFlow(ProcessingUiState())
     val uiState: StateFlow<ProcessingUiState> = _uiState.asStateFlow()
 
@@ -39,13 +39,19 @@ class ProcessingViewModel @Inject constructor(
     }
 
     fun observeWork(context: android.content.Context) {
+        val idStr = workIdString ?: return
         val workManager = androidx.work.WorkManager.getInstance(context)
-        val workId = java.util.UUID.fromString(workIdString)
+        val workId = try {
+            java.util.UUID.fromString(idStr)
+        } catch (e: Exception) {
+            return
+        }
         
         viewModelScope.launch {
             workManager.getWorkInfoByIdFlow(workId).collect { workInfo ->
                 if (workInfo != null) {
-                    val progress = workInfo.progress.getInt("progress", 0) / 100f
+                    val rawProgress = workInfo.progress.getInt("progress", 0)
+                    val progress = (rawProgress / 100f).coerceIn(0f, 1f)
                     val stage = when {
                         progress < 0.2f -> "Initializing conversion..."
                         progress < 0.5f -> "Processing content..."
@@ -67,8 +73,13 @@ class ProcessingViewModel @Inject constructor(
     }
 
     fun cancelConversion(context: android.content.Context) {
+        val idStr = workIdString ?: return
         val workManager = androidx.work.WorkManager.getInstance(context)
-        val workId = java.util.UUID.fromString(workIdString)
+        val workId = try {
+            java.util.UUID.fromString(idStr)
+        } catch (e: Exception) {
+            return
+        }
         workManager.cancelWorkById(workId)
         _uiState.update { it.copy(isCancelled = true) }
     }

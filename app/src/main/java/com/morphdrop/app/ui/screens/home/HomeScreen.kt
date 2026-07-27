@@ -274,20 +274,33 @@ fun HomeScreenContent(
                         val categories = listOf(
                             ConversionType.CATEGORY_CONVERSIONS,
                             ConversionType.CATEGORY_PDF_TOOLS,
-                            ConversionType.CATEGORY_IMAGE_TOOLS
+                            ConversionType.CATEGORY_IMAGE_TOOLS,
+                            ConversionType.CATEGORY_UNOPTIMIZED
                         )
 
                         categories.forEach { categoryName ->
                             val itemsInCategory = filteredTypes.filter { it.category == categoryName }
                             if (itemsInCategory.isNotEmpty()) {
                                 item(span = { GridItemSpan(2) }) {
-                                    Text(
-                                        text = categoryName,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 18.sp,
-                                        color = MaterialTheme.colorScheme.onBackground,
-                                        modifier = Modifier.padding(top = 16.dp, bottom = 4.dp)
-                                    )
+                                    Column(modifier = Modifier.padding(top = 16.dp, bottom = 4.dp)) {
+                                        Text(
+                                            text = categoryName,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 18.sp,
+                                            color = if (categoryName == ConversionType.CATEGORY_UNOPTIMIZED) {
+                                                MaterialTheme.colorScheme.error.copy(alpha = 0.9f)
+                                            } else {
+                                                MaterialTheme.colorScheme.onBackground
+                                            }
+                                        )
+                                        if (categoryName == ConversionType.CATEGORY_UNOPTIMIZED) {
+                                            Text(
+                                                text = "Tools under active optimization and enhancement",
+                                                fontSize = 12.sp,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
                                 }
 
                                 items(itemsInCategory, key = { it.id }) { item ->

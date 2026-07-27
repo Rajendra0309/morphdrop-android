@@ -22,8 +22,6 @@ class RotatePdfPagesUseCase @Inject constructor(
         targetPages: List<Int>? = null,
         outputFileName: String = "rotated_${System.currentTimeMillis()}.pdf"
     ): Uri = withContext(Dispatchers.IO) {
-        PDFBoxResourceLoader.init(context)
-
         val inputStream = FileHelper.readFileFromUri(context, pdfUri)
         val document = PDDocument.load(inputStream)
 

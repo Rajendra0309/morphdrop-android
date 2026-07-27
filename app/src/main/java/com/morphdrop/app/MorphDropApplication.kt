@@ -12,6 +12,11 @@ class MorphDropApplication : Application(), Configuration.Provider {
     @Inject
     lateinit var workerFactory: HiltWorkerFactory
 
+    override fun onCreate() {
+        super.onCreate()
+        com.tom_roush.pdfbox.android.PDFBoxResourceLoader.init(this)
+    }
+
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
             .setWorkerFactory(workerFactory)

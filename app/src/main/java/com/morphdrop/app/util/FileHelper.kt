@@ -18,8 +18,60 @@ import kotlin.math.pow
 object FileHelper {
 
     fun readFileFromUri(context: Context, uri: Uri): InputStream {
-        return context.contentResolver.openInputStream(uri)
-            ?: throw FileNotFoundException("Cannot open input stream for URI: $uri")
+        if (uri.scheme == "file" && uri.path != null) {
+            val file = File(uri.path!!)
+            if (file.exists()) {
+                return file.inputStream()
+            }
+        }
+        return try {
+            context.contentResolver.openInputStream(uri)
+                ?: throw FileNotFoundException("Cannot open input stream for URI: $uri")
+        } catch (e: Exception) {
+            try {
+                val pfd = context.contentResolver.openFileDescriptor(uri, "r")
+                    ?: throw e
+                java.io.FileInputStream(pfd.fileDescriptor)
+            } catch (ex: Exception) {
+                throw FileNotFoundException("Cannot read URI ($uri): ${e.localizedMessage}")
+            }
+        }
+    }
+
+    fun sanitizeForPdfBox(text: String): String {
+        if (text.isEmpty()) return text
+        val sb = StringBuilder(text.length)
+        for (c in text) {
+            when (c) {
+                '•' -> sb.append("* ")
+                '…' -> sb.append("...")
+                '“', '”' -> sb.append('"')
+                '‘', '’' -> sb.append('\'')
+                '–', '—' -> sb.append('-')
+                '\u00A0' -> sb.append(' ')
+                '\t' -> sb.append("    ")
+                '│', '┃', '┆', '┇', '┊', '┠', '┨', '┯', '┰', '┱', '┲', '┳', '┴', '┵', '┶', '┷', '┸', '┹', '┺', '┻', '┼', '┽', '┾', '┿', '╀', '╁', '╂', '╃', '╄', '╅', '╆', '╇', '╈', '╉', '╋' -> sb.append('|')
+                '─', '━', '┄', '┅', '┈', '┉', '═' -> sb.append('-')
+                '┌', '┍', '┎', '┏', '┐', '┑', '┒', '┓', '└', '┕', '┖', '┗', '┘', '┙', '┚', '┛', '├', '┝', '┞', '┟', '┢', '┤', '┥', '┦', '┧', '┪', '┬', '┴', '┼', '╔', '╦', '╗', '╠', '╬', '╣', '╚', '╩', '╝' -> sb.append('+')
+                '►', '▶' -> sb.append('>')
+                '◄', '◀' -> sb.append('<')
+                '▲', '▴' -> sb.append('^')
+                '▼', '▾' -> sb.append('v')
+                '→' -> sb.append("->")
+                '←' -> sb.append("<-")
+                '↑' -> sb.append("^")
+                '↓' -> sb.append("v")
+                else -> {
+                    val code = c.code
+                    if (code in 32..126 || code in 160..255 || c == '\n' || c == '\r') {
+                        sb.append(c)
+                    } else {
+                        sb.append('?')
+                    }
+                }
+            }
+        }
+        return sb.toString()
     }
 
     fun saveToCache(context: Context, fileName: String, data: ByteArray): Uri {

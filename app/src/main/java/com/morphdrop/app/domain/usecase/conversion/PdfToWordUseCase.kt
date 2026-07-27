@@ -23,8 +23,6 @@ class PdfToWordUseCase @Inject constructor(
         pageRange: IntRange? = null,
         outputFileName: String = "pdf_to_word_${System.currentTimeMillis()}.docx"
     ): Uri = withContext(Dispatchers.IO) {
-        PDFBoxResourceLoader.init(context)
-
         val inputStream = FileHelper.readFileFromUri(context, pdfUri)
         val document = PDDocument.load(inputStream)
         val wordDoc = XWPFDocument()

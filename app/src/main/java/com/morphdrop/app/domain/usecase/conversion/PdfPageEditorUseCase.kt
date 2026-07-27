@@ -22,8 +22,6 @@ class PdfPageEditorUseCase @Inject constructor(
         rotations: Map<Int, Int>, // Index to degrees
         outputFileName: String = "edited_${System.currentTimeMillis()}.pdf"
     ): Uri = withContext(Dispatchers.IO) {
-        PDFBoxResourceLoader.init(context)
-
         val inputStream = FileHelper.readFileFromUri(context, pdfUri)
         val sourceDoc = PDDocument.load(inputStream)
         val newDoc = PDDocument()

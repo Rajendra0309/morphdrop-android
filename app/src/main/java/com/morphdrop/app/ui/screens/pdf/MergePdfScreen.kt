@@ -39,11 +39,20 @@ fun MergePdfScreen(
     val liquidState = LocalLiquidState.current
     val context = androidx.compose.ui.platform.LocalContext.current
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val pdfMime = arrayOf("application/pdf")
     
     val launcher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetMultipleContents()
+        contract = ActivityResultContracts.OpenMultipleDocuments()
     ) { uris ->
-        viewModel.onFilesSelected(uris)
+        if (uris.isNotEmpty()) {
+            for (uri in uris) {
+                try {
+                    val flags = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    context.contentResolver.takePersistableUriPermission(uri, flags)
+                } catch (_: Exception) {}
+            }
+            viewModel.onFilesSelected(uris)
+        }
     }
 
     GradientBackground(liquidState = liquidState) {
@@ -78,12 +87,12 @@ fun MergePdfScreen(
 
                 Box(modifier = Modifier.weight(1f)) {
                     if (state.selectedFiles.isEmpty()) {
-                        EmptyState(onAddFiles = { launcher.launch("application/pdf") })
+                        EmptyState(onAddFiles = { launcher.launch(pdfMime) })
                     } else {
                         FileList(
                             files = state.selectedFiles,
                             onRemove = viewModel::onRemoveFile,
-                            onAddFiles = { launcher.launch("application/pdf") }
+                            onAddFiles = { launcher.launch(pdfMime) }
                         )
                     }
                 }
@@ -123,17 +132,26 @@ private fun EmptyState(onAddFiles: () -> Unit) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(32.dp),
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
             ) {
                 EmptyStateAnimation(
-                    icon = Icons.Default.Add,
-                    modifier = Modifier.size(100.dp)
+                    icon = Icons.Default.PictureAsPdf,
+                    modifier = Modifier.size(64.dp)
                 )
-                Spacer(modifier = Modifier.height(24.dp))
-                Text("Add PDF Files", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    "Select PDF Files",
+                    color = Color.White,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold
+                )
                 Spacer(modifier = Modifier.height(8.dp))
-                Text("Select at least 2 files to merge", color = Color.White.copy(alpha = 0.6f), fontSize = 14.sp)
+                Text(
+                    "Tap here to choose at least 2 PDF files",
+                    color = Color.White.copy(alpha = 0.6f),
+                    fontSize = 14.sp
+                )
             }
         }
     }
@@ -146,51 +164,53 @@ private fun FileList(
     onAddFiles: () -> Unit
 ) {
     val liquidState = LocalLiquidState.current
-    
+    val context = androidx.compose.ui.platform.LocalContext.current
+
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(12.dp),
-        contentPadding = PaddingValues(bottom = 80.dp)
+        contentPadding = PaddingValues(bottom = 16.dp)
     ) {
-        items(files) { uri ->
-            GlassCard(liquidState = liquidState) {
+        items(files, key = { it.toString() }) { uri ->
+            GlassCard(
+                liquidState = liquidState,
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.PictureAsPdf,
-                        contentDescription = null,
-                        tint = NeonEmerald,
-                        modifier = Modifier.size(32.dp)
-                    )
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Column(modifier = Modifier.weight(1f)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(
+                            Icons.Default.PictureAsPdf,
+                            contentDescription = null,
+                            tint = NeonEmerald,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
                         Text(
-                            text = uri.lastPathSegment ?: "Unknown File",
+                            text = com.morphdrop.app.util.FileHelper.getFileName(context, uri),
                             color = Color.White,
                             fontSize = 14.sp,
-                            maxLines = 1
-                        )
-                        Text(
-                            text = "PDF Document",
-                            color = Color.White.copy(alpha = 0.5f),
-                            fontSize = 12.sp
+                            fontWeight = FontWeight.Medium
                         )
                     }
                     IconButton(onClick = { onRemove(uri) }) {
                         Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "Remove",
+                            Icons.Default.Delete,
+                            contentDescription = "Remove file",
                             tint = Color.White.copy(alpha = 0.6f)
                         )
                     }
                 }
             }
         }
-        
+
         item {
             OutlinedButton(
                 onClick = onAddFiles,
@@ -206,15 +226,10 @@ private fun FileList(
     }
 }
 
-@Preview(showBackground = true)
+@Preview
 @Composable
 fun MergePdfScreenPreview() {
     MorphDropTheme {
-        CompositionLocalProvider(LocalLiquidState provides rememberLiquidState()) {
-            MergePdfScreen(
-                onNavigateBack = {},
-                onMergeStarted = {}
-            )
-        }
+        MergePdfScreen(onNavigateBack = {}, onMergeStarted = {})
     }
 }

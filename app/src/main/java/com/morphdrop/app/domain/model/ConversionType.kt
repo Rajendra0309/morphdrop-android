@@ -21,12 +21,14 @@ data class ConversionType(
     val outputType: FileType,
     val icon: ImageVector,
     val isFavorite: Boolean = false,
-    val category: String
+    val category: String,
+    val isMultiFileAllowed: Boolean = false
 ) {
     companion object {
         const val CATEGORY_CONVERSIONS = "Conversions"
         const val CATEGORY_PDF_TOOLS = "PDF Tools"
         const val CATEGORY_IMAGE_TOOLS = "Image Tools"
+        const val CATEGORY_UNOPTIMIZED = "Unoptimized (Experimental)"
 
         val defaultList = listOf(
             // Conversions
@@ -37,25 +39,28 @@ data class ConversionType(
                 inputType = FileType.PDF,
                 outputType = FileType.PNG,
                 icon = Icons.Default.Image,
-                category = CATEGORY_CONVERSIONS
+                category = CATEGORY_CONVERSIONS,
+                isMultiFileAllowed = false
             ),
             ConversionType(
-                id = "image_to_pdf",
+                id = "images_to_pdf",
                 name = "Images to PDF",
                 description = "Combine PNG, JPG, or WEBP into a PDF",
                 inputType = FileType.PNG,
                 outputType = FileType.PDF,
                 icon = Icons.Default.PictureAsPdf,
-                category = CATEGORY_CONVERSIONS
+                category = CATEGORY_CONVERSIONS,
+                isMultiFileAllowed = true
             ),
             ConversionType(
                 id = "word_to_pdf",
                 name = "Word to PDF",
-                description = "Convert DOCX documents into clean PDF files",
+                description = "Convert DOCX documents into PDF (Experimental formatting)",
                 inputType = FileType.DOCX,
                 outputType = FileType.PDF,
                 icon = Icons.Default.Description,
-                category = CATEGORY_CONVERSIONS
+                category = CATEGORY_UNOPTIMIZED,
+                isMultiFileAllowed = false
             ),
             ConversionType(
                 id = "excel_to_pdf",
@@ -64,16 +69,18 @@ data class ConversionType(
                 inputType = FileType.XLSX,
                 outputType = FileType.PDF,
                 icon = Icons.Default.TableChart,
-                category = CATEGORY_CONVERSIONS
+                category = CATEGORY_CONVERSIONS,
+                isMultiFileAllowed = false
             ),
             ConversionType(
                 id = "ppt_to_pdf",
                 name = "PPT to PDF",
-                description = "Convert PPTX slide decks into PDF documents",
+                description = "Convert PPTX slide decks into PDF (Experimental multi-slide)",
                 inputType = FileType.PPTX,
                 outputType = FileType.PDF,
                 icon = Icons.Default.Slideshow,
-                category = CATEGORY_CONVERSIONS
+                category = CATEGORY_UNOPTIMIZED,
+                isMultiFileAllowed = false
             ),
             ConversionType(
                 id = "txt_to_pdf",
@@ -82,7 +89,18 @@ data class ConversionType(
                 inputType = FileType.TXT,
                 outputType = FileType.PDF,
                 icon = Icons.Default.PictureAsPdf,
-                category = CATEGORY_CONVERSIONS
+                category = CATEGORY_CONVERSIONS,
+                isMultiFileAllowed = false
+            ),
+            ConversionType(
+                id = "md_to_pdf",
+                name = "Markdown to PDF",
+                description = "Convert Markdown MD files into formatted PDF",
+                inputType = FileType.MD,
+                outputType = FileType.PDF,
+                icon = Icons.Default.Description,
+                category = CATEGORY_CONVERSIONS,
+                isMultiFileAllowed = false
             ),
 
             // PDF Tools
@@ -93,7 +111,8 @@ data class ConversionType(
                 inputType = FileType.PDF,
                 outputType = FileType.PDF,
                 icon = Icons.AutoMirrored.Filled.MergeType,
-                category = CATEGORY_PDF_TOOLS
+                category = CATEGORY_PDF_TOOLS,
+                isMultiFileAllowed = true
             ),
             ConversionType(
                 id = "split_pdf",
@@ -102,7 +121,8 @@ data class ConversionType(
                 inputType = FileType.PDF,
                 outputType = FileType.PDF,
                 icon = Icons.AutoMirrored.Filled.CallSplit,
-                category = CATEGORY_PDF_TOOLS
+                category = CATEGORY_PDF_TOOLS,
+                isMultiFileAllowed = false
             ),
             ConversionType(
                 id = "compress_pdf",
@@ -111,7 +131,8 @@ data class ConversionType(
                 inputType = FileType.PDF,
                 outputType = FileType.PDF,
                 icon = Icons.Default.Compress,
-                category = CATEGORY_PDF_TOOLS
+                category = CATEGORY_PDF_TOOLS,
+                isMultiFileAllowed = false
             ),
             ConversionType(
                 id = "protect_pdf",
@@ -120,7 +141,8 @@ data class ConversionType(
                 inputType = FileType.PDF,
                 outputType = FileType.PDF,
                 icon = Icons.Default.Lock,
-                category = CATEGORY_PDF_TOOLS
+                category = CATEGORY_PDF_TOOLS,
+                isMultiFileAllowed = false
             ),
             ConversionType(
                 id = "page_editor",
@@ -129,7 +151,8 @@ data class ConversionType(
                 inputType = FileType.PDF,
                 outputType = FileType.PDF,
                 icon = Icons.Default.Transform,
-                category = CATEGORY_PDF_TOOLS
+                category = CATEGORY_PDF_TOOLS,
+                isMultiFileAllowed = false
             ),
 
             // Image Tools
@@ -140,7 +163,8 @@ data class ConversionType(
                 inputType = FileType.PNG,
                 outputType = FileType.JPG,
                 icon = Icons.Default.Transform,
-                category = CATEGORY_IMAGE_TOOLS
+                category = CATEGORY_IMAGE_TOOLS,
+                isMultiFileAllowed = true
             ),
             ConversionType(
                 id = "compress_images",
@@ -149,7 +173,8 @@ data class ConversionType(
                 inputType = FileType.JPG,
                 outputType = FileType.JPG,
                 icon = Icons.Default.Compress,
-                category = CATEGORY_IMAGE_TOOLS
+                category = CATEGORY_IMAGE_TOOLS,
+                isMultiFileAllowed = true
             )
         )
     }
