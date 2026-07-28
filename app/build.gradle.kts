@@ -98,9 +98,6 @@ dependencies {
         exclude(group = "stax", module = "stax-api")
     }
     
-    // Liquid Effects
-    implementation(libs.io.github.fletchmckee.liquid)
-    
     // Testing
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))

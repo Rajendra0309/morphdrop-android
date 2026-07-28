@@ -18,7 +18,8 @@ import javax.inject.Inject
 data class PdfPasswordState(
     val selectedFile: Uri? = null,
     val password: String = "",
-    val action: String = "ADD_PASSWORD"
+    val confirmPassword: String = "",
+    val action: String = "add" // "add" or "remove"
 )
 
 @HiltViewModel
@@ -34,6 +35,10 @@ class PdfPasswordViewModel @Inject constructor() : ViewModel() {
         _state.update { it.copy(password = password) }
     }
 
+    fun onConfirmPasswordChanged(password: String) {
+        _state.update { it.copy(confirmPassword = password) }
+    }
+
     fun onActionChanged(action: String) {
         _state.update { it.copy(action = action) }
     }
@@ -46,8 +51,8 @@ class PdfPasswordViewModel @Inject constructor() : ViewModel() {
             .setInputData(workDataOf(
                 ConversionWorker.KEY_CONVERSION_TYPE to "protect_pdf",
                 ConversionWorker.KEY_INPUT_URI to uri.toString(),
-                ConversionWorker.KEY_PASSWORD to currentState.password,
-                ConversionWorker.KEY_ACTION to currentState.action
+                "password" to currentState.password,
+                "action" to currentState.action
             ))
             .build()
 

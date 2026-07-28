@@ -95,9 +95,6 @@ com-tomroush-pdfbox-android = { group = "com.tom-roush", name = "pdfbox-android"
 # Office Documents
 org-apache-poi-poi-ooxml = { group = "org.apache.poi", name = "poi-ooxml", version.ref = "poi" }
 
-# Liquid Effects
-io-github-fletchmckee-liquid = { group = "io.github.fletchmckee.liquid", name = "liquid", version = "1.1.1" }
-
 # Testing
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }

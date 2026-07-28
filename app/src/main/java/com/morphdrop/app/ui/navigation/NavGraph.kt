@@ -73,17 +73,18 @@ fun NavGraph(navController: NavHostController) {
             )
         ) {
             ProcessingScreen(
-                onConversionFinished = { workId ->
+                onNavigateToResult = {
+                    val workId = navController.currentBackStackEntry?.arguments?.getString("workId") ?: ""
                     navController.navigate(Screen.Result.createRoute(workId)) {
                         popUpTo(Screen.Home.route) { inclusive = false }
                     }
                 },
-                onNavigateBack = { navController.popBackStack() }
+                onCancel = { navController.popBackStack() }
             )
         }
         composable(Screen.Result.route) {
             ResultScreen(
-                onNavigateToHome = {
+                onDone = {
                     navController.navigate(Screen.Home.route) {
                         popUpTo(Screen.Home.route) { inclusive = true }
                     }
@@ -93,7 +94,7 @@ fun NavGraph(navController: NavHostController) {
         composable(Screen.MergePdf.route) {
             MergePdfScreen(
                 onNavigateBack = { navController.popBackStack() },
-                onMergeStarted = { workId ->
+                onNavigateToProcessing = { workId ->
                     navController.navigate(Screen.Processing.createRoute("merge_pdf", workId))
                 }
             )
@@ -101,7 +102,7 @@ fun NavGraph(navController: NavHostController) {
         composable(Screen.SplitPdf.route) {
             SplitPdfScreen(
                 onNavigateBack = { navController.popBackStack() },
-                onSplitStarted = { workId ->
+                onNavigateToProcessing = { workId ->
                     navController.navigate(Screen.Processing.createRoute("split_pdf", workId))
                 }
             )
@@ -109,7 +110,7 @@ fun NavGraph(navController: NavHostController) {
         composable(Screen.PdfPageEditor.route) {
             PdfPageEditorScreen(
                 onNavigateBack = { navController.popBackStack() },
-                onSaveStarted = { workId ->
+                onNavigateToProcessing = { workId ->
                     navController.navigate(Screen.Processing.createRoute("page_editor", workId))
                 }
             )
@@ -117,7 +118,7 @@ fun NavGraph(navController: NavHostController) {
         composable(Screen.PdfPassword.route) {
             PdfPasswordScreen(
                 onNavigateBack = { navController.popBackStack() },
-                onProtectStarted = { workId ->
+                onNavigateToProcessing = { workId ->
                     navController.navigate(Screen.Processing.createRoute("protect_pdf", workId))
                 }
             )

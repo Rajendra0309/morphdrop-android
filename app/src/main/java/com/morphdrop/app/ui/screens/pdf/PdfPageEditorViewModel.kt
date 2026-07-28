@@ -15,6 +15,12 @@ import kotlinx.coroutines.flow.update
 import java.util.UUID
 import javax.inject.Inject
 
+data class PageData(
+    val number: Int,
+    val originalIndex: Int,
+    val rotation: Int = 0
+)
+
 data class PdfPageEditorState(
     val selectedFile: Uri? = null,
     val pages: List<PageData> = emptyList()
@@ -27,17 +33,28 @@ class PdfPageEditorViewModel @Inject constructor() : ViewModel() {
 
     fun onFileSelected(uri: Uri) {
         // In a real app, we'd load the page count/thumbnails here.
-        // For Phase 4, we'll assume the screen provides the list of PageData.
         _state.update { it.copy(selectedFile = uri) }
+    }
+
+    fun rotatePage(originalIndex: Int) {
+        _state.update { currentState ->
+            val updatedPages = currentState.pages.map { page ->
+                if (page.originalIndex == originalIndex) {
+                    page.copy(rotation = (page.rotation + 90) % 360)
+                } else page
+            }
+            currentState.copy(pages = updatedPages)
+        }
     }
 
     fun onPagesUpdated(pages: List<PageData>) {
         _state.update { it.copy(pages = pages) }
     }
 
-    fun startEditing(context: Context, pages: List<PageData>): UUID? {
+    fun startEditing(context: Context): UUID? {
         val currentState = _state.value
         val uri = currentState.selectedFile ?: return null
+        val pages = currentState.pages
 
         val pageOrder = pages.map { it.number - 1 }.joinToString(",")
         val rotations = pages.filter { it.rotation != 0 }

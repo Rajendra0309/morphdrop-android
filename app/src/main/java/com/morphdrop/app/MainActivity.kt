@@ -7,17 +7,17 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import com.morphdrop.app.ui.components.GradientBackground
 import com.morphdrop.app.ui.components.MorphDropBottomNavigation
 import com.morphdrop.app.ui.navigation.NavGraph
 import com.morphdrop.app.ui.navigation.Screen
-import com.morphdrop.app.ui.theme.LocalLiquidState
 import com.morphdrop.app.ui.theme.MorphDropTheme
 import dagger.hilt.android.AndroidEntryPoint
 
@@ -33,7 +33,6 @@ class MainActivity : ComponentActivity() {
             val isDarkMode by viewModel.isDarkMode.collectAsState()
             
             MorphDropTheme(darkTheme = isDarkMode) {
-                val liquidState = LocalLiquidState.current
                 val navController = rememberNavController()
                 val navBackStackEntry by navController.currentBackStackEntryAsState()
                 val currentRoute = navBackStackEntry?.destination?.route ?: Screen.Home.route
@@ -44,10 +43,8 @@ class MainActivity : ComponentActivity() {
                     Screen.Settings.route
                 )
 
-                GradientBackground(liquidState = liquidState) {
-                    Box(modifier = Modifier.fillMaxSize()) {
-                        NavGraph(navController = navController)
-                        
+                Scaffold(
+                    bottomBar = {
                         if (showBottomNav) {
                             MorphDropBottomNavigation(
                                 currentRoute = currentRoute,
@@ -59,11 +56,13 @@ class MainActivity : ComponentActivity() {
                                         launchSingleTop = true
                                         restoreState = true
                                     }
-                                },
-                                liquidState = liquidState,
-                                modifier = Modifier.align(androidx.compose.ui.Alignment.BottomCenter)
+                                }
                             )
                         }
+                    }
+                ) { innerPadding ->
+                    Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+                        NavGraph(navController = navController)
                     }
                 }
             }

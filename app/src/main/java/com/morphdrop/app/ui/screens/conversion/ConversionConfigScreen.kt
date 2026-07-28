@@ -1,12 +1,11 @@
 package com.morphdrop.app.ui.screens.conversion
 
-import android.content.Intent
+import android.content.res.Configuration
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,14 +24,18 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.UploadFile
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -42,26 +45,17 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.morphdrop.app.domain.model.ConversionType
 import com.morphdrop.app.ui.components.FormatBadge
-import com.morphdrop.app.ui.components.GlassCard
 import com.morphdrop.app.ui.components.PrimaryButton
-import com.morphdrop.app.ui.theme.LocalLiquidState
 import com.morphdrop.app.ui.theme.MorphDropTheme
-import com.morphdrop.app.ui.theme.NeonEmerald
-import com.morphdrop.app.ui.theme.TextPrimary
-import com.morphdrop.app.ui.theme.TextSecondary
 import com.morphdrop.app.util.FileHelper
-import io.github.fletchmckee.liquid.LiquidState
-import io.github.fletchmckee.liquid.rememberLiquidState
 
 @Composable
 fun ConversionConfigScreen(
@@ -71,7 +65,6 @@ fun ConversionConfigScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    val liquidState = LocalLiquidState.current
 
     val mimeFilter = when (state.conversionType?.id) {
         "word_to_pdf" -> arrayOf("application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/msword")
@@ -100,7 +93,6 @@ fun ConversionConfigScreen(
 
     ConversionConfigScreenContent(
         state = state,
-        liquidState = liquidState,
         onNavigateBack = onNavigateBack,
         onPickFile = { filePicker.launch(mimeFilter) },
         onOutputFormatChanged = viewModel::onOutputFormatChanged,
@@ -121,7 +113,6 @@ fun ConversionConfigScreen(
 @Composable
 fun ConversionConfigScreenContent(
     state: ConversionConfigState,
-    liquidState: LiquidState,
     onNavigateBack: () -> Unit,
     onPickFile: () -> Unit,
     onOutputFormatChanged: (String) -> Unit,
@@ -132,29 +123,25 @@ fun ConversionConfigScreenContent(
     onConvert: () -> Unit
 ) {
     Scaffold(
-        containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
                 title = {
                     Text(
                         text = state.conversionType?.name ?: "Configure",
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize = 24.sp,
-                        color = TextPrimary,
-                        letterSpacing = (-0.5).sp
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
                     )
                 },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
-                            tint = TextPrimary
+                            contentDescription = "Back"
                         )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Transparent
+                    containerColor = MaterialTheme.colorScheme.surface
                 )
             )
         }
@@ -165,257 +152,149 @@ fun ConversionConfigScreenContent(
                 .padding(innerPadding)
                 .padding(horizontal = 16.dp)
                 .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
             Spacer(modifier = Modifier.height(8.dp))
 
+            // Error Message
             AnimatedVisibility(visible = state.errorMessage != null) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Color(0xFFE53935).copy(alpha = 0.25f))
-                        .padding(14.dp)
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
                         text = state.errorMessage ?: "",
-                        color = Color(0xFFFF8A80),
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.padding(16.dp),
+                        style = MaterialTheme.typography.bodyMedium
                     )
                 }
             }
 
-            GlassCard(
-                liquidState = liquidState,
-                modifier = Modifier.fillMaxWidth()
+            // File Information
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(48.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(NeonEmerald.copy(alpha = 0.15f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.InsertDriveFile,
-                            contentDescription = null,
-                            tint = NeonEmerald,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(16.dp))
-                    if (state.selectedFileUri != null) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = state.selectedFileName,
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 16.sp,
-                                color = TextPrimary,
-                                maxLines = 1
-                            )
-                            Text(
-                                text = FileHelper.formatFileSize(state.selectedFileSize),
-                                fontSize = 13.sp,
-                                color = TextSecondary
-                            )
-                        }
-                        state.conversionType?.inputType?.let { FormatBadge(fileType = it) }
-                    } else {
-                        Text(
-                            text = "No file selected",
-                            fontSize = 15.sp,
-                            color = TextSecondary,
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                }
-            }
-
-            GlassCard(
-                liquidState = liquidState,
-                onClick = onPickFile,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(14.dp),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.UploadFile,
-                        contentDescription = null,
-                        tint = NeonEmerald,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = if (state.selectedFileUri != null) "Change File" else "Select Input File",
-                        fontWeight = FontWeight.Bold,
-                        color = NeonEmerald
-                    )
-                }
-            }
-
-            if (state.availableOutputFormats.size > 1) {
-                Text(
-                    text = "Output Format",
-                    fontWeight = FontWeight.Black,
-                    fontSize = 20.sp,
-                    color = TextPrimary
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    state.availableOutputFormats.forEach { format ->
-                        val isSelected = state.outputFormat == format
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(20.dp))
-                                .background(
-                                    if (isSelected) NeonEmerald else Color.White.copy(alpha = 0.25f)
-                                )
-                                .clickable { onOutputFormatChanged(format) }
-                                .padding(horizontal = 16.dp, vertical = 8.dp)
+                                .size(48.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(MaterialTheme.colorScheme.primaryContainer),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Text(
-                                text = format.uppercase(),
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 13.sp,
-                                color = if (isSelected) Color.Black else TextPrimary
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.InsertDriveFile,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer
                             )
                         }
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            val fileName = if (state.selectedFileUris.isNotEmpty()) state.selectedFileNames.first() else "No file selected"
+                            Text(
+                                text = fileName,
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1
+                            )
+                            if (state.selectedFileUris.isNotEmpty()) {
+                                Text(
+                                    text = FileHelper.formatFileSize(state.selectedFileSize),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        state.conversionType?.inputType?.let { FormatBadge(fileType = it) }
+                    }
+                    
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    OutlinedButton(
+                        onClick = onPickFile,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(imageVector = Icons.Default.UploadFile, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(text = if (state.selectedFileUris.isNotEmpty()) "Change File" else "Select Input File")
                     }
                 }
             }
 
-            AnimatedVisibility(visible = state.showQualitySlider) {
-                GlassCard(
-                    liquidState = liquidState,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = "Quality",
-                                fontWeight = FontWeight.Black,
-                                fontSize = 20.sp,
-                                color = TextPrimary
-                            )
-                            Text(
-                                text = "${state.quality}%",
-                                fontWeight = FontWeight.Bold,
-                                color = NeonEmerald
-                            )
+            // Options
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                // Output Format
+                if (state.availableOutputFormats.size > 1) {
+                    ConfigSection(title = "Output Format") {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            state.availableOutputFormats.forEach { format ->
+                                val isSelected = state.outputFormat == format
+                                FilterChip(
+                                    selected = isSelected,
+                                    onClick = { onOutputFormatChanged(format) },
+                                    label = { Text(format.uppercase()) }
+                                )
+                            }
                         }
-                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+                }
+
+                // Quality Slider
+                AnimatedVisibility(visible = state.showQualitySlider) {
+                    ConfigSection(title = "Quality: ${state.quality}%") {
                         Slider(
                             value = state.quality.toFloat(),
                             onValueChange = { onQualityChanged(it.toInt()) },
-                            valueRange = 1f..100f,
-                            colors = SliderDefaults.colors(
-                                thumbColor = NeonEmerald,
-                                activeTrackColor = NeonEmerald,
-                                inactiveTrackColor = NeonEmerald.copy(alpha = 0.24f)
-                            )
+                            valueRange = 1f..100f
                         )
                     }
                 }
-            }
 
-            AnimatedVisibility(visible = state.showPageRange) {
-                GlassCard(
-                    liquidState = liquidState,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text(
-                            text = "Page Range (Optional)",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp,
-                            color = TextPrimary
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
+                // Page Range
+                AnimatedVisibility(visible = state.showPageRange) {
+                    ConfigSection(title = "Page Range") {
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             OutlinedTextField(
                                 value = state.pageRangeStart,
                                 onValueChange = { onPageRangeStartChanged(it.filter { c -> c.isDigit() }) },
-                                label = { Text("From", color = TextSecondary) },
+                                label = { Text("From") },
                                 modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(12.dp),
-                                singleLine = true,
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = NeonEmerald,
-                                    unfocusedBorderColor = Color.White.copy(alpha = 0.4f),
-                                    focusedTextColor = TextPrimary,
-                                    unfocusedTextColor = TextPrimary
-                                )
+                                singleLine = true
                             )
                             OutlinedTextField(
                                 value = state.pageRangeEnd,
                                 onValueChange = { onPageRangeEndChanged(it.filter { c -> c.isDigit() }) },
-                                label = { Text("To", color = TextSecondary) },
+                                label = { Text("To") },
                                 modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(12.dp),
-                                singleLine = true,
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = NeonEmerald,
-                                    unfocusedBorderColor = Color.White.copy(alpha = 0.4f),
-                                    focusedTextColor = TextPrimary,
-                                    unfocusedTextColor = TextPrimary
-                                )
+                                singleLine = true
                             )
                         }
                     }
                 }
-            }
 
-            GlassCard(
-                liquidState = liquidState,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        text = "Output File Name",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp,
-                        color = TextPrimary
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
+                // Output Name
+                ConfigSection(title = "Output File Name") {
                     OutlinedTextField(
                         value = state.outputFileName,
-                        onValueChange = { onOutputFileNameChanged(it) },
+                        onValueChange = onOutputFileNameChanged,
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                        singleLine = true,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = NeonEmerald,
-                            unfocusedBorderColor = Color.White.copy(alpha = 0.4f),
-                            focusedTextColor = TextPrimary,
-                            unfocusedTextColor = TextPrimary
-                        )
+                        singleLine = true
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.weight(1f))
 
             PrimaryButton(
                 text = "Convert",
                 enabled = state.isConvertEnabled,
                 onClick = onConvert,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(54.dp)
+                modifier = Modifier.fillMaxWidth()
             )
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -423,10 +302,22 @@ fun ConversionConfigScreenContent(
     }
 }
 
-@Preview(showBackground = true)
 @Composable
-fun ConversionConfigScreenPreview() {
-    MorphDropTheme {
+private fun ConfigSection(title: String, content: @Composable () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold
+        )
+        content()
+    }
+}
+
+@Preview(name = "Light Mode", showBackground = true)
+@Composable
+fun ConversionConfigScreenLightPreview() {
+    MorphDropTheme(darkTheme = false) {
         ConversionConfigScreenContent(
             state = ConversionConfigState(
                 conversionType = ConversionType.defaultList.first(),
@@ -443,7 +334,38 @@ fun ConversionConfigScreenPreview() {
                 outputFileName = "Sample_Document_Converted",
                 isConvertEnabled = true
             ),
-            liquidState = rememberLiquidState(),
+            onNavigateBack = {},
+            onPickFile = {},
+            onOutputFormatChanged = {},
+            onQualityChanged = {},
+            onPageRangeStartChanged = {},
+            onPageRangeEndChanged = {},
+            onOutputFileNameChanged = {},
+            onConvert = {}
+        )
+    }
+}
+
+@Preview(name = "Dark Mode", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
+@Composable
+fun ConversionConfigScreenDarkPreview() {
+    MorphDropTheme(darkTheme = true) {
+        ConversionConfigScreenContent(
+            state = ConversionConfigState(
+                conversionType = ConversionType.defaultList.first(),
+                selectedFileUris = listOf(Uri.parse("content://mock")),
+                selectedFileNames = listOf("Sample_Document.pdf"),
+                selectedFileSize = 1024L * 1024L * 2,
+                availableOutputFormats = listOf("png", "jpg"),
+                outputFormat = "png",
+                showQualitySlider = true,
+                quality = 85,
+                showPageRange = true,
+                pageRangeStart = "1",
+                pageRangeEnd = "10",
+                outputFileName = "Sample_Document_Converted",
+                isConvertEnabled = true
+            ),
             onNavigateBack = {},
             onPickFile = {},
             onOutputFormatChanged = {},

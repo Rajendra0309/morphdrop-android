@@ -1,5 +1,6 @@
 package com.morphdrop.app.ui.screens.history
 
+import android.content.res.Configuration
 import android.text.format.DateUtils
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -18,21 +19,23 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -41,29 +44,37 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.morphdrop.app.data.local.entity.ConversionHistoryEntity
 import com.morphdrop.app.ui.components.EmptyStateAnimation
-import com.morphdrop.app.ui.components.GlassCard
-import com.morphdrop.app.ui.theme.LocalLiquidState
-import com.morphdrop.app.ui.theme.NeonEmerald
-import com.morphdrop.app.ui.theme.TextPrimary
-import com.morphdrop.app.ui.theme.TextSecondary
-import io.github.fletchmckee.liquid.LiquidState
+import com.morphdrop.app.ui.theme.MorphDropTheme
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HistoryScreen(
     onNavigateBack: () -> Unit = {},
     viewModel: HistoryViewModel = hiltViewModel()
 ) {
     val historyList by viewModel.historyList.collectAsStateWithLifecycle()
-    val liquidState = LocalLiquidState.current
+    
+    HistoryScreenContent(
+        historyList = historyList,
+        onClearAll = { viewModel.clearAll() },
+        onDeleteItem = { viewModel.deleteItem(it) }
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun HistoryScreenContent(
+    historyList: List<ConversionHistoryEntity>,
+    onClearAll: () -> Unit,
+    onDeleteItem: (ConversionHistoryEntity) -> Unit
+) {
     var showClearDialog by remember { mutableStateOf(false) }
 
     if (showClearDialog) {
@@ -73,10 +84,10 @@ fun HistoryScreen(
             text = { Text("Are you sure you want to delete all conversion history logs?") },
             confirmButton = {
                 TextButton(onClick = {
-                    viewModel.clearAll()
+                    onClearAll()
                     showClearDialog = false
                 }) {
-                    Text("Clear All", color = Color(0xFFBA1A1A))
+                    Text("Clear All", color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
@@ -88,32 +99,26 @@ fun HistoryScreen(
     }
 
     Scaffold(
-        containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
                 title = {
                     Text(
                         text = "History",
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize = 24.sp,
-                        color = TextPrimary,
-                        letterSpacing = (-0.5).sp
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Bold
                     )
                 },
                 actions = {
                     if (historyList.isNotEmpty()) {
-                        TextButton(onClick = { showClearDialog = true }) {
-                            Text(
-                                text = "Clear All",
-                                fontWeight = FontWeight.SemiBold,
-                                color = Color(0xFFBA1A1A)
+                        IconButton(onClick = { showClearDialog = true }) {
+                            Icon(
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = "Clear All",
+                                tint = MaterialTheme.colorScheme.error
                             )
                         }
                     }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Transparent
-                )
+                }
             )
         }
     ) { innerPadding ->
@@ -121,38 +126,29 @@ fun HistoryScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(innerPadding)
-                    .padding(32.dp),
+                    .padding(innerPadding),
                 contentAlignment = Alignment.Center
             ) {
-                GlassCard(
-                    liquidState = liquidState,
-                    modifier = Modifier.fillMaxWidth()
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                    modifier = Modifier.padding(32.dp)
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(32.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        EmptyStateAnimation(
-                            icon = Icons.Default.History,
-                            modifier = Modifier.size(120.dp)
-                        )
-                        Spacer(modifier = Modifier.height(24.dp))
-                        Text(
-                            text = "No Conversion History",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 18.sp,
-                            color = TextPrimary
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = "Converted files will appear here",
-                            fontSize = 13.sp,
-                            color = TextSecondary
-                        )
-                    }
+                    EmptyStateAnimation(
+                        icon = Icons.Default.History,
+                        modifier = Modifier.size(120.dp)
+                    )
+                    Spacer(modifier = Modifier.height(24.dp))
+                    Text(
+                        text = "No history yet",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Your converted files will appear here",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
         } else {
@@ -160,15 +156,17 @@ fun HistoryScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 128.dp),
+                contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 items(historyList, key = { it.id }) { item ->
                     HistoryItemCard(
                         item = item,
-                        onDelete = { viewModel.deleteItem(item) },
-                        liquidState = liquidState
+                        onDelete = { onDeleteItem(item) }
                     )
+                }
+                item {
+                    Spacer(modifier = Modifier.height(100.dp))
                 }
             }
         }
@@ -178,8 +176,7 @@ fun HistoryScreen(
 @Composable
 private fun HistoryItemCard(
     item: ConversionHistoryEntity,
-    onDelete: () -> Unit,
-    liquidState: LiquidState
+    onDelete: () -> Unit
 ) {
     val relativeTime = remember(item.timestamp) {
         DateUtils.getRelativeTimeSpanString(
@@ -189,14 +186,14 @@ private fun HistoryItemCard(
         ).toString()
     }
 
-    GlassCard(
-        liquidState = liquidState,
-        modifier = Modifier.fillMaxWidth()
+    OutlinedCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(14.dp)
+                .padding(16.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -207,60 +204,55 @@ private fun HistoryItemCard(
                         .size(40.dp)
                         .clip(RoundedCornerShape(10.dp))
                         .background(
-                        if (item.success) NeonEmerald.copy(alpha = 0.15f)
-                        else Color(0xFFBA1A1A).copy(alpha = 0.15f)
-                    ),
+                            if (item.success) MaterialTheme.colorScheme.primaryContainer
+                            else MaterialTheme.colorScheme.errorContainer
+                        ),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Default.Description,
                         contentDescription = null,
-                        tint = if (item.success) NeonEmerald else Color(0xFFBA1A1A),
-                        modifier = Modifier.size(22.dp)
+                        tint = if (item.success) MaterialTheme.colorScheme.onPrimaryContainer
+                               else MaterialTheme.colorScheme.onErrorContainer
                     )
                 }
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = item.conversionType.uppercase(),
-                        fontSize = 12.sp,
+                        style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
-                        color = NeonEmerald
+                        color = MaterialTheme.colorScheme.primary
                     )
                     Text(
                         text = item.inputFileName,
-                        fontSize = 15.sp,
+                        style = MaterialTheme.typography.bodyLarge,
                         fontWeight = FontWeight.SemiBold,
-                        color = TextPrimary,
                         maxLines = 1
                     )
                 }
                 Column(horizontalAlignment = Alignment.End) {
                     Text(
                         text = relativeTime,
-                        fontSize = 11.sp,
-                        color = TextSecondary
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Icon(
                         imageVector = if (item.success) Icons.Default.CheckCircle else Icons.Default.Error,
                         contentDescription = null,
-                        tint = if (item.success) NeonEmerald else Color(0xFFBA1A1A),
-                        modifier = Modifier.size(18.dp)
+                        tint = if (item.success) MaterialTheme.colorScheme.primary 
+                               else MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(16.dp)
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
-
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(1.dp)
-                    .background(Color.White.copy(alpha = 0.3f))
+            Spacer(modifier = Modifier.height(12.dp))
+            HorizontalDivider(
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
             )
-
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -269,23 +261,73 @@ private fun HistoryItemCard(
             ) {
                 Text(
                     text = "Output: ${item.outputFileNames}",
-                    fontSize = 12.sp,
-                    color = TextSecondary,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.weight(1f),
                     maxLines = 1
                 )
                 IconButton(
                     onClick = onDelete,
-                    modifier = Modifier.size(28.dp)
+                    modifier = Modifier.size(24.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Delete,
                         contentDescription = "Delete",
-                        tint = Color(0xFFBA1A1A),
+                        tint = MaterialTheme.colorScheme.error,
                         modifier = Modifier.size(18.dp)
                     )
                 }
             }
         }
+    }
+}
+
+@Preview(name = "Light Mode", showBackground = true)
+@Composable
+fun HistoryScreenLightPreview() {
+    MorphDropTheme(darkTheme = false) {
+        HistoryScreenContent(
+            historyList = listOf(
+                ConversionHistoryEntity(
+                    id = 1,
+                    conversionType = "PDF to Images",
+                    inputFileName = "Work_Presentation.pdf",
+                    outputFileNames = "page_1.png, page_2.png",
+                    timestamp = System.currentTimeMillis() - 3600000,
+                    success = true
+                ),
+                ConversionHistoryEntity(
+                    id = 2,
+                    conversionType = "Word to PDF",
+                    inputFileName = "Broken_File.docx",
+                    outputFileNames = "-",
+                    timestamp = System.currentTimeMillis() - 86400000,
+                    success = false
+                )
+            ),
+            onClearAll = {},
+            onDeleteItem = {}
+        )
+    }
+}
+
+@Preview(name = "Dark Mode", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
+@Composable
+fun HistoryScreenDarkPreview() {
+    MorphDropTheme(darkTheme = true) {
+        HistoryScreenContent(
+            historyList = listOf(
+                ConversionHistoryEntity(
+                    id = 1,
+                    conversionType = "Images to PDF",
+                    inputFileName = "Summer_Vacation.zip",
+                    outputFileNames = "Summer_Vacation.pdf",
+                    timestamp = System.currentTimeMillis() - 120000,
+                    success = true
+                )
+            ),
+            onClearAll = {},
+            onDeleteItem = {}
+        )
     }
 }

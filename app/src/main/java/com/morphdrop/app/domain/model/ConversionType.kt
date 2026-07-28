@@ -1,16 +1,18 @@
 package com.morphdrop.app.domain.model
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.CallSplit
-import androidx.compose.material.icons.automirrored.filled.MergeType
-import androidx.compose.material.icons.filled.Compress
-import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.PictureAsPdf
-import androidx.compose.material.icons.filled.Slideshow
-import androidx.compose.material.icons.filled.TableChart
-import androidx.compose.material.icons.filled.Transform
+import androidx.compose.material.icons.automirrored.outlined.Article
+import androidx.compose.material.icons.automirrored.outlined.CallSplit
+import androidx.compose.material.icons.automirrored.outlined.MergeType
+import androidx.compose.material.icons.outlined.Collections
+import androidx.compose.material.icons.outlined.Compress
+import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.EditNote
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.PictureAsPdf
+import androidx.compose.material.icons.outlined.Slideshow
+import androidx.compose.material.icons.outlined.TableChart
+import androidx.compose.material.icons.outlined.Transform
 import androidx.compose.ui.graphics.vector.ImageVector
 
 data class ConversionType(
@@ -38,7 +40,7 @@ data class ConversionType(
                 description = "Extract pages from PDF to PNG/JPG images",
                 inputType = FileType.PDF,
                 outputType = FileType.PNG,
-                icon = Icons.Default.Image,
+                icon = Icons.Outlined.Collections,
                 category = CATEGORY_CONVERSIONS,
                 isMultiFileAllowed = false
             ),
@@ -48,7 +50,7 @@ data class ConversionType(
                 description = "Combine PNG, JPG, or WEBP into a PDF",
                 inputType = FileType.PNG,
                 outputType = FileType.PDF,
-                icon = Icons.Default.PictureAsPdf,
+                icon = Icons.Outlined.PictureAsPdf,
                 category = CATEGORY_CONVERSIONS,
                 isMultiFileAllowed = true
             ),
@@ -58,7 +60,7 @@ data class ConversionType(
                 description = "Convert DOCX documents into PDF (Experimental formatting)",
                 inputType = FileType.DOCX,
                 outputType = FileType.PDF,
-                icon = Icons.Default.Description,
+                icon = Icons.Outlined.Description,
                 category = CATEGORY_UNOPTIMIZED,
                 isMultiFileAllowed = false
             ),
@@ -68,7 +70,7 @@ data class ConversionType(
                 description = "Convert XLSX spreadsheets to PDF format",
                 inputType = FileType.XLSX,
                 outputType = FileType.PDF,
-                icon = Icons.Default.TableChart,
+                icon = Icons.Outlined.TableChart,
                 category = CATEGORY_CONVERSIONS,
                 isMultiFileAllowed = false
             ),
@@ -78,7 +80,7 @@ data class ConversionType(
                 description = "Convert PPTX slide decks into PDF (Experimental multi-slide)",
                 inputType = FileType.PPTX,
                 outputType = FileType.PDF,
-                icon = Icons.Default.Slideshow,
+                icon = Icons.Outlined.Slideshow,
                 category = CATEGORY_UNOPTIMIZED,
                 isMultiFileAllowed = false
             ),
@@ -88,7 +90,7 @@ data class ConversionType(
                 description = "Convert TXT text files into formatted PDF",
                 inputType = FileType.TXT,
                 outputType = FileType.PDF,
-                icon = Icons.Default.PictureAsPdf,
+                icon = Icons.AutoMirrored.Outlined.Article,
                 category = CATEGORY_CONVERSIONS,
                 isMultiFileAllowed = false
             ),
@@ -98,7 +100,7 @@ data class ConversionType(
                 description = "Convert Markdown MD files into formatted PDF",
                 inputType = FileType.MD,
                 outputType = FileType.PDF,
-                icon = Icons.Default.Description,
+                icon = Icons.Outlined.EditNote,
                 category = CATEGORY_CONVERSIONS,
                 isMultiFileAllowed = false
             ),
@@ -110,7 +112,7 @@ data class ConversionType(
                 description = "Combine multiple PDF documents into one",
                 inputType = FileType.PDF,
                 outputType = FileType.PDF,
-                icon = Icons.AutoMirrored.Filled.MergeType,
+                icon = Icons.AutoMirrored.Outlined.MergeType,
                 category = CATEGORY_PDF_TOOLS,
                 isMultiFileAllowed = true
             ),
@@ -120,7 +122,7 @@ data class ConversionType(
                 description = "Separate pages or split PDF into multiple files",
                 inputType = FileType.PDF,
                 outputType = FileType.PDF,
-                icon = Icons.AutoMirrored.Filled.CallSplit,
+                icon = Icons.AutoMirrored.Outlined.CallSplit,
                 category = CATEGORY_PDF_TOOLS,
                 isMultiFileAllowed = false
             ),
@@ -130,7 +132,7 @@ data class ConversionType(
                 description = "Reduce PDF file size while keeping clear quality",
                 inputType = FileType.PDF,
                 outputType = FileType.PDF,
-                icon = Icons.Default.Compress,
+                icon = Icons.Outlined.Compress,
                 category = CATEGORY_PDF_TOOLS,
                 isMultiFileAllowed = false
             ),
@@ -140,7 +142,7 @@ data class ConversionType(
                 description = "Add password encryption to your PDF document",
                 inputType = FileType.PDF,
                 outputType = FileType.PDF,
-                icon = Icons.Default.Lock,
+                icon = Icons.Outlined.Lock,
                 category = CATEGORY_PDF_TOOLS,
                 isMultiFileAllowed = false
             ),
@@ -150,7 +152,7 @@ data class ConversionType(
                 description = "Reorder, rotate, and delete pages from PDF",
                 inputType = FileType.PDF,
                 outputType = FileType.PDF,
-                icon = Icons.Default.Transform,
+                icon = Icons.Outlined.Transform,
                 category = CATEGORY_PDF_TOOLS,
                 isMultiFileAllowed = false
             ),
@@ -162,7 +164,7 @@ data class ConversionType(
                 description = "Convert between PNG, JPG, WEBP, and BMP formats",
                 inputType = FileType.PNG,
                 outputType = FileType.JPG,
-                icon = Icons.Default.Transform,
+                icon = Icons.Outlined.Transform,
                 category = CATEGORY_IMAGE_TOOLS,
                 isMultiFileAllowed = true
             ),
@@ -172,7 +174,7 @@ data class ConversionType(
                 description = "Compress images with quality control",
                 inputType = FileType.JPG,
                 outputType = FileType.JPG,
-                icon = Icons.Default.Compress,
+                icon = Icons.Outlined.Compress,
                 category = CATEGORY_IMAGE_TOOLS,
                 isMultiFileAllowed = true
             )

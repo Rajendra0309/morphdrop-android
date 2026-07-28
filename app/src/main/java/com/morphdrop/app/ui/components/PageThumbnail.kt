@@ -15,7 +15,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.morphdrop.app.ui.theme.LocalLiquidState
 import com.morphdrop.app.ui.theme.NeonEmerald
 
 @Composable
@@ -25,13 +24,12 @@ fun PageThumbnail(
     onRotate: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    val liquidState = LocalLiquidState.current
-
-    GlassCard(
-        liquidState = liquidState,
+    Card(
         modifier = modifier
             .width(140.dp)
-            .height(200.dp)
+            .height(200.dp),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             Column(
@@ -44,14 +42,14 @@ fun PageThumbnail(
                 Icon(
                     imageVector = Icons.Default.PictureAsPdf,
                     contentDescription = null,
-                    tint = NeonEmerald.copy(alpha = 0.7f),
+                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
                     modifier = Modifier.size(48.dp)
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = "Page $pageNumber",
-                    color = Color.White,
-                    fontSize = 14.sp,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
                     fontWeight = FontWeight.Medium
                 )
             }
@@ -66,7 +64,7 @@ fun PageThumbnail(
                     Icon(
                         imageVector = Icons.Default.RotateRight,
                         contentDescription = "Rotate",
-                        tint = Color.White.copy(alpha = 0.8f)
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
                     )
                 }
             }
@@ -76,13 +74,13 @@ fun PageThumbnail(
                     .align(Alignment.BottomStart)
                     .padding(8.dp)
                     .clip(RoundedCornerShape(4.dp))
-                    .background(NeonEmerald.copy(alpha = 0.2f))
+                    .background(MaterialTheme.colorScheme.primaryContainer)
                     .padding(horizontal = 6.dp, vertical = 2.dp)
             ) {
                 Text(
                     text = "${rotation}°",
-                    color = NeonEmerald,
-                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Bold
                 )
             }

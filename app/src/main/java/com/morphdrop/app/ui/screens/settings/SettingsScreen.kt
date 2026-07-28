@@ -1,11 +1,10 @@
 package com.morphdrop.app.ui.screens.settings
 
 import android.content.Intent
+import android.content.res.Configuration
 import android.net.Uri
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -19,161 +18,79 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.OpenInNew
-import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.ColorLens
+import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Policy
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.morphdrop.app.ui.components.GlassCard
-import com.morphdrop.app.ui.components.PrimaryButton
-import com.morphdrop.app.ui.theme.LocalLiquidState
 import com.morphdrop.app.ui.theme.MorphDropTheme
-import com.morphdrop.app.ui.theme.NeonEmerald
-import com.morphdrop.app.ui.theme.TextPrimary
-import com.morphdrop.app.ui.theme.TextSecondary
-import io.github.fletchmckee.liquid.LiquidState
-import io.github.fletchmckee.liquid.rememberLiquidState
 
 @Composable
 fun SettingsScreen(
-    onNavigateBack: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val liquidState = LocalLiquidState.current
     val context = LocalContext.current
 
-    LaunchedEffect(Unit) {
-        viewModel.calculateCacheSize(context)
-    }
-
     SettingsScreenContent(
-        uiState = uiState,
-        liquidState = liquidState,
-        onNavigateBack = onNavigateBack,
+        state = uiState,
         onToggleDarkMode = viewModel::toggleDarkMode,
-        onUpdateOutputFolder = viewModel::updateOutputFolderName,
-        onClearHistory = viewModel::clearHistory,
-        onClearCache = { viewModel.clearCache(context) }
+        onRateApp = {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=${context.packageName}"))
+            try {
+                context.startActivity(intent)
+            } catch (e: Exception) {
+                // Fallback for emulator or no Play Store
+            }
+        },
+        onReportBug = {
+            val intent = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:support@morphdrop.app"))
+            context.startActivity(intent)
+        }
     )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreenContent(
-    uiState: SettingsUiState,
-    liquidState: LiquidState,
-    onNavigateBack: () -> Unit,
+    state: SettingsUiState,
     onToggleDarkMode: (Boolean) -> Unit,
-    onUpdateOutputFolder: (String) -> Unit,
-    onClearHistory: () -> Unit,
-    onClearCache: () -> Unit
+    onRateApp: () -> Unit,
+    onReportBug: () -> Unit
 ) {
-    val context = LocalContext.current
-    var showFolderDialog by remember { mutableStateOf(false) }
-
-    if (showFolderDialog) {
-        var folderName by remember { mutableStateOf(uiState.defaultOutputDirectory) }
-        Dialog(onDismissRequest = { showFolderDialog = false }) {
-            GlassCard(liquidState = liquidState) {
-                Column(
-                    modifier = Modifier
-                        .padding(24.dp)
-                        .fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    Text(
-                        text = "Output Folder Name",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 18.sp,
-                        color = TextPrimary
-                    )
-                    TextField(
-                        value = folderName,
-                        onValueChange = { folderName = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = TextFieldDefaults.colors(
-                            focusedContainerColor = Color.White.copy(alpha = 0.1f),
-                            unfocusedContainerColor = Color.White.copy(alpha = 0.05f),
-                            focusedTextColor = TextPrimary,
-                            unfocusedTextColor = TextPrimary,
-                            cursorColor = NeonEmerald
-                        )
-                    )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        PrimaryButton(
-                            text = "Cancel",
-                            onClick = { showFolderDialog = false },
-                            modifier = Modifier.weight(1f)
-                        )
-                        PrimaryButton(
-                            text = "Save",
-                            onClick = {
-                                onUpdateOutputFolder(folderName)
-                                showFolderDialog = false
-                            },
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                }
-            }
-        }
-    }
-
     Scaffold(
-        containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
                 title = {
                     Text(
                         text = "Settings",
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize = 24.sp,
-                        color = TextPrimary,
-                        letterSpacing = (-0.5).sp
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Bold
                     )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
-                            tint = TextPrimary
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Transparent
-                )
+                }
             )
         }
     ) { innerPadding ->
@@ -181,284 +98,213 @@ fun SettingsScreenContent(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(start = 16.dp, end = 16.dp, bottom = 128.dp)
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(20.dp)
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Spacer(modifier = Modifier.height(4.dp))
-
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    text = "General",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp,
-                    color = NeonEmerald
+            SettingsSection(title = "Appearance") {
+                SettingsToggleItem(
+                    title = "Dark Mode",
+                    description = "Enable darker interface colors",
+                    icon = Icons.Default.DarkMode,
+                    checked = state.isDarkMode,
+                    onCheckedChange = onToggleDarkMode
                 )
-
-                GlassCard(
-                    liquidState = liquidState,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(14.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Theme",
-                            fontWeight = FontWeight.Medium,
-                            fontSize = 15.sp,
-                            color = TextPrimary
-                        )
-                        Row(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(Color.White.copy(alpha = 0.3f))
-                                .padding(4.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(if (!uiState.isDarkMode) NeonEmerald else Color.Transparent)
-                                    .clickable { onToggleDarkMode(false) }
-                                    .padding(horizontal = 16.dp, vertical = 6.dp)
-                            ) {
-                                Text(
-                                    text = "LIGHT",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 11.sp,
-                                    color = if (!uiState.isDarkMode) Color.White else TextSecondary
-                                )
-                            }
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(if (uiState.isDarkMode) NeonEmerald else Color.Transparent)
-                                    .clickable { onToggleDarkMode(true) }
-                                    .padding(horizontal = 16.dp, vertical = 6.dp)
-                            ) {
-                                Text(
-                                    text = "DARK",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 11.sp,
-                                    color = if (uiState.isDarkMode) Color.White else TextSecondary
-                                )
-                            }
-                        }
-                    }
-                }
-
-                GlassCard(
-                    liquidState = liquidState,
-                    onClick = { showFolderDialog = true },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(14.dp)
-                    ) {
-                        Text(
-                            text = "Default output folder",
-                            fontWeight = FontWeight.Medium,
-                            fontSize = 15.sp,
-                            color = TextPrimary
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = uiState.defaultOutputDirectory,
-                            fontSize = 12.sp,
-                            color = TextSecondary
-                        )
-                    }
-                }
+                
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 4.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                )
+                
+                SettingsItem(
+                    title = "Dynamic Colors",
+                    description = "Adapts to your wallpaper (Android 12+)",
+                    icon = Icons.Default.ColorLens,
+                    onClick = { }
+                )
             }
 
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    text = "Storage",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp,
-                    color = NeonEmerald
+            SettingsSection(title = "General") {
+                SettingsItem(
+                    title = "Output Folder",
+                    description = state.defaultOutputDirectory,
+                    icon = Icons.Default.Info,
+                    onClick = { }
+                )
+                
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 4.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
                 )
 
-                GlassCard(
-                    liquidState = liquidState,
-                    onClick = onClearHistory,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(14.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Clear history",
-                            fontWeight = FontWeight.Medium,
-                            fontSize = 15.sp,
-                            color = Color(0xFFD32F2F)
-                        )
-                        Icon(
-                            imageVector = Icons.Default.Delete,
-                            contentDescription = null,
-                            tint = Color(0xFFD32F2F),
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                }
-
-                GlassCard(
-                    liquidState = liquidState,
-                    onClick = onClearCache,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(14.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Clear cache",
-                            fontWeight = FontWeight.Medium,
-                            fontSize = 15.sp,
-                            color = TextPrimary
-                        )
-                        Text(
-                            text = uiState.cacheSizeFormatted,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = TextSecondary
-                        )
-                    }
-                }
+                SettingsItem(
+                    title = "Cache Size",
+                    description = state.cacheSizeFormatted,
+                    icon = Icons.Default.Info,
+                    onClick = { }
+                )
             }
 
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    text = "About",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp,
-                    color = NeonEmerald
+            SettingsSection(title = "Support & About") {
+                SettingsItem(
+                    title = "Rate App",
+                    description = "Love the app? Let us know!",
+                    icon = Icons.Default.Star,
+                    onClick = onRateApp
+                )
+                
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 4.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
                 )
 
-                GlassCard(
-                    liquidState = liquidState,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(14.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "Version",
-                                fontWeight = FontWeight.Medium,
-                                fontSize = 15.sp,
-                                color = TextPrimary
-                            )
-                            Text(
-                                text = uiState.appVersion,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = TextSecondary
-                            )
-                        }
+                SettingsItem(
+                    title = "Report a Bug",
+                    description = "Something not working correctly?",
+                    icon = Icons.Default.BugReport,
+                    onClick = onReportBug
+                )
+                
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 4.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                )
 
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(1.dp)
-                                .background(Color.White.copy(alpha = 0.3f))
-                        )
+                SettingsItem(
+                    title = "Privacy Policy",
+                    description = "Read our data handling practices",
+                    icon = Icons.Default.Policy,
+                    onClick = { }
+                )
+                
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 4.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                )
 
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { }
-                                .padding(14.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "Open source licenses",
-                                fontWeight = FontWeight.Medium,
-                                fontSize = 15.sp,
-                                color = TextPrimary
-                            )
-                            Icon(
-                                imageVector = Icons.Default.ChevronRight,
-                                contentDescription = null,
-                                tint = TextSecondary,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(1.dp)
-                                .background(Color.White.copy(alpha = 0.3f))
-                        )
-
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com"))
-                                    context.startActivity(intent)
-                                }
-                                .padding(14.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "GitHub Repository",
-                                fontWeight = FontWeight.Medium,
-                                fontSize = 15.sp,
-                                color = TextPrimary
-                            )
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.OpenInNew,
-                                contentDescription = null,
-                                tint = TextSecondary,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                    }
-                }
+                SettingsItem(
+                    title = "About MorphDrop",
+                    description = "Version ${state.appVersion}",
+                    icon = Icons.Default.Info,
+                    onClick = { }
+                )
             }
-
-            Spacer(modifier = Modifier.height(24.dp))
+            
+            Spacer(modifier = Modifier.height(100.dp))
         }
     }
 }
 
-@Preview(showBackground = true)
 @Composable
-fun SettingsScreenPreview() {
-    MorphDropTheme {
+private fun SettingsSection(title: String, content: @Composable () -> Unit) {
+    Column {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(bottom = 8.dp, start = 4.dp)
+        )
+        Card(
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                content()
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsItem(
+    title: String,
+    description: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(24.dp)
+        )
+        Spacer(modifier = Modifier.width(16.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+            Text(text = description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun SettingsToggleItem(
+    title: String,
+    description: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(24.dp)
+        )
+        Spacer(modifier = Modifier.width(16.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+            Text(text = description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
+    }
+}
+
+@Preview(name = "Light Mode", showBackground = true)
+@Composable
+fun SettingsScreenLightPreview() {
+    MorphDropTheme(darkTheme = false) {
         SettingsScreenContent(
-            uiState = SettingsUiState(
-                isDarkMode = true,
-                defaultOutputDirectory = "/storage/emulated/0/Download/MorphDrop",
-                appVersion = "1.0.0",
-                cacheSizeFormatted = "24.5 MB"
+            state = SettingsUiState(
+                isDarkMode = false,
+                defaultOutputDirectory = "Downloads/MorphDrop",
+                cacheSizeFormatted = "12 MB",
+                appVersion = "1.0.0"
             ),
-            liquidState = rememberLiquidState(),
-            onNavigateBack = {},
             onToggleDarkMode = {},
-            onUpdateOutputFolder = {},
-            onClearHistory = {},
-            onClearCache = {}
+            onRateApp = {},
+            onReportBug = {}
+        )
+    }
+}
+
+@Preview(name = "Dark Mode", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
+@Composable
+fun SettingsScreenDarkPreview() {
+    MorphDropTheme(darkTheme = true) {
+        SettingsScreenContent(
+            state = SettingsUiState(
+                isDarkMode = true,
+                defaultOutputDirectory = "Downloads/MorphDrop",
+                cacheSizeFormatted = "12 MB",
+                appVersion = "1.0.0"
+            ),
+            onToggleDarkMode = {},
+            onRateApp = {},
+            onReportBug = {}
         )
     }
 }

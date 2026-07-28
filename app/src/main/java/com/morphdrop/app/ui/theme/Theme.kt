@@ -2,52 +2,47 @@ package com.morphdrop.app.ui.theme
 
 import android.app.Activity
 import android.os.Build
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
-import io.github.fletchmckee.liquid.rememberLiquidState
 
 private val DarkColorScheme = darkColorScheme(
     primary = NeonEmerald,
     secondary = CrimsonGlow,
     tertiary = AmberWarn,
-    background = MidnightBlue,
-    surface = SurfaceContainerLow,
-    outline = DarkCardBorder,
-    outlineVariant = DarkCardBorder,
+    background = Color(0xFF0F1115),
+    surface = Color(0xFF1A1C1E),
     onPrimary = Color.Black,
-    onBackground = TextPrimaryDark,
-    onSurface = TextPrimaryDark,
-    onSurfaceVariant = TextSecondaryDark
+    onBackground = Color.White,
+    onSurface = Color.White,
+    onSurfaceVariant = Color(0xFFC4C7C5)
 )
 
 private val LightColorScheme = lightColorScheme(
-    primary = EmeraldDark,
-    secondary = CrimsonDark,
-    tertiary = AmberDark,
-    background = PremiumOffWhite,
-    surface = Color.White,
-    outline = Color(0xFFCBD5E0),
-    outlineVariant = Color(0xFFE2E8F0),
+    primary = Color(0xFF006A60),
+    secondary = Color(0xFF984061),
+    tertiary = Color(0xFF705D00),
+    background = Color(0xFFFBFCFF),
+    surface = Color(0xFFFBFCFF),
     onPrimary = Color.White,
-    onBackground = TextPrimaryLight,
-    onSurface = TextPrimaryLight,
-    onSurfaceVariant = Color(0xFF2D3748) // Darker for better contrast with glass effects
+    onBackground = Color(0xFF191C1E),
+    onSurface = Color(0xFF191C1E),
+    onSurfaceVariant = Color(0xFF40484B)
 )
 
 @Composable
 fun MorphDropTheme(
-    darkTheme: Boolean = false,
-    dynamicColor: Boolean = false,
+    darkTheme: Boolean = isSystemInDarkTheme(),
+    dynamicColor: Boolean = true, // Enabled by default for native M3 feel
     content: @Composable () -> Unit
 ) {
     val colorScheme = when {
@@ -63,17 +58,13 @@ fun MorphDropTheme(
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
-            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = false
+            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
         }
     }
 
-    val liquidState = rememberLiquidState()
-
-    CompositionLocalProvider(LocalLiquidState provides liquidState) {
-        MaterialTheme(
-            colorScheme = colorScheme,
-            typography = Typography,
-            content = content
-        )
-    }
+    MaterialTheme(
+        colorScheme = colorScheme,
+        typography = Typography,
+        content = content
+    )
 }

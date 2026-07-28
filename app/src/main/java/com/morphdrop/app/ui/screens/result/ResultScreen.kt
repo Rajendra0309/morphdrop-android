@@ -1,11 +1,7 @@
 package com.morphdrop.app.ui.screens.result
 
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
+import android.content.res.Configuration
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,158 +19,148 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.morphdrop.app.ui.components.GlassCard
 import com.morphdrop.app.ui.components.PrimaryButton
-import com.morphdrop.app.ui.theme.LocalLiquidState
-import com.morphdrop.app.ui.theme.NeonEmerald
-import com.morphdrop.app.ui.theme.TextPrimary
-import com.morphdrop.app.ui.theme.TextSecondary
-import com.morphdrop.app.ui.utils.rememberHapticHelper
+import com.morphdrop.app.ui.theme.MorphDropTheme
 
 @Composable
 fun ResultScreen(
-    onNavigateToHome: () -> Unit = {},
+    onDone: () -> Unit = {},
     viewModel: ResultViewModel = hiltViewModel()
 ) {
-    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val liquidState = LocalLiquidState.current
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    val haptic = rememberHapticHelper()
 
-    LaunchedEffect(Unit) {
-        haptic.success()
-    }
-
-    val infiniteTransition = rememberInfiniteTransition(label = "celebration")
-    val scale by infiniteTransition.animateFloat(
-        initialValue = 1f,
-        targetValue = 1.15f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1000, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "scale"
+    ResultScreenContent(
+        state = state,
+        onDone = onDone,
+        onShare = { if (state.outputFiles.isNotEmpty()) viewModel.shareFile(context, state.outputFiles.first()) },
+        onOpen = { if (state.outputFiles.isNotEmpty()) viewModel.openFile(context, state.outputFiles.first()) }
     )
+}
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ResultScreenContent(
+    state: ResultUiState,
+    onDone: () -> Unit,
+    onShare: () -> Unit,
+    onOpen: () -> Unit
+) {
     Scaffold(
-        containerColor = Color.Transparent
+        topBar = {
+            TopAppBar(
+                title = { Text("Success", fontWeight = FontWeight.Bold) }
+            )
+        }
     ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(20.dp),
+                .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // Celebration Circle
             Box(
                 modifier = Modifier
-                    .size(110.dp)
-                    .graphicsLayer {
-                        scaleX = scale
-                        scaleY = scale
-                    }
+                    .size(100.dp)
                     .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.3f)),
+                    .background(MaterialTheme.colorScheme.primaryContainer),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = Icons.Default.CheckCircle,
-                    contentDescription = "Success",
-                    tint = NeonEmerald,
-                    modifier = Modifier.size(72.dp)
+                    imageVector = Icons.Default.Check,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.size(56.dp)
                 )
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Text(
-                text = uiState.title,
-                fontWeight = FontWeight.ExtraBold,
-                fontSize = 32.sp,
-                color = TextPrimary,
-                letterSpacing = (-1).sp
-            )
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            Text(
-                text = uiState.subtitle,
-                fontSize = 14.sp,
-                color = TextSecondary
-            )
-
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Converted Files List
+            Text(
+                text = "Conversion Complete!",
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = state.subtitle.ifBlank { "Your files have been saved successfully." },
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            Text(
+                text = "Output Files",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Start
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
             LazyColumn(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                items(uiState.outputFiles, key = { it.id }) { item ->
-                    GlassCard(
-                        liquidState = liquidState,
-                        modifier = Modifier.fillMaxWidth()
+                items(state.outputFiles) { file ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
                     ) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(14.dp),
+                                .padding(12.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(42.dp)
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(NeonEmerald.copy(alpha = 0.15f)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.InsertDriveFile,
-                                    contentDescription = null,
-                                    tint = NeonEmerald,
-                                    modifier = Modifier.size(24.dp)
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(14.dp))
+                            Icon(imageVector = Icons.Default.Description, contentDescription = null)
+                            Spacer(modifier = Modifier.width(12.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = item.fileName,
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 15.sp,
-                                    color = TextPrimary,
-                                    maxLines = 1
+                                    text = file.fileName,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                                 )
                                 Text(
-                                    text = item.fileSizeFormatted,
-                                    fontSize = 12.sp,
-                                    color = TextSecondary
+                                    text = file.fileSizeFormatted,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         }
@@ -182,86 +168,81 @@ fun ResultScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(24.dp))
 
-            // Action Buttons Section
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                GlassCard(
-                    liquidState = liquidState,
-                    onClick = {
-                        uiState.outputFiles.firstOrNull()?.let { viewModel.openFile(context, it) }
-                    },
-                    modifier = Modifier.weight(1f)
+                OutlinedButton(
+                    onClick = onShare,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp)
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 14.dp),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.FolderOpen,
-                            contentDescription = null,
-                            tint = NeonEmerald,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Open",
-                            fontWeight = FontWeight.Bold,
-                            color = NeonEmerald,
-                            fontSize = 15.sp
-                        )
-                    }
+                    Icon(imageVector = Icons.Default.Share, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Share")
                 }
 
-                GlassCard(
-                    liquidState = liquidState,
-                    onClick = {
-                        uiState.outputFiles.firstOrNull()?.let { viewModel.shareFile(context, it) }
-                    },
-                    modifier = Modifier.weight(1f)
+                Button(
+                    onClick = onOpen,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp)
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 14.dp),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Share,
-                            contentDescription = null,
-                            tint = TextPrimary,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Share",
-                            fontWeight = FontWeight.Bold,
-                            color = TextPrimary,
-                            fontSize = 15.sp
-                        )
-                    }
+                    Icon(imageVector = Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Open")
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-            // Convert Another Primary Button
             PrimaryButton(
-                text = "Convert Another",
-                onClick = onNavigateToHome,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp)
+                text = "Done",
+                onClick = onDone,
+                modifier = Modifier.fillMaxWidth()
             )
-
+            
             Spacer(modifier = Modifier.height(16.dp))
         }
+    }
+}
+
+@Preview(name = "Light Mode", showBackground = true)
+@Composable
+fun ResultScreenLightPreview() {
+    MorphDropTheme(darkTheme = false) {
+        ResultScreenContent(
+            state = ResultUiState(
+                title = "Success",
+                subtitle = "Saved to Downloads/MorphDrop",
+                outputFiles = listOf(
+                    OutputFileItem("1", "Converted_Document_1.pdf", "1.2 MB", "pdf", null),
+                    OutputFileItem("2", "Extracted_Image_Page_2.png", "450 KB", "png", null)
+                )
+            ),
+            onDone = {},
+            onShare = {},
+            onOpen = {}
+        )
+    }
+}
+
+@Preview(name = "Dark Mode", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
+@Composable
+fun ResultScreenDarkPreview() {
+    MorphDropTheme(darkTheme = true) {
+        ResultScreenContent(
+            state = ResultUiState(
+                title = "Success",
+                subtitle = "Saved to Downloads/MorphDrop",
+                outputFiles = listOf(
+                    OutputFileItem("1", "Final_Presentation.pdf", "4.8 MB", "pdf", null)
+                )
+            ),
+            onDone = {},
+            onShare = {},
+            onOpen = {}
+        )
     }
 }
