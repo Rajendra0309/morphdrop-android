@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -47,6 +48,9 @@ class MainActivity : ComponentActivity() {
                     Screen.Settings.route
                 )
 
+                val searchableScreens = listOf(Screen.Home.route, Screen.History.route)
+                val isSearchable = currentRoute in searchableScreens
+
                 Scaffold(
                     containerColor = MaterialTheme.colorScheme.background,
                     contentColor = MaterialTheme.colorScheme.onBackground
@@ -66,7 +70,7 @@ class MainActivity : ComponentActivity() {
                                         restoreState = true
                                     }
                                 },
-                                showSearchIcon = if (currentRoute == Screen.Home.route) showSearchFab else false,
+                                showSearchIcon = isSearchable && showSearchFab,
                                 onSearchClick = { onSearchFabClick?.invoke() },
                                 modifier = Modifier.align(Alignment.BottomCenter)
                             )

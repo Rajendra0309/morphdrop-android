@@ -76,8 +76,8 @@ fun HomeScreen(
         onToggleFavorite = viewModel::onToggleFavorite,
         onNavigateToConfig = onNavigateToConfig,
         onNavigate = onNavigate,
-        setSearchFabVisibility = mainViewModel::setSearchFabVisibility,
-        setOnSearchFabClick = mainViewModel::setOnSearchFabClick
+        setSearchFabVisibility = { mainViewModel.setSearchFabVisibility(it, "home") },
+        setOnSearchFabClick = { mainViewModel.setOnSearchFabClick(it, "home") }
     )
 }
 
@@ -102,7 +102,9 @@ fun HomeScreenContent(
     
     // Track search FAB visibility and sync with MainViewModel
     val showSearchFab by remember {
-        derivedStateOf { gridState.firstVisibleItemIndex > 0 }
+        derivedStateOf { 
+            gridState.firstVisibleItemIndex > 0 || gridState.firstVisibleItemScrollOffset > 40
+        }
     }
 
     LaunchedEffect(showSearchFab) {
@@ -143,111 +145,90 @@ fun HomeScreenContent(
                 .fillMaxSize()
                 .padding(top = innerPadding.calculateTopPadding())
         ) {
-            if (filteredTypes.isEmpty()) {
-                EmptySearchState(query = searchQuery, onClear = { onSearchQueryChange("") })
-            } else {
-                ToolsGrid(
-                    gridState = gridState,
-                    focusRequester = focusRequester,
-                    filteredTypes = filteredTypes,
-                    favoriteTypes = favoriteTypes,
-                    searchQuery = searchQuery,
-                    onSearchQueryChange = onSearchQueryChange,
-                    onNavigateToConfig = onNavigateToConfig,
-                    onToggleFavorite = onToggleFavorite
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun ToolsGrid(
-    gridState: androidx.compose.foundation.lazy.grid.LazyGridState,
-    focusRequester: FocusRequester,
-    filteredTypes: List<ConversionType>,
-    favoriteTypes: List<ConversionType>,
-    searchQuery: String,
-    onSearchQueryChange: (String) -> Unit,
-    onNavigateToConfig: (String) -> Unit,
-    onToggleFavorite: (String) -> Unit
-) {
-    LazyVerticalGrid(
-        state = gridState,
-        columns = GridCells.Fixed(2),
-        contentPadding = PaddingValues(bottom = 80.dp), // Increased padding for floating navbar
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-        modifier = Modifier.fillMaxSize()
-    ) {
-        // Search bar integrated as an item in the list
-        item(span = { GridItemSpan(2) }) {
-            MorphDropSearchBar(
-                query = searchQuery,
-                onQueryChange = onSearchQueryChange,
-                active = false,
-                onActiveChange = { },
-                focusRequester = focusRequester,
-                modifier = Modifier
-                    .padding(horizontal = 16.dp)
-                    .padding(top = 8.dp, bottom = 12.dp)
-            )
-        }
-
-        if (searchQuery.isBlank() && favoriteTypes.isNotEmpty()) {
-            item(span = { GridItemSpan(2) }) {
-                SectionHeader(
-                    title = "Favorites", 
-                    icon = Icons.Default.Favorite,
-                    modifier = Modifier.padding(horizontal = 16.dp)
-                )
-            }
-            item(span = { GridItemSpan(2) }) {
-                LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
-                ) {
-                    items(favoriteTypes, key = { it.id }) { item ->
-                        ConversionCard(
-                            conversionType = item,
-                            onClick = { onNavigateToConfig(item.id) },
-                            onFavoriteToggle = { onToggleFavorite(item.id) },
-                            modifier = Modifier.width(160.dp),
-                            isCompact = true
-                        )
-                    }
-                }
-            }
-        }
-
-        val categories = listOf(
-            ConversionType.CATEGORY_CONVERSIONS,
-            ConversionType.CATEGORY_PDF_TOOLS,
-            ConversionType.CATEGORY_IMAGE_TOOLS,
-            ConversionType.CATEGORY_UNOPTIMIZED
-        )
-
-        categories.forEach { categoryName ->
-            val itemsInCategory = filteredTypes.filter { it.category == categoryName }
-            if (itemsInCategory.isNotEmpty()) {
+            LazyVerticalGrid(
+                state = gridState,
+                columns = GridCells.Fixed(2),
+                contentPadding = PaddingValues(bottom = 80.dp), // Increased padding for floating navbar
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                modifier = Modifier.fillMaxSize()
+            ) {
+                // Search bar integrated as an item in the list
                 item(span = { GridItemSpan(2) }) {
-                    Text(
-                        text = categoryName,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(top = 16.dp, bottom = 8.dp, start = 16.dp)
+                    MorphDropSearchBar(
+                        query = searchQuery,
+                        onQueryChange = onSearchQueryChange,
+                        active = false,
+                        onActiveChange = { },
+                        focusRequester = focusRequester,
+                        modifier = Modifier
+                            .padding(horizontal = 16.dp)
+                            .padding(top = 8.dp, bottom = 12.dp)
                     )
                 }
-                items(itemsInCategory, key = { it.id }) { item ->
-                    ConversionCard(
-                        conversionType = item,
-                        onClick = { onNavigateToConfig(item.id) },
-                        onFavoriteToggle = { onToggleFavorite(item.id) },
-                        modifier = Modifier.padding(
-                            start = if (itemsInCategory.indexOf(item) % 2 == 0) 16.dp else 0.dp,
-                            end = if (itemsInCategory.indexOf(item) % 2 == 1) 16.dp else 0.dp
-                        )
+
+                if (filteredTypes.isEmpty() && searchQuery.isNotEmpty()) {
+                    item(span = { GridItemSpan(2) }) {
+                        EmptySearchState(query = searchQuery, onClear = { onSearchQueryChange("") })
+                    }
+                } else {
+                    if (searchQuery.isBlank() && favoriteTypes.isNotEmpty()) {
+                        item(span = { GridItemSpan(2) }) {
+                            SectionHeader(
+                                title = "Favorites", 
+                                icon = Icons.Default.Favorite,
+                                modifier = Modifier.padding(horizontal = 16.dp)
+                            )
+                        }
+                        item(span = { GridItemSpan(2) }) {
+                            LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                            ) {
+                                items(favoriteTypes, key = { it.id }) { item ->
+                                    ConversionCard(
+                                        conversionType = item,
+                                        onClick = { onNavigateToConfig(item.id) },
+                                        onFavoriteToggle = { onToggleFavorite(item.id) },
+                                        modifier = Modifier.width(160.dp),
+                                        isCompact = true
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    val categories = listOf(
+                        ConversionType.CATEGORY_CONVERSIONS,
+                        ConversionType.CATEGORY_PDF_TOOLS,
+                        ConversionType.CATEGORY_IMAGE_TOOLS,
+                        ConversionType.CATEGORY_UNOPTIMIZED
                     )
+
+                    categories.forEach { categoryName ->
+                        val itemsInCategory = filteredTypes.filter { it.category == categoryName }
+                        if (itemsInCategory.isNotEmpty()) {
+                            item(span = { GridItemSpan(2) }) {
+                                Text(
+                                    text = categoryName,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(top = 16.dp, bottom = 8.dp, start = 16.dp)
+                                )
+                            }
+                            items(itemsInCategory, key = { it.id }) { item ->
+                                ConversionCard(
+                                    conversionType = item,
+                                    onClick = { onNavigateToConfig(item.id) },
+                                    onFavoriteToggle = { onToggleFavorite(item.id) },
+                                    modifier = Modifier.padding(
+                                        start = if (itemsInCategory.indexOf(item) % 2 == 0) 16.dp else 0.dp,
+                                        end = if (itemsInCategory.indexOf(item) % 2 == 1) 16.dp else 0.dp
+                                    )
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -279,7 +260,7 @@ private fun SectionHeader(title: String, icon: ImageVector, modifier: Modifier =
 private fun EmptySearchState(query: String, onClear: () -> Unit) {
     Column(
         modifier = Modifier
-            .fillMaxSize()
+            .fillMaxWidth()
             .padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center

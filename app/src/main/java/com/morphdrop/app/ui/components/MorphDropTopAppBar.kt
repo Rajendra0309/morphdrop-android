@@ -3,6 +3,7 @@ package com.morphdrop.app.ui.components
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -18,11 +19,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.lerp
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -32,49 +33,44 @@ fun MorphDropTopAppBar(
     showBackArrow: Boolean = false,
     onBackClick: () -> Unit = {},
     showTagline: Boolean = false,
+    hasActions: Boolean = false,
     actions: @Composable () -> Unit = {}
 ) {
     val collapsedFraction = scrollBehavior.state.collapsedFraction
     
     // Smooth linear scaling: 36sp expanded -> 22sp collapsed
-    val expandedSize = 36f
-    val collapsedSize = 22f
-    val fontSize = (collapsedSize + (expandedSize - collapsedSize) * (1f - collapsedFraction)).sp
+    val fontSize = lerp(36.sp, 22.sp, collapsedFraction)
     
-    val isHome = title == "MorphDrop"
+    val isHomeBrand = title == "MorphDrop"
     
-    // Smooth diagonal move: -1.0 (Start) to 0.0 (Center)
-    val horizontalBias = if (isHome) {
-        (-1f + (1f * collapsedFraction)).coerceIn(-1f, 0f)
-    } else {
-        0f
-    }
+    // Smooth transition from left corner (-1.0) to center (0.0)
+    val horizontalBias = (-1f + (1f * collapsedFraction)).coerceIn(-1f, 0f)
 
-    // Weight policy: Bold only for Home brand
-    val titleWeight = if (isHome) FontWeight.Black else FontWeight.Medium
+    // Weight policy: Black for Home brand, Bold for others
+    val titleWeight = if (isHomeBrand) FontWeight.Black else FontWeight.Bold
 
     LargeTopAppBar(
         title = {
-            // Absolute Centering Logic
+            // Smooth motion using BiasAlignment (native Compose behavior)
             Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .graphicsLayer {
-                        // Offset to counteract the TopAppBar's internal slots
-                        // Nav icon slot is 48dp. Actions slot is at the end.
-                        // When centered (bias 0), we shift left by 24dp to align with screen center.
-                        if (showBackArrow || horizontalBias > -0.5f) {
-                            translationX = if (showBackArrow) (-24).dp.toPx() else 0f
-                        }
-                    },
+                modifier = Modifier.fillMaxWidth(),
                 contentAlignment = BiasAlignment(horizontalBias, 0f)
             ) {
                 Column(
-                    horizontalAlignment = if (horizontalBias > -0.1f) Alignment.CenterHorizontally else Alignment.Start,
-                    modifier = Modifier.padding(
-                        start = if (horizontalBias < -0.9f) 16.dp else 0.dp,
-                        bottom = if (horizontalBias > -0.1f) 0.dp else (8 * (1f - collapsedFraction)).dp
-                    )
+                    horizontalAlignment = Alignment.Start,
+                    modifier = Modifier
+                        .padding(
+                            start = if (horizontalBias < -0.99f) 16.dp else 0.dp,
+                            bottom = (8 * (1f - collapsedFraction)).dp
+                        )
+                        .offset(
+                            x = if (collapsedFraction > 0.1f) {
+                                // Absolute centering correction: (ActionsWidth - NavWidth) / 2
+                                val navWidth = if (showBackArrow) 48.dp else 0.dp
+                                val actionWidth = if (hasActions) 48.dp else 0.dp
+                                (actionWidth - navWidth) / 2f * collapsedFraction
+                            } else 0.dp
+                        )
                 ) {
                     Text(
                         text = title,
@@ -84,10 +80,10 @@ fun MorphDropTopAppBar(
                         color = MaterialTheme.colorScheme.onBackground,
                         maxLines = 1,
                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                        textAlign = if (horizontalBias > -0.1f) TextAlign.Center else TextAlign.Start
+                        textAlign = TextAlign.Start
                     )
                     
-                    if (showTagline && isHome) {
+                    if (showTagline && isHomeBrand) {
                         val taglineOpacity = (1f - (collapsedFraction * 4f)).coerceIn(0f, 1f)
                         if (taglineOpacity > 0.01f) {
                             Text(

@@ -122,7 +122,8 @@ fun NavGraph(
                 onNavigateBack = { navController.popBackStack() },
                 onNavigateToDetail = { id ->
                     navController.navigate(Screen.HistoryDetail.createRoute(id))
-                }
+                },
+                mainViewModel = mainViewModel
             )
         }
 
@@ -195,10 +196,11 @@ fun NavGraph(
                 navArgument("conversionTypeId") { type = NavType.StringType },
                 navArgument("workId") { type = NavType.StringType }
             )
-        ) {
+        ) { backStackEntry ->
+            val workId = backStackEntry.arguments?.getString("workId") ?: ""
             ProcessingScreen(
                 onNavigateToResult = {
-                    navController.navigate(Screen.Result.route) {
+                    navController.navigate(Screen.Result.createRoute(workId)) {
                         popUpTo(Screen.Home.route)
                     }
                 },
@@ -206,7 +208,12 @@ fun NavGraph(
             )
         }
 
-        composable(Screen.Result.route) {
+        composable(
+            route = Screen.Result.route,
+            arguments = listOf(
+                navArgument("workId") { type = NavType.StringType }
+            )
+        ) {
             ResultScreen(
                 onDone = {
                     navController.navigate(Screen.Home.route) {

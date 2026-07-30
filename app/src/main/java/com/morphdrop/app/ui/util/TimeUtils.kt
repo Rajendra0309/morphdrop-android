@@ -35,12 +35,15 @@ object TimeUtils {
         }
     }
 
-    fun formatOutputDisplayName(outputNames: String): String {
-        if (outputNames.isBlank() || outputNames == "-") return "None"
+    fun formatOutputDisplayName(outputNames: String?): String {
+        if (outputNames.isNullOrBlank() || outputNames == "-") return "None"
         
-        if (outputNames.contains(",")) {
-            val items = outputNames.split(",").map { it.trim() }
-            val firstItem = items.firstOrNull() ?: ""
+        // Split by comma if multiple files
+        val items = outputNames.split(",").map { it.trim() }.filter { it.isNotBlank() }
+        if (items.isEmpty()) return "None"
+
+        if (items.size > 1) {
+            val firstItem = items.first()
             if (firstItem.contains("/")) {
                 val segments = firstItem.split("/").filter { it.isNotBlank() }
                 if (segments.size > 1) {
@@ -52,13 +55,14 @@ object TimeUtils {
         }
         
         // Single file
-        if (outputNames.contains("/")) {
-            val name = outputNames.substringAfterLast("/")
+        val outputName = items.first()
+        if (outputName.contains("/")) {
+            val name = outputName.substringAfterLast("/")
             if (name.isNotBlank()) {
                 return name
             }
         }
         
-        return outputNames
+        return outputName
     }
 }

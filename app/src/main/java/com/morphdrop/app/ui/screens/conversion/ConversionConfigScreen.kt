@@ -81,6 +81,11 @@ fun ConversionConfigScreen(
         else -> arrayOf("*/*")
     }
 
+    val isImageConversion = when (state.conversionType?.id) {
+        "images_to_pdf", "compress_images", "image_converter" -> true
+        else -> false
+    }
+
     val filePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenMultipleDocuments()
     ) { uris: List<Uri> ->
@@ -89,9 +94,21 @@ fun ConversionConfigScreen(
         }
     }
 
+    val imagePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickMultipleVisualMedia()
+    ) { uris: List<Uri> ->
+        if (uris.isNotEmpty()) {
+            viewModel.onFilesSelected(context, uris)
+        }
+    }
+
     LaunchedEffect(Unit) {
         if (state.selectedFileUris.isEmpty()) {
-            filePicker.launch(mimeFilter)
+            if (isImageConversion) {
+                imagePicker.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+            } else {
+                filePicker.launch(mimeFilter)
+            }
         }
     }
 
@@ -99,7 +116,13 @@ fun ConversionConfigScreen(
         state = state,
         isFolderOutput = viewModel.isFolderOutput(state.conversionType),
         onNavigateBack = onNavigateBack,
-        onPickFile = { filePicker.launch(mimeFilter) },
+        onPickFile = {
+            if (isImageConversion) {
+                imagePicker.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+            } else {
+                filePicker.launch(mimeFilter)
+            }
+        },
         onOutputFormatChanged = viewModel::onOutputFormatChanged,
         onQualityChanged = viewModel::onQualityChanged,
         onPageRangeStartChanged = viewModel::onPageRangeStartChanged,
