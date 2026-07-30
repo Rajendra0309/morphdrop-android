@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.ripple
 import androidx.compose.material3.Text
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -50,16 +51,12 @@ fun PrimaryButton(
         )
         .clip(shape)
         .background(
-            brush = if (enabled) {
-                Brush.horizontalGradient(listOf(NeonEmerald, NeonEmerald.copy(alpha = 0.8f)))
-            } else {
-                Brush.horizontalGradient(listOf(Color(0xFFB0BEC5), Color(0xFFCFD8DC)))
-            }
+            color = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
         )
         .clickable(
             enabled = enabled,
             interactionSource = interactionSource,
-            indication = ripple(color = Color.White),
+            indication = ripple(color = if (enabled) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant),
             onClick = {
                 haptic.click()
                 onClick()
@@ -73,7 +70,7 @@ fun PrimaryButton(
     ) {
         Text(
             text = text,
-            color = Color.White,
+            color = if (enabled) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
             fontSize = 16.sp,
             fontWeight = FontWeight.SemiBold
         )

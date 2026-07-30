@@ -70,6 +70,7 @@ class ConversionWorker @AssistedInject constructor(
         const val KEY_TARGET_FORMAT = "target_format"
 
         const val KEY_OUTPUT_URI = "output_uri"
+        const val KEY_OUTPUT_URIS = "output_uris"
         const val KEY_ERROR = "error"
     }
 
@@ -89,6 +90,8 @@ class ConversionWorker @AssistedInject constructor(
         }
 
         try {
+            val outputFileName = inputData.getString(KEY_OUTPUT_FILE_NAME) ?: "Converted_File"
+            
             try {
                 val foregroundInfo = notificationHelper.createForegroundInfo(
                     notificationId,
@@ -100,7 +103,10 @@ class ConversionWorker @AssistedInject constructor(
                 // Foreground service may be constrained by OS policy or missing permission
             }
             notificationHelper.showProgressNotification(notificationId, conversionType, 10)
-            setProgress(workDataOf("progress" to 10))
+            setProgress(workDataOf(
+                "progress" to 10,
+                "output_name" to outputFileName
+            ))
 
             val resultUris: List<Uri> = when (conversionType) {
                 "pdf_to_images" -> {
@@ -109,7 +115,14 @@ class ConversionWorker @AssistedInject constructor(
                     val rangeStr = inputData.getString(KEY_PAGE_RANGE)
                     val pageRange = parsePageRange(rangeStr)
                     val formatStr = inputData.getString(KEY_TARGET_FORMAT) ?: "png"
-                    pdfToImagesUseCase(pdfUri = uri, outputFormat = formatStr, quality = quality, pageRange = pageRange)
+                    val outName = inputData.getString(KEY_OUTPUT_FILE_NAME)
+                    pdfToImagesUseCase(
+                        pdfUri = uri, 
+                        outputFormat = formatStr, 
+                        quality = quality, 
+                        pageRange = pageRange,
+                        outputFolderName = outName
+                    )
                 }
 
                 "images_to_pdf", "image_to_pdf" -> {
@@ -184,7 +197,8 @@ class ConversionWorker @AssistedInject constructor(
                     val uri = Uri.parse(requireNotNull(inputUriString))
                     val rangeStr = inputData.getString(KEY_PAGE_RANGE)
                     val ranges = parsePageRanges(rangeStr)
-                    splitPdfUseCase(pdfUri = uri, pageRanges = ranges)
+                    val outName = inputData.getString(KEY_OUTPUT_FILE_NAME)
+                    splitPdfUseCase(pdfUri = uri, pageRanges = ranges, outputFolderName = outName)
                 }
 
                 "compress_pdf" -> {
@@ -246,12 +260,20 @@ class ConversionWorker @AssistedInject constructor(
 
             val duration = System.currentTimeMillis() - startTime
             val outputNames = resultUris.joinToString(",") { Uri.parse(it.toString()).lastPathSegment ?: "converted_file" }
+            val outUrisString = resultUris.joinToString(",") { it.toString() }
+            
+            // Determine display name (folder name for multi-file, file name for single)
+            val chosenDisplayName = inputData.getString(KEY_OUTPUT_FILE_NAME) 
+                ?: outputNames.split(",").firstOrNull() 
+                ?: "Converted File"
 
             historyRepository.insertHistory(
                 ConversionHistoryEntity(
                     conversionType = conversionType,
                     inputFileName = inputFileName,
                     outputFileNames = outputNames,
+                    outputUris = outUrisString,
+                    displayName = chosenDisplayName,
                     timestamp = System.currentTimeMillis(),
                     duration = duration,
                     success = true
@@ -265,7 +287,12 @@ class ConversionWorker @AssistedInject constructor(
                 primaryOutputUri
             )
 
-            Result.success(workDataOf(KEY_OUTPUT_URI to primaryOutputUri.toString()))
+            Result.success(
+                workDataOf(
+                    KEY_OUTPUT_URI to primaryOutputUri.toString(),
+                    KEY_OUTPUT_URIS to outUrisString
+                )
+            )
         } catch (e: Exception) {
             val duration = System.currentTimeMillis() - startTime
             historyRepository.insertHistory(
@@ -273,6 +300,8 @@ class ConversionWorker @AssistedInject constructor(
                     conversionType = conversionType,
                     inputFileName = inputFileName,
                     outputFileNames = "",
+                    outputUris = "",
+                    displayName = "Failed Conversion",
                     timestamp = System.currentTimeMillis(),
                     duration = duration,
                     success = false

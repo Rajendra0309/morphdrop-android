@@ -8,9 +8,11 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -31,6 +33,8 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             val isDarkMode by viewModel.isDarkMode.collectAsState()
+            val showSearchFab by viewModel.showSearchFab.collectAsState()
+            val onSearchFabClick by viewModel.onSearchFabClick.collectAsState()
             
             MorphDropTheme(darkTheme = isDarkMode) {
                 val navController = rememberNavController()
@@ -44,7 +48,12 @@ class MainActivity : ComponentActivity() {
                 )
 
                 Scaffold(
-                    bottomBar = {
+                    containerColor = MaterialTheme.colorScheme.background,
+                    contentColor = MaterialTheme.colorScheme.onBackground
+                ) { _ ->
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        NavGraph(navController = navController, mainViewModel = viewModel)
+                        
                         if (showBottomNav) {
                             MorphDropBottomNavigation(
                                 currentRoute = currentRoute,
@@ -56,13 +65,12 @@ class MainActivity : ComponentActivity() {
                                         launchSingleTop = true
                                         restoreState = true
                                     }
-                                }
+                                },
+                                showSearchIcon = if (currentRoute == Screen.Home.route) showSearchFab else false,
+                                onSearchClick = { onSearchFabClick?.invoke() },
+                                modifier = Modifier.align(Alignment.BottomCenter)
                             )
                         }
-                    }
-                ) { innerPadding ->
-                    Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
-                        NavGraph(navController = navController)
                     }
                 }
             }

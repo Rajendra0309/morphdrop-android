@@ -16,7 +16,7 @@ import javax.inject.Inject
 
 data class ProcessingUiState(
     val conversionType: ConversionType? = null,
-    val fileName: String = "Document.pdf",
+    val fileName: String = "Processing...",
     val progress: Float = 0f,
     val currentStage: String = "Initializing conversion...",
     val isCompleted: Boolean = false,
@@ -51,6 +51,7 @@ class ProcessingViewModel @Inject constructor(
             workManager.getWorkInfoByIdFlow(workId).collect { workInfo ->
                 if (workInfo != null) {
                     val rawProgress = workInfo.progress.getInt("progress", 0)
+                    val outputName = workInfo.progress.getString("output_name") ?: ""
                     val progress = (rawProgress / 100f).coerceIn(0f, 1f)
                     val stage = when {
                         progress < 0.2f -> "Initializing conversion..."
@@ -63,6 +64,7 @@ class ProcessingViewModel @Inject constructor(
                         it.copy(
                             progress = progress,
                             currentStage = stage,
+                            fileName = outputName.ifBlank { it.conversionType?.name ?: it.fileName },
                             isCompleted = workInfo.state == androidx.work.WorkInfo.State.SUCCEEDED,
                             isCancelled = workInfo.state == androidx.work.WorkInfo.State.CANCELLED || workInfo.state == androidx.work.WorkInfo.State.FAILED
                         )

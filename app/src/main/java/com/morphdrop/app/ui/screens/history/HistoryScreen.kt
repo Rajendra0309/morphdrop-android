@@ -1,8 +1,8 @@
 package com.morphdrop.app.ui.screens.history
 
 import android.content.res.Configuration
-import android.text.format.DateUtils
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Error
@@ -35,7 +36,8 @@ import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -44,27 +46,37 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Devices
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.morphdrop.app.data.local.entity.ConversionHistoryEntity
 import com.morphdrop.app.ui.components.EmptyStateAnimation
+import com.morphdrop.app.ui.components.MorphDropTopAppBar
 import com.morphdrop.app.ui.theme.MorphDropTheme
+import com.morphdrop.app.ui.util.TimeUtils
 
 @Composable
 fun HistoryScreen(
     onNavigateBack: () -> Unit = {},
+    onNavigateToDetail: (historyId: Long) -> Unit = {},
     viewModel: HistoryViewModel = hiltViewModel()
 ) {
     val historyList by viewModel.historyList.collectAsStateWithLifecycle()
     
+    // Stabilize callbacks to prevent lambda mismatch crashes
+    val stabilizedOnDetail = remember(onNavigateToDetail) {
+        { item: ConversionHistoryEntity -> onNavigateToDetail(item.id) }
+    }
+    
     HistoryScreenContent(
         historyList = historyList,
         onClearAll = { viewModel.clearAll() },
-        onDeleteItem = { viewModel.deleteItem(it) }
+        onDeleteItem = { viewModel.deleteItem(it) },
+        onItemClick = stabilizedOnDetail
     )
 }
 
@@ -73,7 +85,8 @@ fun HistoryScreen(
 fun HistoryScreenContent(
     historyList: List<ConversionHistoryEntity>,
     onClearAll: () -> Unit,
-    onDeleteItem: (ConversionHistoryEntity) -> Unit
+    onDeleteItem: (ConversionHistoryEntity) -> Unit,
+    onItemClick: (ConversionHistoryEntity) -> Unit
 ) {
     var showClearDialog by remember { mutableStateOf(false) }
 
@@ -87,7 +100,7 @@ fun HistoryScreenContent(
                     onClearAll()
                     showClearDialog = false
                 }) {
-                    Text("Clear All", color = MaterialTheme.colorScheme.error)
+                    Text("Clear All", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
@@ -98,16 +111,15 @@ fun HistoryScreenContent(
         )
     }
 
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
+
     Scaffold(
+        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = "History",
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                },
+            MorphDropTopAppBar(
+                title = "History",
+                scrollBehavior = scrollBehavior,
+                showBackArrow = false,
                 actions = {
                     if (historyList.isNotEmpty()) {
                         IconButton(onClick = { showClearDialog = true }) {
@@ -144,6 +156,7 @@ fun HistoryScreenContent(
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
                     )
+                    Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         text = "Your converted files will appear here",
                         style = MaterialTheme.typography.bodyMedium,
@@ -162,6 +175,7 @@ fun HistoryScreenContent(
                 items(historyList, key = { it.id }) { item ->
                     HistoryItemCard(
                         item = item,
+                        onClick = { onItemClick(item) },
                         onDelete = { onDeleteItem(item) }
                     )
                 }
@@ -176,19 +190,26 @@ fun HistoryScreenContent(
 @Composable
 private fun HistoryItemCard(
     item: ConversionHistoryEntity,
+    onClick: () -> Unit,
     onDelete: () -> Unit
 ) {
     val relativeTime = remember(item.timestamp) {
-        DateUtils.getRelativeTimeSpanString(
-            item.timestamp,
-            System.currentTimeMillis(),
-            DateUtils.MINUTE_IN_MILLIS
-        ).toString()
+        TimeUtils.formatRelativeTime(item.timestamp)
+    }
+    val outputName = remember(item.displayName, item.outputFileNames) {
+        item.displayName.ifBlank {
+            TimeUtils.formatOutputDisplayName(item.outputFileNames)
+        }
     }
 
     OutlinedCard(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp)
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.outlinedCardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+        )
     ) {
         Column(
             modifier = Modifier
@@ -201,8 +222,8 @@ private fun HistoryItemCard(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(40.dp)
-                        .clip(RoundedCornerShape(10.dp))
+                        .size(42.dp)
+                        .clip(RoundedCornerShape(12.dp))
                         .background(
                             if (item.success) MaterialTheme.colorScheme.primaryContainer
                             else MaterialTheme.colorScheme.errorContainer
@@ -238,13 +259,22 @@ private fun HistoryItemCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.height(4.dp))
-                    Icon(
-                        imageVector = if (item.success) Icons.Default.CheckCircle else Icons.Default.Error,
-                        contentDescription = null,
-                        tint = if (item.success) MaterialTheme.colorScheme.primary 
-                               else MaterialTheme.colorScheme.error,
-                        modifier = Modifier.size(16.dp)
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = if (item.success) Icons.Default.CheckCircle else Icons.Default.Error,
+                            contentDescription = null,
+                            tint = if (item.success) MaterialTheme.colorScheme.primary 
+                                   else MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Icon(
+                            imageVector = Icons.Default.ChevronRight,
+                            contentDescription = "View Details",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
             }
 
@@ -260,7 +290,7 @@ private fun HistoryItemCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Output: ${item.outputFileNames}",
+                    text = "Output: $outputName",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.weight(1f),
@@ -282,7 +312,7 @@ private fun HistoryItemCard(
     }
 }
 
-@Preview(name = "Light Mode", showBackground = true)
+@Preview(name = "Light Mode", showBackground = true, showSystemUi = true, device = Devices.PIXEL_7_PRO)
 @Composable
 fun HistoryScreenLightPreview() {
     MorphDropTheme(darkTheme = false) {
@@ -306,12 +336,13 @@ fun HistoryScreenLightPreview() {
                 )
             ),
             onClearAll = {},
-            onDeleteItem = {}
+            onDeleteItem = {},
+            onItemClick = {}
         )
     }
 }
 
-@Preview(name = "Dark Mode", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
+@Preview(name = "Dark Mode", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true, showSystemUi = true, device = Devices.PIXEL_7_PRO)
 @Composable
 fun HistoryScreenDarkPreview() {
     MorphDropTheme(darkTheme = true) {
@@ -327,7 +358,8 @@ fun HistoryScreenDarkPreview() {
                 )
             ),
             onClearAll = {},
-            onDeleteItem = {}
+            onDeleteItem = {},
+            onItemClick = {}
         )
     }
 }

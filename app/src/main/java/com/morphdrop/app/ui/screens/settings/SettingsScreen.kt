@@ -3,6 +3,8 @@ package com.morphdrop.app.ui.screens.settings
 import android.content.Intent
 import android.content.res.Configuration
 import android.net.Uri
+import android.os.Environment
+import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -19,13 +21,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BugReport
-import androidx.compose.material.icons.filled.ColorLens
+import androidx.compose.material.icons.filled.CleaningServices
 import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Language
-import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Policy
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -35,40 +37,68 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Devices
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.morphdrop.app.ui.components.MorphDropTopAppBar
+import com.morphdrop.app.ui.components.ThemeAnimationManager
 import com.morphdrop.app.ui.theme.MorphDropTheme
 
 @Composable
 fun SettingsScreen(
+    onNavigateBack: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
+    LaunchedEffect(Unit) {
+        viewModel.calculateCacheSize(context)
+    }
+
     SettingsScreenContent(
         state = uiState,
         onToggleDarkMode = viewModel::toggleDarkMode,
+        onClearCache = {
+            viewModel.clearCache(context)
+            Toast.makeText(context, "Cache cleared successfully", Toast.LENGTH_SHORT).show()
+        },
+        onOutputFolderChange = viewModel::updateOutputFolderName,
         onRateApp = {
             val intent = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=${context.packageName}"))
             try {
                 context.startActivity(intent)
             } catch (e: Exception) {
-                // Fallback for emulator or no Play Store
+                Toast.makeText(context, "MorphDrop v${uiState.appVersion}", Toast.LENGTH_SHORT).show()
             }
         },
         onReportBug = {
             val intent = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:support@morphdrop.app"))
-            context.startActivity(intent)
+            try {
+                context.startActivity(intent)
+            } catch (e: Exception) {
+                Toast.makeText(context, "Email support@morphdrop.app", Toast.LENGTH_SHORT).show()
+            }
         }
     )
 }
@@ -78,19 +108,73 @@ fun SettingsScreen(
 fun SettingsScreenContent(
     state: SettingsUiState,
     onToggleDarkMode: (Boolean) -> Unit,
+    onClearCache: () -> Unit,
+    onOutputFolderChange: (String) -> Unit,
     onRateApp: () -> Unit,
     onReportBug: () -> Unit
 ) {
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = "Settings",
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Bold
-                    )
+    var showClearCacheDialog by remember { mutableStateOf(false) }
+    var showEditFolderDialog by remember { mutableStateOf(false) }
+    var tempFolderName by remember { mutableStateOf(state.defaultOutputDirectory) }
+
+    if (showClearCacheDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearCacheDialog = false },
+            title = { Text("Clear App Cache") },
+            text = { Text("Are you sure you want to clear temporary cached files (${state.cacheSizeFormatted})?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    onClearCache()
+                    showClearCacheDialog = false
+                }) {
+                    Text("Clear", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                 }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearCacheDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (showEditFolderDialog) {
+        AlertDialog(
+            onDismissRequest = { showEditFolderDialog = false },
+            title = { Text("Edit Output Folder Name") },
+            text = {
+                TextField(
+                    value = tempFolderName,
+                    onValueChange = { tempFolderName = it },
+                    label = { Text("Folder Name") },
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    onOutputFolderChange(tempFolderName)
+                    showEditFolderDialog = false
+                }) {
+                    Text("Save", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showEditFolderDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
+
+    Scaffold(
+        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+        topBar = {
+            MorphDropTopAppBar(
+                title = "Settings",
+                scrollBehavior = scrollBehavior,
+                showBackArrow = false
             )
         }
     ) { innerPadding ->
@@ -99,7 +183,7 @@ fun SettingsScreenContent(
                 .fillMaxSize()
                 .padding(innerPadding)
                 .verticalScroll(rememberScrollState())
-                .padding(16.dp),
+                .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             SettingsSection(title = "Appearance") {
@@ -110,26 +194,17 @@ fun SettingsScreenContent(
                     checked = state.isDarkMode,
                     onCheckedChange = onToggleDarkMode
                 )
-                
-                HorizontalDivider(
-                    modifier = Modifier.padding(vertical = 4.dp),
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                )
-                
-                SettingsItem(
-                    title = "Dynamic Colors",
-                    description = "Adapts to your wallpaper (Android 12+)",
-                    icon = Icons.Default.ColorLens,
-                    onClick = { }
-                )
             }
 
             SettingsSection(title = "General") {
                 SettingsItem(
                     title = "Output Folder",
                     description = state.defaultOutputDirectory,
-                    icon = Icons.Default.Info,
-                    onClick = { }
+                    icon = Icons.Default.Folder,
+                    onClick = {
+                        tempFolderName = state.defaultOutputDirectory
+                        showEditFolderDialog = true
+                    }
                 )
                 
                 HorizontalDivider(
@@ -138,10 +213,10 @@ fun SettingsScreenContent(
                 )
 
                 SettingsItem(
-                    title = "Cache Size",
-                    description = state.cacheSizeFormatted,
-                    icon = Icons.Default.Info,
-                    onClick = { }
+                    title = "Clear Cache",
+                    description = "Temporary size: ${state.cacheSizeFormatted}",
+                    icon = Icons.Default.CleaningServices,
+                    onClick = { showClearCacheDialog = true }
                 )
             }
 
@@ -269,11 +344,18 @@ private fun SettingsToggleItem(
             Text(text = title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
             Text(text = description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            modifier = Modifier.onGloballyPositioned { coordinates ->
+                val bounds = coordinates.boundsInWindow()
+                ThemeAnimationManager.revealCenter = bounds.center
+            }
+        )
     }
 }
 
-@Preview(name = "Light Mode", showBackground = true)
+@Preview(name = "Light Mode", showBackground = true, showSystemUi = true, device = Devices.PIXEL_7_PRO)
 @Composable
 fun SettingsScreenLightPreview() {
     MorphDropTheme(darkTheme = false) {
@@ -285,13 +367,15 @@ fun SettingsScreenLightPreview() {
                 appVersion = "1.0.0"
             ),
             onToggleDarkMode = {},
+            onClearCache = {},
+            onOutputFolderChange = {},
             onRateApp = {},
             onReportBug = {}
         )
     }
 }
 
-@Preview(name = "Dark Mode", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
+@Preview(name = "Dark Mode", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true, showSystemUi = true, device = Devices.PIXEL_7_PRO)
 @Composable
 fun SettingsScreenDarkPreview() {
     MorphDropTheme(darkTheme = true) {
@@ -303,6 +387,8 @@ fun SettingsScreenDarkPreview() {
                 appVersion = "1.0.0"
             ),
             onToggleDarkMode = {},
+            onClearCache = {},
+            onOutputFolderChange = {},
             onRateApp = {},
             onReportBug = {}
         )

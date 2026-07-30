@@ -33,26 +33,33 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.TopAppBarScrollBehavior
+import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Devices
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.morphdrop.app.ui.components.MorphDropTopAppBar
 import com.morphdrop.app.ui.components.PrimaryButton
 import com.morphdrop.app.ui.theme.MorphDropTheme
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MergePdfScreen(
     onNavigateBack: () -> Unit = {},
-    onNavigateToProcessing: (workId: String) -> Unit = {},
+    onNavigateToProcessing: (conversionTypeId: String, workId: String) -> Unit = { _, _ -> },
     viewModel: MergePdfViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.state.collectAsStateWithLifecycle()
@@ -64,14 +71,19 @@ fun MergePdfScreen(
         viewModel.onFilesSelected(uris)
     }
 
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
+
     MergePdfScreenContent(
         selectedFiles = uiState.selectedFiles,
+        outputFileName = uiState.outputFileName,
+        scrollBehavior = scrollBehavior,
         onNavigateBack = onNavigateBack,
         onPickFiles = { filePicker.launch(arrayOf("application/pdf")) },
         onRemoveFile = { viewModel.onRemoveFile(it) },
+        onOutputFileNameChanged = { viewModel.onOutputFileNameChanged(it) },
         onMerge = {
             val workId = viewModel.startMerge(context)
-            if (workId != null) onNavigateToProcessing(workId.toString())
+            if (workId != null) onNavigateToProcessing("merge_pdf", workId.toString())
         }
     )
 }
@@ -79,27 +91,23 @@ fun MergePdfScreen(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MergePdfScreenContent(
-    selectedFiles: List<Uri>,
+    selectedFiles: List<FileUriItem>,
+    outputFileName: String,
+    scrollBehavior: TopAppBarScrollBehavior,
     onNavigateBack: () -> Unit,
     onPickFiles: () -> Unit,
     onRemoveFile: (Uri) -> Unit,
+    onOutputFileNameChanged: (String) -> Unit,
     onMerge: () -> Unit
 ) {
     Scaffold(
+        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = "Merge PDFs",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                }
+            MorphDropTopAppBar(
+                title = "Merge PDFs",
+                scrollBehavior = scrollBehavior,
+                showBackArrow = true,
+                onBackClick = onNavigateBack
             )
         },
         bottomBar = {
@@ -121,12 +129,29 @@ fun MergePdfScreenContent(
         if (selectedFiles.isEmpty()) {
             EmptyState(onAddFiles = onPickFiles)
         } else {
-            FileList(
-                uris = selectedFiles,
-                onRemove = onRemoveFile,
-                onAddMore = onPickFiles,
-                modifier = Modifier.padding(innerPadding)
-            )
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+            ) {
+                OutlinedTextField(
+                    value = outputFileName,
+                    onValueChange = onOutputFileNameChanged,
+                    label = { Text("Output File Name") },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                FileList(
+                    files = selectedFiles,
+                    onRemove = onRemoveFile,
+                    onAddMore = onPickFiles,
+                    modifier = Modifier.weight(1f)
+                )
+            }
         }
     }
 }
@@ -173,7 +198,7 @@ private fun EmptyState(onAddFiles: () -> Unit) {
 
 @Composable
 private fun FileList(
-    uris: List<Uri>,
+    files: List<FileUriItem>,
     onRemove: (Uri) -> Unit,
     onAddMore: () -> Unit,
     modifier: Modifier = Modifier
@@ -183,7 +208,7 @@ private fun FileList(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        items(uris) { uri ->
+        items(files) { item ->
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
@@ -198,12 +223,12 @@ private fun FileList(
                     Icon(imageVector = Icons.Default.Description, contentDescription = null)
                     Spacer(modifier = Modifier.width(12.dp))
                     Text(
-                        text = uri.lastPathSegment ?: "Unknown File",
+                        text = item.name,
                         modifier = Modifier.weight(1f),
                         maxLines = 1,
                         style = MaterialTheme.typography.bodyLarge
                     )
-                    IconButton(onClick = { onRemove(uri) }) {
+                    IconButton(onClick = { onRemove(item.uri) }) {
                         Icon(
                             imageVector = Icons.Default.RemoveCircleOutline,
                             contentDescription = "Remove",
@@ -229,29 +254,40 @@ private fun FileList(
     }
 }
 
-@Preview(name = "Light Mode", showBackground = true)
+@OptIn(ExperimentalMaterial3Api::class)
+@Preview(name = "Light Mode", showBackground = true, showSystemUi = true, device = Devices.PIXEL_7_PRO)
 @Composable
 fun MergePdfScreenLightPreview() {
     MorphDropTheme(darkTheme = false) {
         MergePdfScreenContent(
-            selectedFiles = listOf(Uri.parse("file1.pdf"), Uri.parse("file2.pdf")),
+            selectedFiles = listOf(
+                FileUriItem(Uri.parse("file1.pdf"), "Work_Contract.pdf"),
+                FileUriItem(Uri.parse("file2.pdf"), "Identity_Proof.pdf")
+            ),
+            outputFileName = "merged_document.pdf",
+            scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(),
             onNavigateBack = {},
             onPickFiles = {},
             onRemoveFile = {},
+            onOutputFileNameChanged = {},
             onMerge = {}
         )
     }
 }
 
-@Preview(name = "Dark Mode", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
+@OptIn(ExperimentalMaterial3Api::class)
+@Preview(name = "Dark Mode", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true, showSystemUi = true, device = Devices.PIXEL_7_PRO)
 @Composable
 fun MergePdfScreenDarkPreview() {
     MorphDropTheme(darkTheme = true) {
         MergePdfScreenContent(
             selectedFiles = emptyList(),
+            outputFileName = "",
+            scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(),
             onNavigateBack = {},
             onPickFiles = {},
             onRemoveFile = {},
+            onOutputFileNameChanged = {},
             onMerge = {}
         )
     }

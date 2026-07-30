@@ -16,5 +16,8 @@ sealed class Screen(val route: String) {
     data object PdfPageEditor : Screen("page_editor")
     data object PdfPassword : Screen("protect_pdf")
     data object History : Screen("history")
+    data object HistoryDetail : Screen("history_detail/{historyId}") {
+        fun createRoute(historyId: Long) = "history_detail/$historyId"
+    }
     data object Settings : Screen("settings")
 }

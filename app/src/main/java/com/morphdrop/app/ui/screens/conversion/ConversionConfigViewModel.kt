@@ -138,10 +138,15 @@ class ConversionConfigViewModel @Inject constructor(
             _state.value.conversionType?.outputType?.extension ?: "pdf"
         }
 
-        val outName = if (selectedUris.size > 1) {
-            "converted_batch_${System.currentTimeMillis()}.$outputExt"
+        val outName = if (isFolderOutput(type)) {
+            if (selectedUris.size > 1) "converted_batch_${System.currentTimeMillis()}"
+            else "${baseName}_extracted"
         } else {
-            "${baseName}_converted.$outputExt"
+            if (selectedUris.size > 1) {
+                "converted_batch_${System.currentTimeMillis()}.$outputExt"
+            } else {
+                "${baseName}_converted.$outputExt"
+            }
         }
 
         _state.update {
@@ -164,11 +169,19 @@ class ConversionConfigViewModel @Inject constructor(
     }
 
     fun onOutputFormatChanged(format: String) {
+        val currentType = _state.value.conversionType
         val baseName = _state.value.outputFileName.substringBeforeLast('.')
+        
+        val newName = if (isFolderOutput(currentType)) {
+            baseName // No extension for folder outputs
+        } else {
+            "$baseName.$format"
+        }
+
         _state.update {
             it.copy(
                 outputFormat = format,
-                outputFileName = "$baseName.$format"
+                outputFileName = newName
             )
         }
     }
@@ -228,6 +241,15 @@ class ConversionConfigViewModel @Inject constructor(
         } catch (e: Exception) {
             null
         }
+    }
+
+    fun isFolderOutput(type: ConversionType?): Boolean {
+        val t = type ?: return false
+        // Split PDF always creates multiple files (by definition).
+        // PDF to Images can be 1 or more, but typically user wants a folder.
+        // However, if the user explicitly wants "File Name" for 1 page, we need to know page count.
+        return t.id in listOf("split_pdf", "compress_images", "organize_pdf") || 
+               (t.id == "pdf_to_images" && (_state.value.pageRangeEnd.toIntOrNull() ?: 2) - (_state.value.pageRangeStart.toIntOrNull() ?: 1) > 0)
     }
 
     private fun isImageOutput(type: ConversionType): Boolean {

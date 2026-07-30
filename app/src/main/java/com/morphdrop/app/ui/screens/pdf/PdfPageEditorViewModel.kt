@@ -1,17 +1,23 @@
 package com.morphdrop.app.ui.screens.pdf
 
 import android.content.Context
+import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.workDataOf
+import com.morphdrop.app.util.FileHelper
 import com.morphdrop.app.worker.ConversionWorker
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import java.util.UUID
 import javax.inject.Inject
 
@@ -23,17 +29,45 @@ data class PageData(
 
 data class PdfPageEditorState(
     val selectedFile: Uri? = null,
-    val pages: List<PageData> = emptyList()
+    val fileName: String = "",
+    val pages: List<PageData> = emptyList(),
+    val outputFileName: String = "",
+    val isLoading: Boolean = false
 )
 
 @HiltViewModel
-class PdfPageEditorViewModel @Inject constructor() : ViewModel() {
+class PdfPageEditorViewModel @Inject constructor(
+    @ApplicationContext private val context: Context
+) : ViewModel() {
     private val _state = MutableStateFlow(PdfPageEditorState())
     val state: StateFlow<PdfPageEditorState> = _state.asStateFlow()
 
-    fun onFileSelected(uri: Uri) {
-        // In a real app, we'd load the page count/thumbnails here.
-        _state.update { it.copy(selectedFile = uri) }
+    fun onFileSelected(uri: Uri?) {
+        if (uri == null) return
+        val name = FileHelper.getFileName(context, uri)
+        
+        _state.update { it.copy(
+            selectedFile = uri,
+            fileName = name,
+            outputFileName = if (name.isNotBlank()) name.substringBeforeLast(".") + "_edited.pdf" else "",
+            isLoading = true
+        ) }
+
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                context.contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
+                    val renderer = PdfRenderer(pfd)
+                    val pageCount = renderer.pageCount
+                    val pageList = (0 until pageCount).map { i ->
+                        PageData(number = i + 1, originalIndex = i)
+                    }
+                    _state.update { it.copy(pages = pageList, isLoading = false) }
+                    renderer.close()
+                }
+            } catch (e: Exception) {
+                _state.update { it.copy(isLoading = false) }
+            }
+        }
     }
 
     fun rotatePage(originalIndex: Int) {
@@ -47,8 +81,8 @@ class PdfPageEditorViewModel @Inject constructor() : ViewModel() {
         }
     }
 
-    fun onPagesUpdated(pages: List<PageData>) {
-        _state.update { it.copy(pages = pages) }
+    fun onOutputFileNameChanged(name: String) {
+        _state.update { it.copy(outputFileName = name) }
     }
 
     fun startEditing(context: Context): UUID? {
@@ -56,16 +90,17 @@ class PdfPageEditorViewModel @Inject constructor() : ViewModel() {
         val uri = currentState.selectedFile ?: return null
         val pages = currentState.pages
 
-        val pageOrder = pages.map { it.number - 1 }.joinToString(",")
+        val pageOrder = pages.map { it.originalIndex }.joinToString(",")
         val rotations = pages.filter { it.rotation != 0 }
-            .joinToString(",") { "${it.number - 1}:${it.rotation}" }
+            .joinToString(",") { "${it.originalIndex}:${it.rotation}" }
 
         val workRequest = OneTimeWorkRequestBuilder<ConversionWorker>()
             .setInputData(workDataOf(
                 ConversionWorker.KEY_CONVERSION_TYPE to "page_editor",
                 ConversionWorker.KEY_INPUT_URI to uri.toString(),
                 ConversionWorker.KEY_PAGE_ORDER to pageOrder,
-                "page_rotations" to rotations
+                "page_rotations" to rotations,
+                ConversionWorker.KEY_OUTPUT_FILE_NAME to currentState.outputFileName
             ))
             .build()
 

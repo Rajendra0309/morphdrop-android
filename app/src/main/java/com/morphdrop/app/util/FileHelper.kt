@@ -175,9 +175,24 @@ object FileHelper {
     }
 
     fun createOutputDirectory(context: Context, folderName: String): Uri {
-        val dir = File(context.cacheDir, folderName)
-        if (!dir.exists()) dir.mkdirs()
-        return Uri.fromFile(dir)
+        val externalDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
+        val folder = File(externalDir, folderName)
+        if (!folder.exists()) folder.mkdirs()
+        return Uri.fromFile(folder)
+    }
+
+    fun getOutputFolderUri(folderName: String): Uri {
+        val externalDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
+        val folder = File(externalDir, folderName)
+        return Uri.fromFile(folder)
+    }
+
+    fun openFolderIntent(folderName: String): Intent {
+        val uri = getOutputFolderUri(folderName)
+        return Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "resource/folder")
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
     }
 
     fun saveToDirectory(context: Context, directoryName: String, fileName: String, data: ByteArray): Uri {

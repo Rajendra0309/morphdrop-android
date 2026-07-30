@@ -19,19 +19,23 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Devices
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.morphdrop.app.ui.components.MorphDropTopAppBar
 import com.morphdrop.app.ui.components.PrimaryButton
 import com.morphdrop.app.ui.theme.MorphDropTheme
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SplitPdfScreen(
     onNavigateBack: () -> Unit = {},
-    onNavigateToProcessing: (workId: String) -> Unit = {},
+    onNavigateToProcessing: (conversionTypeId: String, workId: String) -> Unit = { _, _ -> },
     viewModel: SplitPdfViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.state.collectAsStateWithLifecycle()
@@ -39,18 +43,22 @@ fun SplitPdfScreen(
 
     val filePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
-    ) { uri ->
+    ) { uri: Uri? ->
         viewModel.onFileSelected(uri)
     }
 
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
+
     SplitPdfScreenContent(
         state = uiState,
+        scrollBehavior = scrollBehavior,
         onNavigateBack = onNavigateBack,
         onPickFile = { filePicker.launch(arrayOf("application/pdf")) },
         onPageRangesChanged = { viewModel.onPageRangesChanged(it) },
+        onOutputFolderNameChanged = { viewModel.onOutputFolderNameChanged(it) },
         onSplit = {
             val workId = viewModel.startSplit(context)
-            if (workId != null) onNavigateToProcessing(workId.toString())
+            if (workId != null) onNavigateToProcessing("split_pdf", workId.toString())
         }
     )
 }
@@ -59,20 +67,21 @@ fun SplitPdfScreen(
 @Composable
 fun SplitPdfScreenContent(
     state: SplitPdfState,
+    scrollBehavior: TopAppBarScrollBehavior,
     onNavigateBack: () -> Unit,
     onPickFile: () -> Unit,
     onPageRangesChanged: (String) -> Unit,
+    onOutputFolderNameChanged: (String) -> Unit,
     onSplit: () -> Unit
 ) {
     Scaffold(
+        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            TopAppBar(
-                title = { Text("Split PDF", fontWeight = FontWeight.Bold) },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                }
+            MorphDropTopAppBar(
+                title = "Split PDF",
+                scrollBehavior = scrollBehavior,
+                showBackArrow = true,
+                onBackClick = onNavigateBack
             )
         }
     ) { innerPadding ->
@@ -130,7 +139,7 @@ fun SplitPdfScreenContent(
                         }
                         Spacer(modifier = Modifier.width(16.dp))
                         Text(
-                            text = state.selectedFile?.lastPathSegment ?: "No file selected",
+                            text = state.fileName.ifBlank { "No file selected" },
                             style = MaterialTheme.typography.bodyLarge,
                             fontWeight = FontWeight.SemiBold,
                             modifier = Modifier.weight(1f),
@@ -164,6 +173,17 @@ fun SplitPdfScreenContent(
                 supportingText = { Text("Use commas for multiple ranges") }
             )
 
+            Spacer(modifier = Modifier.height(16.dp))
+
+            OutlinedTextField(
+                value = state.outputFolderName,
+                onValueChange = onOutputFolderNameChanged,
+                label = { Text("Output Folder Name") },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                singleLine = true
+            )
+
             Spacer(modifier = Modifier.height(32.dp))
 
             PrimaryButton(
@@ -176,35 +196,45 @@ fun SplitPdfScreenContent(
     }
 }
 
-@Preview(name = "Light Mode", showBackground = true)
+@OptIn(ExperimentalMaterial3Api::class)
+@Preview(name = "Light Mode", showBackground = true, showSystemUi = true, device = Devices.PIXEL_7_PRO)
 @Composable
 fun SplitPdfScreenLightPreview() {
     MorphDropTheme(darkTheme = false) {
         SplitPdfScreenContent(
             state = SplitPdfState(
                 selectedFile = Uri.parse("document.pdf"),
-                pageRanges = "1-3"
+                fileName = "Project_Proposal.pdf",
+                pageRanges = "1-3",
+                outputFolderName = "Project_Proposal_Pages"
             ),
+            scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(),
             onNavigateBack = {},
             onPickFile = {},
             onPageRangesChanged = {},
+            onOutputFolderNameChanged = {},
             onSplit = {}
         )
     }
 }
 
-@Preview(name = "Dark Mode", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
+@OptIn(ExperimentalMaterial3Api::class)
+@Preview(name = "Dark Mode", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true, showSystemUi = true, device = Devices.PIXEL_7_PRO)
 @Composable
 fun SplitPdfScreenDarkPreview() {
     MorphDropTheme(darkTheme = true) {
         SplitPdfScreenContent(
             state = SplitPdfState(
                 selectedFile = null,
-                pageRanges = ""
+                fileName = "",
+                pageRanges = "",
+                outputFolderName = ""
             ),
+            scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(),
             onNavigateBack = {},
             onPickFile = {},
             onPageRangesChanged = {},
+            onOutputFolderNameChanged = {},
             onSplit = {}
         )
     }

@@ -25,7 +25,8 @@ class SplitPdfUseCase @Inject constructor(
 
     suspend operator fun invoke(
         pdfUri: Uri,
-        pageRanges: List<IntRange>
+        pageRanges: List<IntRange>,
+        outputFolderName: String? = null
     ): List<Uri> = withContext(Dispatchers.IO) {
         if (pageRanges.isEmpty()) throw SplitException.InvalidRange()
 
@@ -52,7 +53,8 @@ class SplitPdfUseCase @Inject constructor(
             val totalPages = sourceDoc.numberOfPages
 
             val baseFolder = settingsRepository.outputFolderName.first()
-            val folderName = "$baseFolder/split_pdf_${System.currentTimeMillis()}"
+            val chosenFolder = outputFolderName ?: "split_pdf_${System.currentTimeMillis()}"
+            val folderName = "$baseFolder/$chosenFolder"
             FileHelper.createOutputDirectory(context, folderName)
 
             for ((index, range) in pageRanges.withIndex()) {

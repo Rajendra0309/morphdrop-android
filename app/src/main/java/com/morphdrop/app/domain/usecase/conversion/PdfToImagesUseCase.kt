@@ -27,17 +27,24 @@ class PdfToImagesUseCase @Inject constructor(
         pdfUri: Uri,
         outputFormat: String = "png",
         quality: Int = 100,
-        pageRange: IntRange? = null
+        pageRange: IntRange? = null,
+        outputFolderName: String? = null
     ): List<Uri> = withContext(Dispatchers.IO) {
         val baseFolder = settingsRepository.outputFolderName.first()
         val rawFileName = FileHelper.getFileName(context, pdfUri)
         val nameWithoutExt = if (rawFileName.contains(".")) rawFileName.substringBeforeLast(".") else rawFileName
-        val folderName = if (nameWithoutExt.isBlank() || nameWithoutExt == "Input File") {
-            "pdf_to_images_${System.currentTimeMillis()}"
+        
+        val chosenFolder = if (!outputFolderName.isNullOrBlank()) {
+            outputFolderName
         } else {
-            "${nameWithoutExt}_images"
+            if (nameWithoutExt.isBlank() || nameWithoutExt == "Input File") {
+                "pdf_to_images_${System.currentTimeMillis()}"
+            } else {
+                "${nameWithoutExt}_images"
+            }
         }
-        val outputDir = "$baseFolder/$folderName"
+        
+        val outputDir = "$baseFolder/$chosenFolder"
         FileHelper.createOutputDirectory(context, outputDir)
         val results = mutableListOf<Uri>()
 
@@ -73,9 +80,10 @@ class PdfToImagesUseCase @Inject constructor(
                 start..end
             } ?: (0 until pageCount)
 
+            val isSinglePage = range.count() == 1
+
             for (i in range) {
                 val page = renderer.openPage(i)
-                // Render at 2x for good quality
                 val width = page.width * 2
                 val height = page.height * 2
                 val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
@@ -97,8 +105,20 @@ class PdfToImagesUseCase @Inject constructor(
                 bitmap.recycle()
 
                 val ext = if (compressFormat == Bitmap.CompressFormat.JPEG) "jpg" else "png"
-                val fileName = "page_${i + 1}.$ext"
-                val savedUri = FileHelper.saveToDirectory(context, outputDir, fileName, baos.toByteArray())
+                
+                val savedUri = if (isSinglePage) {
+                    // Save as a single file instead of folder if it's 1 page and a folder name was given
+                    val finalFileName = if (chosenFolder.isNotBlank()) {
+                        if (chosenFolder.lowercase().endsWith(".$ext")) chosenFolder else "$chosenFolder.$ext"
+                    } else {
+                        "page_${i + 1}.$ext"
+                    }
+                    FileHelper.saveToFile(context, baseFolder, finalFileName, baos.toByteArray())
+                } else {
+                    val fileName = "page_${i + 1}.$ext"
+                    FileHelper.saveToDirectory(context, outputDir, fileName, baos.toByteArray())
+                }
+                
                 results.add(savedUri)
                 baos.close()
             }

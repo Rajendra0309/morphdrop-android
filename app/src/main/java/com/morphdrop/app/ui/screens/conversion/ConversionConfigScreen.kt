@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -37,22 +38,25 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Devices
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.morphdrop.app.domain.model.ConversionType
 import com.morphdrop.app.ui.components.FormatBadge
+import com.morphdrop.app.ui.components.MorphDropTopAppBar
 import com.morphdrop.app.ui.components.PrimaryButton
 import com.morphdrop.app.ui.theme.MorphDropTheme
 import com.morphdrop.app.util.FileHelper
@@ -93,6 +97,7 @@ fun ConversionConfigScreen(
 
     ConversionConfigScreenContent(
         state = state,
+        isFolderOutput = viewModel.isFolderOutput(state.conversionType),
         onNavigateBack = onNavigateBack,
         onPickFile = { filePicker.launch(mimeFilter) },
         onOutputFormatChanged = viewModel::onOutputFormatChanged,
@@ -113,6 +118,7 @@ fun ConversionConfigScreen(
 @Composable
 fun ConversionConfigScreenContent(
     state: ConversionConfigState,
+    isFolderOutput: Boolean,
     onNavigateBack: () -> Unit,
     onPickFile: () -> Unit,
     onOutputFormatChanged: (String) -> Unit,
@@ -122,27 +128,16 @@ fun ConversionConfigScreenContent(
     onOutputFileNameChanged: (String) -> Unit,
     onConvert: () -> Unit
 ) {
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
+
     Scaffold(
+        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = state.conversionType?.name ?: "Configure",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back"
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                )
+            MorphDropTopAppBar(
+                title = state.conversionType?.name ?: "Configure",
+                scrollBehavior = scrollBehavior,
+                showBackArrow = true,
+                onBackClick = onNavigateBack
             )
         }
     ) { innerPadding ->
@@ -150,6 +145,7 @@ fun ConversionConfigScreenContent(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
+                .imePadding()
                 .padding(horizontal = 16.dp)
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(24.dp)
@@ -278,7 +274,8 @@ fun ConversionConfigScreenContent(
                 }
 
                 // Output Name
-                ConfigSection(title = "Output File Name") {
+                val nameLabel = if (isFolderOutput) "Output Folder Name" else "Output File Name"
+                ConfigSection(title = nameLabel) {
                     OutlinedTextField(
                         value = state.outputFileName,
                         onValueChange = onOutputFileNameChanged,
@@ -314,7 +311,7 @@ private fun ConfigSection(title: String, content: @Composable () -> Unit) {
     }
 }
 
-@Preview(name = "Light Mode", showBackground = true)
+@Preview(name = "Light Mode", showBackground = true, showSystemUi = true, device = Devices.PIXEL_7_PRO)
 @Composable
 fun ConversionConfigScreenLightPreview() {
     MorphDropTheme(darkTheme = false) {
@@ -334,6 +331,7 @@ fun ConversionConfigScreenLightPreview() {
                 outputFileName = "Sample_Document_Converted",
                 isConvertEnabled = true
             ),
+            isFolderOutput = false,
             onNavigateBack = {},
             onPickFile = {},
             onOutputFormatChanged = {},
@@ -346,7 +344,7 @@ fun ConversionConfigScreenLightPreview() {
     }
 }
 
-@Preview(name = "Dark Mode", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
+@Preview(name = "Dark Mode", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true, showSystemUi = true, device = Devices.PIXEL_7_PRO)
 @Composable
 fun ConversionConfigScreenDarkPreview() {
     MorphDropTheme(darkTheme = true) {
@@ -366,6 +364,7 @@ fun ConversionConfigScreenDarkPreview() {
                 outputFileName = "Sample_Document_Converted",
                 isConvertEnabled = true
             ),
+            isFolderOutput = false,
             onNavigateBack = {},
             onPickFile = {},
             onOutputFormatChanged = {},

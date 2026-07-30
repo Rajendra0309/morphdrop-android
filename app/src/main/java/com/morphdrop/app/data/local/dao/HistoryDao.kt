@@ -13,6 +13,9 @@ interface HistoryDao {
     @Query("SELECT * FROM conversion_history ORDER BY timestamp DESC")
     fun getAllHistory(): Flow<List<ConversionHistoryEntity>>
 
+    @Query("SELECT * FROM conversion_history WHERE id = :id")
+    fun getHistoryById(id: Long): Flow<ConversionHistoryEntity?>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertHistory(history: ConversionHistoryEntity): Long
 

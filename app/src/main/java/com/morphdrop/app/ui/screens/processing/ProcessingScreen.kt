@@ -16,21 +16,27 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.tooling.preview.Devices
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.morphdrop.app.ui.components.MorphDropTopAppBar
 import com.morphdrop.app.ui.theme.MorphDropTheme
 
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun ProcessingScreen(
     onNavigateToResult: () -> Unit = {},
@@ -50,18 +56,32 @@ fun ProcessingScreen(
         }
     }
 
+    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState())
+
     ProcessingScreenContent(
         state = state,
+        scrollBehavior = scrollBehavior,
         onCancel = { onCancel(viewModel.workIdString ?: "") }
     )
 }
 
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun ProcessingScreenContent(
     state: ProcessingUiState,
+    scrollBehavior: androidx.compose.material3.TopAppBarScrollBehavior,
     onCancel: () -> Unit
 ) {
-    Scaffold { innerPadding ->
+    Scaffold(
+        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+        topBar = {
+            MorphDropTopAppBar(
+                title = "Processing",
+                scrollBehavior = scrollBehavior,
+                showBackArrow = false // Don't allow back while processing
+            )
+        }
+    ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -130,7 +150,8 @@ fun ProcessingScreenContent(
     }
 }
 
-@Preview(name = "Light Mode", showBackground = true)
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Preview(name = "Light Mode", showBackground = true, showSystemUi = true, device = Devices.PIXEL_7_PRO)
 @Composable
 fun ProcessingScreenLightPreview() {
     MorphDropTheme(darkTheme = false) {
@@ -140,12 +161,14 @@ fun ProcessingScreenLightPreview() {
                 progress = 65f,
                 currentStage = "Applying styles and formatting..."
             ),
+            scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(),
             onCancel = {}
         )
     }
 }
 
-@Preview(name = "Dark Mode", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Preview(name = "Dark Mode", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true, showSystemUi = true, device = Devices.PIXEL_7_PRO)
 @Composable
 fun ProcessingScreenDarkPreview() {
     MorphDropTheme(darkTheme = true) {
@@ -155,6 +178,7 @@ fun ProcessingScreenDarkPreview() {
                 progress = 42f,
                 currentStage = "Compressing images..."
             ),
+            scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(),
             onCancel = {}
         )
     }
