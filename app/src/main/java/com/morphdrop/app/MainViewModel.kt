@@ -28,29 +28,16 @@ class MainViewModel @Inject constructor(
     private val _onSearchFabClick = MutableStateFlow<(() -> Unit)?>(null)
     val onSearchFabClick = _onSearchFabClick.asStateFlow()
 
-    private var currentOwner: String? = null
-
-    fun setSearchFabVisibility(show: Boolean, owner: String) {
-        if (show) {
-            currentOwner = owner
-            _showSearchFab.value = true
-        } else if (currentOwner == owner) {
-            _showSearchFab.value = false
-        }
+    fun setSearchFabVisibility(show: Boolean) {
+        _showSearchFab.value = show
     }
 
-    fun setOnSearchFabClick(onClick: (() -> Unit)?, owner: String) {
-        if (onClick != null) {
-            currentOwner = owner
-            _onSearchFabClick.value = onClick
-        } else if (currentOwner == owner) {
-            _onSearchFabClick.value = null
-        }
+    fun setOnSearchFabClick(onClick: (() -> Unit)?) {
+        _onSearchFabClick.value = onClick
     }
 
     fun resetSearchFab() {
         _showSearchFab.value = false
         _onSearchFabClick.value = null
-        currentOwner = null
     }
 }

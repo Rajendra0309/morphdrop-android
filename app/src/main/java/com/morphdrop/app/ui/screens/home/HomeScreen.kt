@@ -76,8 +76,8 @@ fun HomeScreen(
         onToggleFavorite = viewModel::onToggleFavorite,
         onNavigateToConfig = onNavigateToConfig,
         onNavigate = onNavigate,
-        setSearchFabVisibility = { mainViewModel.setSearchFabVisibility(it, "home") },
-        setOnSearchFabClick = { mainViewModel.setOnSearchFabClick(it, "home") }
+        setSearchFabVisibility = { mainViewModel.setSearchFabVisibility(it) },
+        setOnSearchFabClick = { mainViewModel.setOnSearchFabClick(it) }
     )
 }
 
@@ -107,10 +107,12 @@ fun HomeScreenContent(
         }
     }
 
+    // Reactive sync: ensure visibility is updated whenever it changes OR on screen entry
     LaunchedEffect(showSearchFab) {
         setSearchFabVisibility(showSearchFab)
     }
 
+    // Re-register click listener whenever the screen is active
     LaunchedEffect(Unit) {
         setOnSearchFabClick {
             coroutineScope.launch {
@@ -122,8 +124,9 @@ fun HomeScreenContent(
         }
     }
 
-    // Cleanup when leaving screen
+    // Force re-sync when screen is revealed (e.g. from background or backstack)
     DisposableEffect(Unit) {
+        setSearchFabVisibility(showSearchFab)
         onDispose {
             setSearchFabVisibility(false)
             setOnSearchFabClick(null)
@@ -148,7 +151,7 @@ fun HomeScreenContent(
             LazyVerticalGrid(
                 state = gridState,
                 columns = GridCells.Fixed(2),
-                contentPadding = PaddingValues(bottom = 80.dp), // Increased padding for floating navbar
+                contentPadding = PaddingValues(bottom = 120.dp), // Increased padding for floating navbar
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 modifier = Modifier.fillMaxSize()

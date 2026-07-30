@@ -85,8 +85,8 @@ fun HistoryScreen(
         onClearAll = { viewModel.clearAll() },
         onDeleteItem = { viewModel.deleteItem(it) },
         onItemClick = stabilizedOnDetail,
-        setSearchFabVisibility = { mainViewModel.setSearchFabVisibility(it, "history") },
-        setOnSearchFabClick = { mainViewModel.setOnSearchFabClick(it, "history") }
+        setSearchFabVisibility = { mainViewModel.setSearchFabVisibility(it) },
+        setOnSearchFabClick = { mainViewModel.setOnSearchFabClick(it) }
     )
 }
 
@@ -140,10 +140,12 @@ fun HistoryScreenContent(
         }
     }
 
+    // Reactive sync: ensure visibility is updated whenever it changes OR on screen entry
     LaunchedEffect(showSearchFab) {
         setSearchFabVisibility(showSearchFab)
     }
 
+    // Re-register click listener whenever the screen is active
     LaunchedEffect(Unit) {
         setOnSearchFabClick {
             coroutineScope.launch {
@@ -155,8 +157,9 @@ fun HistoryScreenContent(
         }
     }
 
-    // Cleanup when leaving screen
+    // Force re-sync when screen is revealed (e.g. from background or backstack)
     DisposableEffect(Unit) {
+        setSearchFabVisibility(showSearchFab)
         onDispose {
             setSearchFabVisibility(false)
             setOnSearchFabClick(null)
@@ -193,7 +196,7 @@ fun HistoryScreenContent(
             LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(bottom = 80.dp),
+                contentPadding = PaddingValues(bottom = 120.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 // Search bar integrated as an item in the list

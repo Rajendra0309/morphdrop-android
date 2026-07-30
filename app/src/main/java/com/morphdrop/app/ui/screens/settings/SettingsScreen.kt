@@ -265,7 +265,8 @@ fun SettingsScreenContent(
                 )
             }
             
-            Spacer(modifier = Modifier.height(100.dp))
+            // Large bottom spacer to clear the floating bottom navigation bar
+            Spacer(modifier = Modifier.height(120.dp))
         }
     }
 }

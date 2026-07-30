@@ -51,6 +51,15 @@ class MainActivity : ComponentActivity() {
                 val searchableScreens = listOf(Screen.Home.route, Screen.History.route)
                 val isSearchable = currentRoute in searchableScreens
 
+                // Reset search FAB when navigating to non-searchable screens
+                // We keep it visible if the target screen is searchable, 
+                // and the screen itself will re-sync its local scroll state visibility.
+                LaunchedEffect(currentRoute) {
+                    if (!isSearchable) {
+                        viewModel.resetSearchFab()
+                    }
+                }
+
                 Scaffold(
                     containerColor = MaterialTheme.colorScheme.background,
                     contentColor = MaterialTheme.colorScheme.onBackground
