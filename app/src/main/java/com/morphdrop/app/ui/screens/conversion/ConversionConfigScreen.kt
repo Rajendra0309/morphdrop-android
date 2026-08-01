@@ -308,7 +308,7 @@ fun ConversionConfigScreenContent(
                 }
             }
 
-            Spacer(modifier = Modifier.weight(1f))
+            // Spacer(modifier = Modifier.weight(1f)) // Removed to prevent layout issues with keyboard
 
             PrimaryButton(
                 text = "Convert",

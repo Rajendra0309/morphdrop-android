@@ -104,104 +104,168 @@ class ConversionWorker @AssistedInject constructor(
             }
             notificationHelper.showProgressNotification(notificationId, conversionType, 10)
             setProgress(workDataOf(
-                "progress" to 10,
+                "progress" to 15,
                 "output_name" to outputFileName
             ))
 
             val resultUris: List<Uri> = when (conversionType) {
                 "pdf_to_images" -> {
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 30)
+                    setProgress(workDataOf("progress" to 30))
                     val uri = Uri.parse(requireNotNull(inputUriString))
                     val quality = inputData.getInt(KEY_QUALITY, 80)
                     val rangeStr = inputData.getString(KEY_PAGE_RANGE)
                     val pageRange = parsePageRange(rangeStr)
                     val formatStr = inputData.getString(KEY_TARGET_FORMAT) ?: "png"
                     val outName = inputData.getString(KEY_OUTPUT_FILE_NAME)
-                    pdfToImagesUseCase(
+                    val result = pdfToImagesUseCase(
                         pdfUri = uri, 
                         outputFormat = formatStr, 
                         quality = quality, 
                         pageRange = pageRange,
                         outputFolderName = outName
                     )
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 80)
+                    setProgress(workDataOf("progress" to 80))
+                    result
                 }
 
                 "images_to_pdf", "image_to_pdf" -> {
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 30)
+                    setProgress(workDataOf("progress" to 30))
                     val uris = inputUrisArray?.map { Uri.parse(it) }
                         ?: listOf(Uri.parse(requireNotNull(inputUriString)))
                     val outName = inputData.getString(KEY_OUTPUT_FILE_NAME) ?: "converted_${System.currentTimeMillis()}.pdf"
-                    listOf(imagesToPdfUseCase(uris, outputFileName = outName))
+                    val result = listOf(imagesToPdfUseCase(uris, outputFileName = outName))
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 80)
+                    setProgress(workDataOf("progress" to 80))
+                    result
                 }
 
                 "word_to_pdf" -> {
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 40)
+                    setProgress(workDataOf("progress" to 40))
                     val uri = Uri.parse(requireNotNull(inputUriString))
-                    listOf(wordToPdfUseCase(uri))
+                    val result = listOf(wordToPdfUseCase(uri))
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 80)
+                    setProgress(workDataOf("progress" to 80))
+                    result
                 }
 
                 "pdf_to_word" -> {
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 40)
+                    setProgress(workDataOf("progress" to 40))
                     val uri = Uri.parse(requireNotNull(inputUriString))
-                    listOf(pdfToWordUseCase(uri))
+                    val result = listOf(pdfToWordUseCase(uri))
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 80)
+                    setProgress(workDataOf("progress" to 80))
+                    result
                 }
 
                 "excel_to_pdf" -> {
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 40)
+                    setProgress(workDataOf("progress" to 40))
                     val uri = Uri.parse(requireNotNull(inputUriString))
-                    listOf(excelToPdfUseCase(uri))
+                    val result = listOf(excelToPdfUseCase(uri))
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 80)
+                    setProgress(workDataOf("progress" to 80))
+                    result
                 }
 
                 "ppt_to_pdf" -> {
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 40)
+                    setProgress(workDataOf("progress" to 40))
                     val uri = Uri.parse(requireNotNull(inputUriString))
-                    listOf(powerPointToPdfUseCase(uri))
+                    val result = listOf(powerPointToPdfUseCase(uri))
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 80)
+                    setProgress(workDataOf("progress" to 80))
+                    result
                 }
 
                 "txt_to_pdf", "text_to_pdf" -> {
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 30)
+                    setProgress(workDataOf("progress" to 30))
                     val uri = Uri.parse(requireNotNull(inputUriString))
                     val outName = inputData.getString(KEY_OUTPUT_FILE_NAME) ?: "text_to_pdf_${System.currentTimeMillis()}.pdf"
-                    listOf(textToPdfUseCase(uri, outputFileName = outName))
+                    val result = listOf(textToPdfUseCase(uri, outputFileName = outName))
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 80)
+                    setProgress(workDataOf("progress" to 80))
+                    result
                 }
 
                 "md_to_pdf", "markdown_to_pdf" -> {
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 30)
+                    setProgress(workDataOf("progress" to 30))
                     val uri = Uri.parse(requireNotNull(inputUriString))
                     val outName = inputData.getString(KEY_OUTPUT_FILE_NAME) ?: "md_to_pdf_${System.currentTimeMillis()}.pdf"
-                    listOf(mdToPdfUseCase(uri, outputFileName = outName))
+                    val result = listOf(mdToPdfUseCase(uri, outputFileName = outName))
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 80)
+                    setProgress(workDataOf("progress" to 80))
+                    result
                 }
 
                 "image_converter" -> {
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 30)
+                    setProgress(workDataOf("progress" to 30))
                     val uri = Uri.parse(requireNotNull(inputUriString))
                     val targetFormat = inputData.getString(KEY_TARGET_FORMAT) ?: "jpg"
                     val quality = inputData.getInt(KEY_QUALITY, 90)
-                    listOf(imageConverterUseCase(inputUri = uri, outputFormat = targetFormat, quality = quality))
+                    val result = listOf(imageConverterUseCase(inputUri = uri, outputFormat = targetFormat, quality = quality))
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 85)
+                    setProgress(workDataOf("progress" to 85))
+                    result
                 }
 
                 "compress_images" -> {
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 20)
+                    setProgress(workDataOf("progress" to 20))
                     val uris = inputUrisArray?.map { Uri.parse(it) }
                         ?: listOf(Uri.parse(requireNotNull(inputUriString)))
                     val targetFormat = inputData.getString(KEY_TARGET_FORMAT) ?: "jpg"
                     val quality = inputData.getInt(KEY_QUALITY, 60)
-                    uris.mapIndexed { idx, u ->
-                        imageConverterUseCase(
+                    val result = uris.mapIndexed { idx, u ->
+                        val res = imageConverterUseCase(
                             inputUri = u,
                             outputFormat = targetFormat,
                             quality = quality,
                             outputFileName = "compressed_${idx}_${System.currentTimeMillis()}.$targetFormat"
                         )
+                        val p = 20 + ((idx + 1).toFloat() / uris.size * 60).toInt()
+                        notificationHelper.showProgressNotification(notificationId, conversionType, p)
+                        setProgress(workDataOf("progress" to p))
+                        res
                     }
+                    result
                 }
 
                 "merge_pdf", "merge_pdfs" -> {
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 30)
+                    setProgress(workDataOf("progress" to 30))
                     val uris = inputUrisArray?.map { Uri.parse(it) }
                         ?: listOf(Uri.parse(requireNotNull(inputUriString)))
                     val outName = inputData.getString(KEY_OUTPUT_FILE_NAME) ?: "merged_${System.currentTimeMillis()}.pdf"
-                    listOf(mergePdfUseCase(uris, outputFileName = outName))
+                    val result = listOf(mergePdfUseCase(uris, outputFileName = outName))
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 85)
+                    setProgress(workDataOf("progress" to 85))
+                    result
                 }
 
                 "split_pdf" -> {
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 30)
+                    setProgress(workDataOf("progress" to 30))
                     val uri = Uri.parse(requireNotNull(inputUriString))
                     val rangeStr = inputData.getString(KEY_PAGE_RANGE)
                     val ranges = parsePageRanges(rangeStr)
                     val outName = inputData.getString(KEY_OUTPUT_FILE_NAME)
-                    splitPdfUseCase(pdfUri = uri, pageRanges = ranges, outputFolderName = outName)
+                    val result = splitPdfUseCase(pdfUri = uri, pageRanges = ranges, outputFolderName = outName)
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 85)
+                    setProgress(workDataOf("progress" to 85))
+                    result
                 }
 
                 "compress_pdf" -> {
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 30)
+                    setProgress(workDataOf("progress" to 30))
                     val uri = Uri.parse(requireNotNull(inputUriString))
                     val quality = inputData.getInt(KEY_QUALITY, 50)
                     val level = when {
@@ -210,23 +274,37 @@ class ConversionWorker @AssistedInject constructor(
                         else -> CompressionLevel.LOW
                     }
                     val compressResult = compressPdfUseCase(pdfUri = uri, compressionLevel = level)
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 85)
+                    setProgress(workDataOf("progress" to 85))
                     listOf(compressResult.outputUri)
                 }
 
                 "rotate_pdf" -> {
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 30)
+                    setProgress(workDataOf("progress" to 30))
                     val uri = Uri.parse(requireNotNull(inputUriString))
                     val degrees = inputData.getInt(KEY_ROTATION_DEGREES, 90)
-                    listOf(rotatePdfPagesUseCase(uri, rotationDegrees = degrees))
+                    val result = listOf(rotatePdfPagesUseCase(uri, rotationDegrees = degrees))
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 85)
+                    setProgress(workDataOf("progress" to 85))
+                    result
                 }
 
                 "reorder_pdf" -> {
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 30)
+                    setProgress(workDataOf("progress" to 30))
                     val uri = Uri.parse(requireNotNull(inputUriString))
                     val pageOrderStr = requireNotNull(inputData.getString(KEY_PAGE_ORDER))
                     val orderList = pageOrderStr.split(",").map { it.trim().toInt() }
-                    listOf(reorderPdfPagesUseCase(uri, newOrder = orderList))
+                    val result = listOf(reorderPdfPagesUseCase(uri, newOrder = orderList))
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 85)
+                    setProgress(workDataOf("progress" to 85))
+                    result
                 }
 
                 "protect_pdf" -> {
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 30)
+                    setProgress(workDataOf("progress" to 30))
                     val uri = Uri.parse(requireNotNull(inputUriString))
                     val password = requireNotNull(inputData.getString(KEY_PASSWORD))
                     val actionStr = inputData.getString(KEY_ACTION) ?: "ADD_PASSWORD"
@@ -235,10 +313,15 @@ class ConversionWorker @AssistedInject constructor(
                     } else {
                         PdfPasswordUseCase.Action.ADD_PASSWORD
                     }
-                    listOf(pdfPasswordUseCase(uri, password = password, action = action))
+                    val result = listOf(pdfPasswordUseCase(uri, password = password, action = action))
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 85)
+                    setProgress(workDataOf("progress" to 85))
+                    result
                 }
 
                 "page_editor" -> {
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 30)
+                    setProgress(workDataOf("progress" to 30))
                     val uri = Uri.parse(requireNotNull(inputUriString))
                     val pageOrderStr = requireNotNull(inputData.getString(KEY_PAGE_ORDER))
                     val orderList = pageOrderStr.split(",").map { it.trim().toInt() }
@@ -249,7 +332,10 @@ class ConversionWorker @AssistedInject constructor(
                             val parts = it.split(":")
                             parts[0].toInt() to parts[1].toInt()
                         }
-                    listOf(pdfPageEditorUseCase(uri, newOrder = orderList, rotations = rotationsMap))
+                    val result = listOf(pdfPageEditorUseCase(uri, newOrder = orderList, rotations = rotationsMap))
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 85)
+                    setProgress(workDataOf("progress" to 85))
+                    result
                 }
 
                 else -> throw IllegalArgumentException("Unsupported conversion type: $conversionType")

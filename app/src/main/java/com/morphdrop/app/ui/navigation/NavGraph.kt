@@ -24,11 +24,13 @@ import com.morphdrop.app.ui.screens.pdf.SplitPdfScreen
 import com.morphdrop.app.ui.screens.processing.ProcessingScreen
 import com.morphdrop.app.ui.screens.result.ResultScreen
 import com.morphdrop.app.ui.screens.settings.SettingsScreen
+import com.morphdrop.app.ui.screens.welcome.WelcomeScreen
 
 @Composable
 fun NavGraph(
     navController: NavHostController,
-    mainViewModel: MainViewModel
+    mainViewModel: MainViewModel,
+    startDestination: String = Screen.Home.route
 ) {
     val routeToOrder = mapOf(
         Screen.Home.route to 0,
@@ -38,7 +40,7 @@ fun NavGraph(
 
     NavHost(
         navController = navController,
-        startDestination = Screen.Home.route,
+        startDestination = startDestination,
         enterTransition = {
             val fromIndex = routeToOrder[initialState.destination.route] ?: -1
             val toIndex = routeToOrder[targetState.destination.route] ?: -1
@@ -139,6 +141,17 @@ fun NavGraph(
         composable(Screen.Settings.route) {
             SettingsScreen(
                 onNavigateBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(Screen.Welcome.route) {
+            WelcomeScreen(
+                onFinish = {
+                    navController.navigate(Screen.Home.route) {
+                        popUpTo(Screen.Welcome.route) { inclusive = true }
+                    }
+                    mainViewModel.completeOnboarding()
+                }
             )
         }
 

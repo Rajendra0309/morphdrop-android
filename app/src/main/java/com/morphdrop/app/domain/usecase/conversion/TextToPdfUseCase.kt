@@ -58,14 +58,14 @@ class TextToPdfUseCase @Inject constructor(
 
             val textPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = Color.parseColor("#1F2328")
-                textSize = spToPx(11f)
+                textSize = spToPx(9.5f) // Reduced from 11f
                 typeface = Typeface.DEFAULT
             }
 
             var line: String? = reader.readLine()
             while (line != null) {
                 if (line.isEmpty()) {
-                    yPos += spToPx(11f) * 1.2f
+                    yPos += spToPx(9.5f) * 1.5f // Adjusted spacing
                     if (yPos > maxBottom) {
                         pdfDocument.finishPage(currentPage)
                         pageNumber++

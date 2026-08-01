@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -43,9 +44,11 @@ import androidx.compose.ui.tooling.preview.Devices
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.airbnb.lottie.compose.*
 import com.morphdrop.app.domain.model.ConversionType
 import com.morphdrop.app.ui.components.ConversionCard
 import com.morphdrop.app.ui.components.MorphDropSearchBar
@@ -134,7 +137,9 @@ fun HomeScreenContent(
     }
 
     Scaffold(
-        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+        modifier = Modifier
+            .nestedScroll(scrollBehavior.nestedScrollConnection)
+            .imePadding(),
         topBar = {
             MorphDropTopAppBar(
                 title = "MorphDrop",
@@ -268,12 +273,36 @@ private fun EmptySearchState(query: String, onClear: () -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Icon(
-            imageVector = Icons.Default.SearchOff,
-            contentDescription = null,
-            modifier = Modifier.size(64.dp),
-            tint = MaterialTheme.colorScheme.secondary.copy(alpha = 0.5f)
+        val context = LocalContext.current
+        val lottieRes = remember {
+            val id = context.resources.getIdentifier("empty_search", "raw", context.packageName)
+            if (id != 0) id else -1
+        }
+        
+        val composition by rememberLottieComposition(
+            if (lottieRes != -1) LottieCompositionSpec.RawRes(lottieRes) 
+            else LottieCompositionSpec.RawRes(0)
         )
+        val progress by animateLottieCompositionAsState(
+            composition = composition,
+            iterations = LottieConstants.IterateForever
+        )
+
+        if (composition != null) {
+            LottieAnimation(
+                composition = composition,
+                progress = { progress },
+                modifier = Modifier.size(160.dp)
+            )
+        } else {
+            Icon(
+                imageVector = Icons.Default.SearchOff,
+                contentDescription = null,
+                modifier = Modifier.size(64.dp),
+                tint = MaterialTheme.colorScheme.secondary.copy(alpha = 0.5f)
+            )
+        }
+        
         Spacer(modifier = Modifier.height(16.dp))
         Text(
             text = "No tools match \"$query\"",

@@ -359,16 +359,16 @@ class ExcelToPdfUseCase @Inject constructor(
 
         val titlePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.parseColor("#1F2328")
-            textSize = spToPx(13f)
+            textSize = spToPx(11f) // Reduced from 13f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
 
         for ((groupIndex, colRange) in colGroups.withIndex()) {
             val groupColCount = colRange.count()
-            val totalGroupUnits = colRange.sumOf { colLengths[it].coerceIn(5, 40) }
+            val totalGroupUnits = colRange.sumOf { colLengths[it].coerceIn(10, 80) } // Increased range for better weight
             val colWidths = FloatArray(groupColCount)
             for ((idx, colIdx) in colRange.withIndex()) {
-                val units = colLengths[colIdx].coerceIn(5, 40)
+                val units = colLengths[colIdx].coerceIn(10, 80)
                 colWidths[idx] = (units.toFloat() / totalGroupUnits.toFloat()) * usableWidth
             }
 
@@ -393,7 +393,7 @@ class ExcelToPdfUseCase @Inject constructor(
 
                     val paint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
                         color = Color.parseColor("#1F2328")
-                        textSize = spToPx(9.5f)
+                        textSize = spToPx(7.5f) // Reduced further for better fit
                         typeface = if (isHeaderRow) Typeface.create(Typeface.DEFAULT, Typeface.BOLD) else Typeface.DEFAULT
                     }
 

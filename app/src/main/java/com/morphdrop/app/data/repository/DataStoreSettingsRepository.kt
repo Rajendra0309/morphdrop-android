@@ -24,6 +24,7 @@ class DataStoreSettingsRepository @Inject constructor(
     private object PreferencesKeys {
         val IS_DARK_MODE = booleanPreferencesKey("is_dark_mode")
         val OUTPUT_FOLDER_NAME = stringPreferencesKey("output_folder_name")
+        val HAS_SEEN_WELCOME = booleanPreferencesKey("has_seen_welcome")
     }
 
     override val isDarkMode: Flow<Boolean> = context.dataStore.data.map { preferences ->
@@ -32,6 +33,10 @@ class DataStoreSettingsRepository @Inject constructor(
 
     override val outputFolderName: Flow<String> = context.dataStore.data.map { preferences ->
         preferences[PreferencesKeys.OUTPUT_FOLDER_NAME] ?: "MorphDrop"
+    }
+
+    override val hasSeenWelcome: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.HAS_SEEN_WELCOME] ?: false
     }
 
     override suspend fun setDarkMode(enabled: Boolean) {
@@ -43,6 +48,12 @@ class DataStoreSettingsRepository @Inject constructor(
     override suspend fun setOutputFolderName(name: String) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.OUTPUT_FOLDER_NAME] = name
+        }
+    }
+
+    override suspend fun setHasSeenWelcome(hasSeen: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.HAS_SEEN_WELCOME] = hasSeen
         }
     }
 }

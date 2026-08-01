@@ -20,4 +20,5 @@ sealed class Screen(val route: String) {
         fun createRoute(historyId: Long) = "history_detail/$historyId"
     }
     data object Settings : Screen("settings")
+    data object Welcome : Screen("welcome")
 }
