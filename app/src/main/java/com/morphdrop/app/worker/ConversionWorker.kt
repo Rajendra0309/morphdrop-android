@@ -70,6 +70,7 @@ class ConversionWorker @AssistedInject constructor(
         const val KEY_TARGET_FORMAT = "target_format"
 
         const val KEY_OUTPUT_URI = "output_uri"
+        const val KEY_OUTPUT_URIS = "output_uris"
         const val KEY_ERROR = "error"
     }
 
@@ -77,6 +78,10 @@ class ConversionWorker @AssistedInject constructor(
         val conversionType = inputData.getString(KEY_CONVERSION_TYPE) ?: "File Conversion"
         val startTime = System.currentTimeMillis()
         val notificationId = id.hashCode()
+
+        fun checkCancellation() {
+            if (isStopped) throw kotlinx.coroutines.CancellationException("Worker stopped by user")
+        }
 
         val inputUriString = inputData.getString(KEY_INPUT_URI)
         val inputUrisArray = inputData.getStringArray(KEY_INPUT_URIS)
@@ -88,7 +93,22 @@ class ConversionWorker @AssistedInject constructor(
             "Input File"
         }
 
+        val outputFileNameInput = inputData.getString(KEY_OUTPUT_FILE_NAME) ?: "Converted_File"
+        val outputFileName = if (!outputFileNameInput.contains(".")) {
+            val ext = when (conversionType) {
+                "pdf_to_images", "split_pdf" -> "" // Folder
+                "images_to_pdf", "word_to_pdf", "excel_to_pdf", "ppt_to_pdf", "txt_to_pdf", "md_to_pdf", "compress_pdf" -> "pdf"
+                "image_converter", "compress_images" -> inputData.getString(KEY_TARGET_FORMAT) ?: "jpg"
+                else -> "pdf"
+            }
+            if (ext.isNotEmpty()) "$outputFileNameInput.$ext" else outputFileNameInput
+        } else outputFileNameInput
+
+        val generatedFileNames = mutableListOf<String>()
+        generatedFileNames.add(outputFileName)
+
         try {
+
             try {
                 val foregroundInfo = notificationHelper.createForegroundInfo(
                     notificationId,
@@ -100,94 +120,191 @@ class ConversionWorker @AssistedInject constructor(
                 // Foreground service may be constrained by OS policy or missing permission
             }
             notificationHelper.showProgressNotification(notificationId, conversionType, 10)
-            setProgress(workDataOf("progress" to 10))
+            setProgress(workDataOf(
+                "progress" to 15,
+                "output_name" to outputFileName
+            ))
 
             val resultUris: List<Uri> = when (conversionType) {
                 "pdf_to_images" -> {
+                    checkCancellation()
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 30)
+                    setProgress(workDataOf("progress" to 30))
                     val uri = Uri.parse(requireNotNull(inputUriString))
                     val quality = inputData.getInt(KEY_QUALITY, 80)
                     val rangeStr = inputData.getString(KEY_PAGE_RANGE)
                     val pageRange = parsePageRange(rangeStr)
                     val formatStr = inputData.getString(KEY_TARGET_FORMAT) ?: "png"
-                    pdfToImagesUseCase(pdfUri = uri, outputFormat = formatStr, quality = quality, pageRange = pageRange)
+                    val result = pdfToImagesUseCase(
+                        pdfUri = uri, 
+                        outputFormat = formatStr, 
+                        quality = quality, 
+                        pageRange = pageRange,
+                        outputFolderName = outputFileName
+                    )
+                    checkCancellation()
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 80)
+                    setProgress(workDataOf("progress" to 80))
+                    result
                 }
 
                 "images_to_pdf", "image_to_pdf" -> {
+                    checkCancellation()
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 30)
+                    setProgress(workDataOf("progress" to 30))
                     val uris = inputUrisArray?.map { Uri.parse(it) }
                         ?: listOf(Uri.parse(requireNotNull(inputUriString)))
-                    val outName = inputData.getString(KEY_OUTPUT_FILE_NAME) ?: "converted_${System.currentTimeMillis()}.pdf"
-                    listOf(imagesToPdfUseCase(uris, outputFileName = outName))
+                    val result = listOf(imagesToPdfUseCase(uris, outputFileName = outputFileName))
+                    checkCancellation()
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 80)
+                    setProgress(workDataOf("progress" to 80))
+                    result
                 }
 
                 "word_to_pdf" -> {
+                    checkCancellation()
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 40)
+                    setProgress(workDataOf("progress" to 40))
                     val uri = Uri.parse(requireNotNull(inputUriString))
-                    listOf(wordToPdfUseCase(uri))
+                    val result = listOf(wordToPdfUseCase(uri, outputFileName = outputFileName))
+                    checkCancellation()
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 80)
+                    setProgress(workDataOf("progress" to 80))
+                    result
                 }
 
                 "pdf_to_word" -> {
+                    checkCancellation()
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 40)
+                    setProgress(workDataOf("progress" to 40))
                     val uri = Uri.parse(requireNotNull(inputUriString))
-                    listOf(pdfToWordUseCase(uri))
+                    val result = listOf(pdfToWordUseCase(uri, outputFileName = outputFileName))
+                    checkCancellation()
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 80)
+                    setProgress(workDataOf("progress" to 80))
+                    result
                 }
 
                 "excel_to_pdf" -> {
+                    checkCancellation()
                     val uri = Uri.parse(requireNotNull(inputUriString))
-                    listOf(excelToPdfUseCase(uri))
+                    val result = listOf(excelToPdfUseCase(
+                        xlsxUri = uri, 
+                        outputFileName = outputFileName,
+                        onProgress = { p ->
+                            checkCancellation()
+                            val mappedProgress = 20 + (p * 0.7).toInt()
+                            notificationHelper.showProgressNotification(notificationId, conversionType, mappedProgress)
+                            kotlinx.coroutines.runBlocking { setProgress(workDataOf("progress" to mappedProgress)) }
+                        }
+                    ))
+                    result
                 }
 
                 "ppt_to_pdf" -> {
+                    checkCancellation()
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 40)
+                    setProgress(workDataOf("progress" to 40))
                     val uri = Uri.parse(requireNotNull(inputUriString))
-                    listOf(powerPointToPdfUseCase(uri))
+                    val result = listOf(powerPointToPdfUseCase(uri, outputFileName = outputFileName))
+                    checkCancellation()
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 80)
+                    setProgress(workDataOf("progress" to 80))
+                    result
                 }
 
                 "txt_to_pdf", "text_to_pdf" -> {
+                    checkCancellation()
                     val uri = Uri.parse(requireNotNull(inputUriString))
-                    val outName = inputData.getString(KEY_OUTPUT_FILE_NAME) ?: "text_to_pdf_${System.currentTimeMillis()}.pdf"
-                    listOf(textToPdfUseCase(uri, outputFileName = outName))
+                    val result = listOf(textToPdfUseCase(
+                        txtUri = uri, 
+                        outputFileName = outputFileName,
+                        onProgress = { p ->
+                            if (isStopped) return@textToPdfUseCase
+                            val mappedProgress = 20 + (p * 0.7).toInt()
+                            notificationHelper.showProgressNotification(notificationId, conversionType, mappedProgress)
+                            kotlinx.coroutines.runBlocking { setProgress(workDataOf("progress" to mappedProgress)) }
+                        }
+                    ))
+                    result
                 }
 
                 "md_to_pdf", "markdown_to_pdf" -> {
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 30)
+                    setProgress(workDataOf("progress" to 30))
                     val uri = Uri.parse(requireNotNull(inputUriString))
-                    val outName = inputData.getString(KEY_OUTPUT_FILE_NAME) ?: "md_to_pdf_${System.currentTimeMillis()}.pdf"
-                    listOf(mdToPdfUseCase(uri, outputFileName = outName))
+                    val result = listOf(mdToPdfUseCase(uri, outputFileName = outputFileName))
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 80)
+                    setProgress(workDataOf("progress" to 80))
+                    result
                 }
 
                 "image_converter" -> {
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 30)
+                    setProgress(workDataOf("progress" to 30))
                     val uri = Uri.parse(requireNotNull(inputUriString))
                     val targetFormat = inputData.getString(KEY_TARGET_FORMAT) ?: "jpg"
                     val quality = inputData.getInt(KEY_QUALITY, 90)
-                    listOf(imageConverterUseCase(inputUri = uri, outputFormat = targetFormat, quality = quality))
+                    val result = listOf(imageConverterUseCase(inputUri = uri, outputFormat = targetFormat, quality = quality, outputFileName = outputFileName))
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 85)
+                    setProgress(workDataOf("progress" to 85))
+                    result
                 }
 
                 "compress_images" -> {
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 20)
+                    setProgress(workDataOf("progress" to 20))
                     val uris = inputUrisArray?.map { Uri.parse(it) }
                         ?: listOf(Uri.parse(requireNotNull(inputUriString)))
                     val targetFormat = inputData.getString(KEY_TARGET_FORMAT) ?: "jpg"
                     val quality = inputData.getInt(KEY_QUALITY, 60)
-                    uris.mapIndexed { idx, u ->
-                        imageConverterUseCase(
+                    val result = uris.mapIndexed { idx, u ->
+                        val genName = "compressed_${idx}_${System.currentTimeMillis()}.$targetFormat"
+                        generatedFileNames.add(genName)
+                        val res = imageConverterUseCase(
                             inputUri = u,
                             outputFormat = targetFormat,
                             quality = quality,
-                            outputFileName = "compressed_${idx}_${System.currentTimeMillis()}.$targetFormat"
+                            outputFileName = genName
                         )
+                        val p = 20 + ((idx + 1).toFloat() / uris.size * 60).toInt()
+                        notificationHelper.showProgressNotification(notificationId, conversionType, p)
+                        setProgress(workDataOf("progress" to p))
+                        res
                     }
+                    result
                 }
 
                 "merge_pdf", "merge_pdfs" -> {
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 30)
+                    setProgress(workDataOf("progress" to 30))
                     val uris = inputUrisArray?.map { Uri.parse(it) }
                         ?: listOf(Uri.parse(requireNotNull(inputUriString)))
                     val outName = inputData.getString(KEY_OUTPUT_FILE_NAME) ?: "merged_${System.currentTimeMillis()}.pdf"
-                    listOf(mergePdfUseCase(uris, outputFileName = outName))
+                    generatedFileNames.add(outName)
+                    val result = listOf(mergePdfUseCase(uris, outputFileName = outName))
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 85)
+                    setProgress(workDataOf("progress" to 85))
+                    result
                 }
 
                 "split_pdf" -> {
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 30)
+                    setProgress(workDataOf("progress" to 30))
                     val uri = Uri.parse(requireNotNull(inputUriString))
                     val rangeStr = inputData.getString(KEY_PAGE_RANGE)
                     val ranges = parsePageRanges(rangeStr)
-                    splitPdfUseCase(pdfUri = uri, pageRanges = ranges)
+                    val outName = inputData.getString(KEY_OUTPUT_FILE_NAME)
+                    if (outName != null) generatedFileNames.add(outName)
+                    val result = splitPdfUseCase(pdfUri = uri, pageRanges = ranges, outputFolderName = outName)
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 85)
+                    setProgress(workDataOf("progress" to 85))
+                    result
                 }
 
                 "compress_pdf" -> {
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 30)
+                    setProgress(workDataOf("progress" to 30))
                     val uri = Uri.parse(requireNotNull(inputUriString))
                     val quality = inputData.getInt(KEY_QUALITY, 50)
                     val level = when {
@@ -196,23 +313,37 @@ class ConversionWorker @AssistedInject constructor(
                         else -> CompressionLevel.LOW
                     }
                     val compressResult = compressPdfUseCase(pdfUri = uri, compressionLevel = level)
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 85)
+                    setProgress(workDataOf("progress" to 85))
                     listOf(compressResult.outputUri)
                 }
 
                 "rotate_pdf" -> {
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 30)
+                    setProgress(workDataOf("progress" to 30))
                     val uri = Uri.parse(requireNotNull(inputUriString))
                     val degrees = inputData.getInt(KEY_ROTATION_DEGREES, 90)
-                    listOf(rotatePdfPagesUseCase(uri, rotationDegrees = degrees))
+                    val result = listOf(rotatePdfPagesUseCase(uri, rotationDegrees = degrees, outputFileName = outputFileName))
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 85)
+                    setProgress(workDataOf("progress" to 85))
+                    result
                 }
 
                 "reorder_pdf" -> {
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 30)
+                    setProgress(workDataOf("progress" to 30))
                     val uri = Uri.parse(requireNotNull(inputUriString))
                     val pageOrderStr = requireNotNull(inputData.getString(KEY_PAGE_ORDER))
                     val orderList = pageOrderStr.split(",").map { it.trim().toInt() }
-                    listOf(reorderPdfPagesUseCase(uri, newOrder = orderList))
+                    val result = listOf(reorderPdfPagesUseCase(uri, newOrder = orderList, outputFileName = outputFileName))
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 85)
+                    setProgress(workDataOf("progress" to 85))
+                    result
                 }
 
                 "protect_pdf" -> {
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 30)
+                    setProgress(workDataOf("progress" to 30))
                     val uri = Uri.parse(requireNotNull(inputUriString))
                     val password = requireNotNull(inputData.getString(KEY_PASSWORD))
                     val actionStr = inputData.getString(KEY_ACTION) ?: "ADD_PASSWORD"
@@ -221,10 +352,15 @@ class ConversionWorker @AssistedInject constructor(
                     } else {
                         PdfPasswordUseCase.Action.ADD_PASSWORD
                     }
-                    listOf(pdfPasswordUseCase(uri, password = password, action = action))
+                    val result = listOf(pdfPasswordUseCase(uri, password = password, action = action, outputFileName = outputFileName))
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 85)
+                    setProgress(workDataOf("progress" to 85))
+                    result
                 }
 
                 "page_editor" -> {
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 30)
+                    setProgress(workDataOf("progress" to 30))
                     val uri = Uri.parse(requireNotNull(inputUriString))
                     val pageOrderStr = requireNotNull(inputData.getString(KEY_PAGE_ORDER))
                     val orderList = pageOrderStr.split(",").map { it.trim().toInt() }
@@ -235,7 +371,10 @@ class ConversionWorker @AssistedInject constructor(
                             val parts = it.split(":")
                             parts[0].toInt() to parts[1].toInt()
                         }
-                    listOf(pdfPageEditorUseCase(uri, newOrder = orderList, rotations = rotationsMap))
+                    val result = listOf(pdfPageEditorUseCase(uri, newOrder = orderList, rotations = rotationsMap, outputFileName = outputFileName))
+                    notificationHelper.showProgressNotification(notificationId, conversionType, 85)
+                    setProgress(workDataOf("progress" to 85))
+                    result
                 }
 
                 else -> throw IllegalArgumentException("Unsupported conversion type: $conversionType")
@@ -246,12 +385,22 @@ class ConversionWorker @AssistedInject constructor(
 
             val duration = System.currentTimeMillis() - startTime
             val outputNames = resultUris.joinToString(",") { Uri.parse(it.toString()).lastPathSegment ?: "converted_file" }
+            val outUrisString = resultUris.joinToString(",") { it.toString() }
+            
+            // Use the actual output filename if possible
+            val finalOutputName = if (resultUris.size == 1) {
+                FileHelper.getFileName(appContext, resultUris.first())
+            } else {
+                outputFileName
+            }
 
             historyRepository.insertHistory(
                 ConversionHistoryEntity(
                     conversionType = conversionType,
                     inputFileName = inputFileName,
                     outputFileNames = outputNames,
+                    outputUris = outUrisString,
+                    displayName = finalOutputName,
                     timestamp = System.currentTimeMillis(),
                     duration = duration,
                     success = true
@@ -265,14 +414,31 @@ class ConversionWorker @AssistedInject constructor(
                 primaryOutputUri
             )
 
-            Result.success(workDataOf(KEY_OUTPUT_URI to primaryOutputUri.toString()))
+            Result.success(
+                workDataOf(
+                    KEY_OUTPUT_URI to primaryOutputUri.toString(),
+                    KEY_OUTPUT_URIS to outUrisString
+                )
+            )
         } catch (e: Exception) {
+            // Handle cancellation gracefully
+            if (e is kotlinx.coroutines.CancellationException || isStopped) {
+                // If the user cancelled, do not log to history and do not show completion notifications
+                // Clean up any incomplete files/folders generated during this execution
+                generatedFileNames.forEach { name ->
+                    FileHelper.deleteFileByName(appContext, "MorphDrop", name)
+                }
+                return@withContext Result.failure()
+            }
+
             val duration = System.currentTimeMillis() - startTime
             historyRepository.insertHistory(
                 ConversionHistoryEntity(
                     conversionType = conversionType,
                     inputFileName = inputFileName,
                     outputFileNames = "",
+                    outputUris = "",
+                    displayName = "Failed Conversion",
                     timestamp = System.currentTimeMillis(),
                     duration = duration,
                     success = false

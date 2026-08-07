@@ -6,8 +6,10 @@ import androidx.lifecycle.ViewModel
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.workDataOf
+import com.morphdrop.app.util.FileHelper
 import com.morphdrop.app.worker.ConversionWorker
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -17,18 +19,27 @@ import javax.inject.Inject
 
 data class PdfPasswordState(
     val selectedFile: Uri? = null,
+    val fileName: String = "",
     val password: String = "",
     val confirmPassword: String = "",
-    val action: String = "add" // "add" or "remove"
+    val outputFileName: String = "",
+    val action: String = "ADD_PASSWORD" // "ADD_PASSWORD" or "REMOVE_PASSWORD"
 )
 
 @HiltViewModel
-class PdfPasswordViewModel @Inject constructor() : ViewModel() {
+class PdfPasswordViewModel @Inject constructor(
+    @ApplicationContext private val context: Context
+) : ViewModel() {
     private val _state = MutableStateFlow(PdfPasswordState())
     val state: StateFlow<PdfPasswordState> = _state.asStateFlow()
 
     fun onFileSelected(uri: Uri?) {
-        _state.update { it.copy(selectedFile = uri) }
+        val name = uri?.let { FileHelper.getFileName(context, it) } ?: ""
+        _state.update { it.copy(
+            selectedFile = uri,
+            fileName = name,
+            outputFileName = if (name.isNotBlank()) name.substringBeforeLast(".") + "_protected.pdf" else ""
+        ) }
     }
 
     fun onPasswordChanged(password: String) {
@@ -37,6 +48,10 @@ class PdfPasswordViewModel @Inject constructor() : ViewModel() {
 
     fun onConfirmPasswordChanged(password: String) {
         _state.update { it.copy(confirmPassword = password) }
+    }
+
+    fun onOutputFileNameChanged(name: String) {
+        _state.update { it.copy(outputFileName = name) }
     }
 
     fun onActionChanged(action: String) {
@@ -51,8 +66,9 @@ class PdfPasswordViewModel @Inject constructor() : ViewModel() {
             .setInputData(workDataOf(
                 ConversionWorker.KEY_CONVERSION_TYPE to "protect_pdf",
                 ConversionWorker.KEY_INPUT_URI to uri.toString(),
-                "password" to currentState.password,
-                "action" to currentState.action
+                ConversionWorker.KEY_PASSWORD to currentState.password,
+                ConversionWorker.KEY_ACTION to currentState.action,
+                ConversionWorker.KEY_OUTPUT_FILE_NAME to currentState.outputFileName
             ))
             .build()
 

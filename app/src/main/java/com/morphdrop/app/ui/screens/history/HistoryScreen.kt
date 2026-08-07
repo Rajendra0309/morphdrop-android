@@ -1,8 +1,8 @@
 package com.morphdrop.app.ui.screens.history
 
 import android.content.res.Configuration
-import android.text.format.DateUtils
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,10 +17,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.History
@@ -35,36 +38,58 @@ import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberTopAppBarState
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Devices
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.airbnb.lottie.compose.*
+import com.morphdrop.app.MainViewModel
 import com.morphdrop.app.data.local.entity.ConversionHistoryEntity
 import com.morphdrop.app.ui.components.EmptyStateAnimation
+import com.morphdrop.app.ui.components.MorphDropSearchBar
+import com.morphdrop.app.ui.components.MorphDropTopAppBar
 import com.morphdrop.app.ui.theme.MorphDropTheme
+import com.morphdrop.app.ui.util.TimeUtils
+import kotlinx.coroutines.launch
 
 @Composable
 fun HistoryScreen(
     onNavigateBack: () -> Unit = {},
-    viewModel: HistoryViewModel = hiltViewModel()
+    onNavigateToDetail: (historyId: Long) -> Unit = {},
+    viewModel: HistoryViewModel = hiltViewModel(),
+    mainViewModel: MainViewModel
 ) {
     val historyList by viewModel.historyList.collectAsStateWithLifecycle()
+    val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
+    
+    // Stabilize callbacks to prevent lambda mismatch crashes
+    val stabilizedOnDetail = remember(onNavigateToDetail) {
+        { item: ConversionHistoryEntity -> onNavigateToDetail(item.id) }
+    }
     
     HistoryScreenContent(
         historyList = historyList,
+        searchQuery = searchQuery,
+        onSearchQueryChange = viewModel::onSearchQueryChange,
         onClearAll = { viewModel.clearAll() },
-        onDeleteItem = { viewModel.deleteItem(it) }
+        onDeleteItem = { viewModel.deleteItem(it) },
+        onItemClick = stabilizedOnDetail,
+        setSearchFabVisibility = { mainViewModel.setSearchFabVisibility(it) },
+        setOnSearchFabClick = { mainViewModel.setOnSearchFabClick(it) }
     )
 }
 
@@ -72,8 +97,13 @@ fun HistoryScreen(
 @Composable
 fun HistoryScreenContent(
     historyList: List<ConversionHistoryEntity>,
+    searchQuery: String,
+    onSearchQueryChange: (String) -> Unit,
     onClearAll: () -> Unit,
-    onDeleteItem: (ConversionHistoryEntity) -> Unit
+    onDeleteItem: (ConversionHistoryEntity) -> Unit,
+    onItemClick: (ConversionHistoryEntity) -> Unit,
+    setSearchFabVisibility: (Boolean) -> Unit,
+    setOnSearchFabClick: ((() -> Unit)?) -> Unit
 ) {
     var showClearDialog by remember { mutableStateOf(false) }
 
@@ -87,7 +117,7 @@ fun HistoryScreenContent(
                     onClearAll()
                     showClearDialog = false
                 }) {
-                    Text("Clear All", color = MaterialTheme.colorScheme.error)
+                    Text("Clear All", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
@@ -98,21 +128,59 @@ fun HistoryScreenContent(
         )
     }
 
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
+    val listState = rememberLazyListState()
+    val coroutineScope = rememberCoroutineScope()
+    val focusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
+
+    val hasActions = historyList.isNotEmpty() || searchQuery.isNotEmpty()
+
+    // Track search FAB visibility and sync with MainViewModel
+    val showSearchFab by remember {
+        derivedStateOf { 
+            listState.firstVisibleItemIndex > 0
+        }
+    }
+
+    // Reactive sync: ensure visibility is updated whenever it changes OR on screen entry
+    LaunchedEffect(showSearchFab) {
+        setSearchFabVisibility(showSearchFab)
+    }
+
+    // Re-register click listener whenever the screen is active
+    LaunchedEffect(Unit) {
+        setOnSearchFabClick {
+            coroutineScope.launch {
+                listState.animateScrollToItem(0)
+                kotlinx.coroutines.delay(100)
+                focusRequester.requestFocus()
+                keyboardController?.show()
+            }
+        }
+    }
+
+    // Force re-sync when screen is revealed (e.g. from background or backstack)
+    DisposableEffect(Unit) {
+        setSearchFabVisibility(showSearchFab)
+        onDispose {
+            // No reset here to prevent jitter on navigation
+        }
+    }
+
     Scaffold(
+        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = "History",
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                },
+            MorphDropTopAppBar(
+                title = "History",
+                scrollBehavior = scrollBehavior,
+                showBackArrow = false,
+                hasActions = hasActions,
                 actions = {
-                    if (historyList.isNotEmpty()) {
+                    if (hasActions) {
                         IconButton(onClick = { showClearDialog = true }) {
                             Icon(
-                                imageVector = Icons.Default.Delete,
+                                imageVector = Icons.Default.DeleteSweep,
                                 contentDescription = "Clear All",
                                 tint = MaterialTheme.colorScheme.error
                             )
@@ -122,51 +190,119 @@ fun HistoryScreenContent(
             )
         }
     ) { innerPadding ->
-        if (historyList.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center,
-                    modifier = Modifier.padding(32.dp)
-                ) {
-                    EmptyStateAnimation(
-                        icon = Icons.Default.History,
-                        modifier = Modifier.size(120.dp)
-                    )
-                    Spacer(modifier = Modifier.height(24.dp))
-                    Text(
-                        text = "No history yet",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = "Your converted files will appear here",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-        } else {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(top = innerPadding.calculateTopPadding())
+        ) {
             LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding),
-                contentPadding = PaddingValues(16.dp),
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(bottom = 120.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                items(historyList, key = { it.id }) { item ->
-                    HistoryItemCard(
-                        item = item,
-                        onDelete = { onDeleteItem(item) }
+                // Search bar integrated as an item in the list
+                item {
+                    MorphDropSearchBar(
+                        query = searchQuery,
+                        onQueryChange = onSearchQueryChange,
+                        active = false,
+                        onActiveChange = { },
+                        placeholderText = "Search history...",
+                        focusRequester = focusRequester,
+                        modifier = Modifier
+                            .padding(horizontal = 16.dp)
+                            .padding(top = 8.dp, bottom = 12.dp)
                     )
                 }
-                item {
-                    Spacer(modifier = Modifier.height(100.dp))
+
+                if (historyList.isEmpty() && searchQuery.isNotEmpty()) {
+                    item {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(32.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            val context = LocalContext.current
+                            val lottieRes = remember {
+                                val id = context.resources.getIdentifier("empty_search", "raw", context.packageName)
+                                if (id != 0) id else -1
+                            }
+                            
+                            val composition by rememberLottieComposition(
+                                if (lottieRes != -1) LottieCompositionSpec.RawRes(lottieRes) 
+                                else LottieCompositionSpec.RawRes(0)
+                            )
+                            val progress by animateLottieCompositionAsState(
+                                composition = composition,
+                                iterations = LottieConstants.IterateForever
+                            )
+
+                            if (composition != null) {
+                                LottieAnimation(
+                                    composition = composition,
+                                    progress = { progress },
+                                    modifier = Modifier.size(160.dp)
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Default.History,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(64.dp),
+                                    tint = MaterialTheme.colorScheme.secondary.copy(alpha = 0.5f)
+                                )
+                            }
+                            
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                text = "No matching history",
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                        }
+                    }
+                } else if (historyList.isEmpty()) {
+                    item {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center,
+                            modifier = Modifier
+                                .fillParentMaxHeight() // Fill available space
+                                .fillMaxWidth()
+                                .padding(horizontal = 32.dp)
+                                .padding(vertical = 24.dp)
+                        ) {
+                            EmptyStateAnimation(
+                                icon = Icons.Default.History,
+                                modifier = Modifier.size(100.dp) // Slightly smaller for better fit
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                text = "No history yet",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "Your converted files will appear here",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center
+                            )
+                            // Add extra spacer at bottom to ensure centering
+                            Spacer(modifier = Modifier.height(100.dp))
+                        }
+                    }
+                } else {
+                    items(historyList, key = { it.id }) { item ->
+                        HistoryItemCard(
+                            item = item,
+                            onClick = { onItemClick(item) },
+                            onDelete = { onDeleteItem(item) },
+                            modifier = Modifier.padding(horizontal = 16.dp)
+                        )
+                    }
                 }
             }
         }
@@ -176,19 +312,27 @@ fun HistoryScreenContent(
 @Composable
 private fun HistoryItemCard(
     item: ConversionHistoryEntity,
-    onDelete: () -> Unit
+    onClick: () -> Unit,
+    onDelete: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val relativeTime = remember(item.timestamp) {
-        DateUtils.getRelativeTimeSpanString(
-            item.timestamp,
-            System.currentTimeMillis(),
-            DateUtils.MINUTE_IN_MILLIS
-        ).toString()
+        TimeUtils.formatRelativeTime(item.timestamp)
+    }
+    val outputName = remember(item.displayName, item.outputFileNames) {
+        item.displayName.ifBlank {
+            TimeUtils.formatOutputDisplayName(item.outputFileNames)
+        }
     }
 
     OutlinedCard(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp)
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.outlinedCardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+        )
     ) {
         Column(
             modifier = Modifier
@@ -201,8 +345,8 @@ private fun HistoryItemCard(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(40.dp)
-                        .clip(RoundedCornerShape(10.dp))
+                        .size(42.dp)
+                        .clip(RoundedCornerShape(12.dp))
                         .background(
                             if (item.success) MaterialTheme.colorScheme.primaryContainer
                             else MaterialTheme.colorScheme.errorContainer
@@ -228,7 +372,8 @@ private fun HistoryItemCard(
                         text = item.inputFileName,
                         style = MaterialTheme.typography.bodyLarge,
                         fontWeight = FontWeight.SemiBold,
-                        maxLines = 1
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
                 Column(horizontalAlignment = Alignment.End) {
@@ -238,13 +383,22 @@ private fun HistoryItemCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.height(4.dp))
-                    Icon(
-                        imageVector = if (item.success) Icons.Default.CheckCircle else Icons.Default.Error,
-                        contentDescription = null,
-                        tint = if (item.success) MaterialTheme.colorScheme.primary 
-                               else MaterialTheme.colorScheme.error,
-                        modifier = Modifier.size(16.dp)
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = if (item.success) Icons.Default.CheckCircle else Icons.Default.Error,
+                            contentDescription = null,
+                            tint = if (item.success) MaterialTheme.colorScheme.primary 
+                                   else MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Icon(
+                            imageVector = Icons.Default.ChevronRight,
+                            contentDescription = "View Details",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
             }
 
@@ -260,11 +414,12 @@ private fun HistoryItemCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Output: ${item.outputFileNames}",
+                    text = "Output: $outputName",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.weight(1f),
-                    maxLines = 1
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
                 IconButton(
                     onClick = onDelete,
@@ -282,7 +437,7 @@ private fun HistoryItemCard(
     }
 }
 
-@Preview(name = "Light Mode", showBackground = true)
+@Preview(name = "Light Mode", showBackground = true, showSystemUi = true, device = Devices.PIXEL_7_PRO)
 @Composable
 fun HistoryScreenLightPreview() {
     MorphDropTheme(darkTheme = false) {
@@ -305,13 +460,18 @@ fun HistoryScreenLightPreview() {
                     success = false
                 )
             ),
+            searchQuery = "",
+            onSearchQueryChange = {},
             onClearAll = {},
-            onDeleteItem = {}
+            onDeleteItem = {},
+            onItemClick = {},
+            setSearchFabVisibility = {},
+            setOnSearchFabClick = {}
         )
     }
 }
 
-@Preview(name = "Dark Mode", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
+@Preview(name = "Dark Mode", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true, showSystemUi = true, device = Devices.PIXEL_7_PRO)
 @Composable
 fun HistoryScreenDarkPreview() {
     MorphDropTheme(darkTheme = true) {
@@ -326,8 +486,13 @@ fun HistoryScreenDarkPreview() {
                     success = true
                 )
             ),
+            searchQuery = "",
+            onSearchQueryChange = {},
             onClearAll = {},
-            onDeleteItem = {}
+            onDeleteItem = {},
+            onItemClick = {},
+            setSearchFabVisibility = {},
+            setOnSearchFabClick = {}
         )
     }
 }

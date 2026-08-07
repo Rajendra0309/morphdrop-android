@@ -16,7 +16,10 @@ import androidx.compose.material3.SearchBar
 import androidx.compose.material3.SearchBarDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -28,7 +31,8 @@ fun MorphDropSearchBar(
     placeholderText: String = "Search conversion tools...",
     active: Boolean = false,
     onActiveChange: (Boolean) -> Unit = {},
-    onSearch: (String) -> Unit = {}
+    onSearch: (String) -> Unit = {},
+    focusRequester: FocusRequester = remember { FocusRequester() }
 ) {
     SearchBar(
         inputField = {
@@ -38,6 +42,7 @@ fun MorphDropSearchBar(
                 onSearch = onSearch,
                 expanded = active,
                 onExpandedChange = onActiveChange,
+                modifier = Modifier.focusRequester(focusRequester),
                 placeholder = {
                     Text(
                         text = placeholderText,

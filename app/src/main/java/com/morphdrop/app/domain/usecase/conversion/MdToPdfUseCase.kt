@@ -95,6 +95,7 @@ class MdToPdfUseCase @Inject constructor(
             }
 
             for (element in elements) {
+                kotlinx.coroutines.yield() // Allow cooperative cancellation
                 when (element) {
                     is MdElement.Heading -> {
                         val textSizePt = when (element.level) {

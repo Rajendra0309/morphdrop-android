@@ -9,7 +9,7 @@ import com.morphdrop.app.data.local.entity.FavoriteEntity
 
 @Database(
     entities = [ConversionHistoryEntity::class, FavoriteEntity::class],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class MorphDropDatabase : RoomDatabase() {

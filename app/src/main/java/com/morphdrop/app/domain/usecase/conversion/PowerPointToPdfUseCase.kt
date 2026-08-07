@@ -79,7 +79,7 @@ class PowerPointToPdfUseCase @Inject constructor(
     // =========================================================================
     // 1. APACHE POI HIGH-FIDELITY PPTX ENGINE
     // =========================================================================
-    private fun renderPptxWithPoi(bytes: ByteArray): ByteArray {
+    private suspend fun renderPptxWithPoi(bytes: ByteArray): ByteArray {
         val slideShow = XMLSlideShow(ByteArrayInputStream(bytes))
         val pdfDocument = PdfDocument()
 
@@ -89,6 +89,7 @@ class PowerPointToPdfUseCase @Inject constructor(
 
         val slides = slideShow.slides
         for ((index, slide) in slides.withIndex()) {
+            kotlinx.coroutines.yield()
             val pageInfo = PdfDocument.PageInfo.Builder(slideWidth, slideHeight, index + 1).create()
             val page = pdfDocument.startPage(pageInfo)
             val canvas = page.canvas
@@ -355,11 +356,12 @@ class PowerPointToPdfUseCase @Inject constructor(
         return Triple(builder, tp, alignment)
     }
 
-    private fun renderPptxWithZipFallback(bytes: ByteArray): ByteArray {
+    private suspend fun renderPptxWithZipFallback(bytes: ByteArray): ByteArray {
         val pptData = extractPptxData(bytes)
         val pdfDocument = PdfDocument()
 
         for ((index, slide) in pptData.slides.withIndex()) {
+            kotlinx.coroutines.yield()
             val pageInfo = PdfDocument.PageInfo.Builder(defaultSlideWidth, defaultSlideHeight, index + 1).create()
             val page = pdfDocument.startPage(pageInfo)
             val canvas = page.canvas

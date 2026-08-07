@@ -18,7 +18,7 @@ import kotlin.math.pow
 object FileHelper {
 
     fun readFileFromUri(context: Context, uri: Uri): InputStream {
-        if (uri.scheme == "file" && uri.path != null) {
+        if (uri.scheme == "file" && (uri.path != null)) {
             val file = File(uri.path!!)
             if (file.exists()) {
                 return file.inputStream()
@@ -33,7 +33,7 @@ object FileHelper {
                     ?: throw e
                 java.io.FileInputStream(pfd.fileDescriptor)
             } catch (ex: Exception) {
-                throw FileNotFoundException("Cannot read URI ($uri): ${e.localizedMessage}")
+                throw FileNotFoundException("Cannot read URI ($uri): ${ex.localizedMessage ?: e.localizedMessage}")
             }
         }
     }
@@ -52,7 +52,7 @@ object FileHelper {
                 '\t' -> sb.append("    ")
                 '│', '┃', '┆', '┇', '┊', '┠', '┨', '┯', '┰', '┱', '┲', '┳', '┴', '┵', '┶', '┷', '┸', '┹', '┺', '┻', '┼', '┽', '┾', '┿', '╀', '╁', '╂', '╃', '╄', '╅', '╆', '╇', '╈', '╉', '╋' -> sb.append('|')
                 '─', '━', '┄', '┅', '┈', '┉', '═' -> sb.append('-')
-                '┌', '┍', '┎', '┏', '┐', '┑', '┒', '┓', '└', '┕', '┖', '┗', '┘', '┙', '┚', '┛', '├', '┝', '┞', '┟', '┢', '┤', '┥', '┦', '┧', '┪', '┬', '┴', '┼', '╔', '╦', '╗', '╠', '╬', '╣', '╚', '╩', '╝' -> sb.append('+')
+                '┌', '┍', '┎', '┏', '┐', '┑', '┒', '┓', '└', '┕', '┖', '┗', '┘', '┙', '┚', '┛', '├', '┝', '┞', '┟', '┢', '┤', '┥', '┦', '┧', '┪', '┬', '┴', '╔', '╦', '╗', '╠', '╬', '╣', '╚', '╩', '╝' -> sb.append('+')
                 '►', '▶' -> sb.append('>')
                 '◄', '◀' -> sb.append('<')
                 '▲', '▴' -> sb.append('^')
@@ -123,6 +123,9 @@ object FileHelper {
     }
 
     fun getFileName(context: Context, uri: Uri): String {
+        if (uri.scheme == "file") {
+            return uri.lastPathSegment ?: "unknown"
+        }
         var name = "unknown"
         try {
             context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
@@ -131,13 +134,17 @@ object FileHelper {
                     if (idx >= 0) name = cursor.getString(idx) ?: "unknown"
                 }
             }
-        } catch (e: SecurityException) {
+        } catch (_: SecurityException) {
             name = "unknown"
         }
         return name
     }
 
     fun getFileSize(context: Context, uri: Uri): Long {
+        if (uri.scheme == "file" && (uri.path != null)) {
+            val file = File(uri.path!!)
+            if (file.exists()) return file.length()
+        }
         var size = -1L
         try {
             context.contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { cursor ->
@@ -146,7 +153,7 @@ object FileHelper {
                     if (idx >= 0) size = cursor.getLong(idx)
                 }
             }
-        } catch (e: SecurityException) {
+        } catch (_: SecurityException) {
             size = -1L
         }
         return size
@@ -174,10 +181,25 @@ object FileHelper {
         return Intent.createChooser(intent, "Share file via")
     }
 
-    fun createOutputDirectory(context: Context, folderName: String): Uri {
-        val dir = File(context.cacheDir, folderName)
-        if (!dir.exists()) dir.mkdirs()
-        return Uri.fromFile(dir)
+    fun createOutputDirectory(folderName: String): Uri {
+        val externalDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
+        val folder = File(externalDir, folderName)
+        if (!folder.exists()) folder.mkdirs()
+        return Uri.fromFile(folder)
+    }
+
+    fun getOutputFolderUri(folderName: String): Uri {
+        val externalDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
+        val folder = File(externalDir, folderName)
+        return Uri.fromFile(folder)
+    }
+
+    fun openFolderIntent(folderName: String): Intent {
+        val uri = getOutputFolderUri(folderName)
+        return Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "resource/folder")
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
     }
 
     fun saveToDirectory(context: Context, directoryName: String, fileName: String, data: ByteArray): Uri {
@@ -192,7 +214,40 @@ object FileHelper {
         return String.format(Locale.US, "%.1f %s", value, units[group])
     }
 
-    private fun getFileExtension(fileName: String): String = fileName.substringAfterLast('.', "")
+    private fun getFileExtension(fileName: String): String = fileName.substringAfterLast('.', "").lowercase(Locale.ROOT)
 
     fun getFileNameWithoutExtension(fileName: String): String = fileName.substringBeforeLast('.')
+
+    fun deleteFileByName(context: Context, folderName: String, fileName: String) {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            val resolver = context.contentResolver
+            val collection = android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI
+            
+            // 1. Delete if it is a single file with that exact display name
+            val selectionFile = "${android.provider.MediaStore.MediaColumns.DISPLAY_NAME} = ? AND ${android.provider.MediaStore.MediaColumns.RELATIVE_PATH} LIKE ?"
+            val selectionArgsFile = arrayOf(fileName, "%$folderName%")
+            try {
+                resolver.delete(collection, selectionFile, selectionArgsFile)
+            } catch (_: Exception) {
+                // Ignore failure
+            }
+
+            // 2. Delete if it is a folder (delete all files inside that folder path)
+            // RELATIVE_PATH in MediaStore will be like "Download/MorphDrop/fileName/"
+            val selectionFolder = "${android.provider.MediaStore.MediaColumns.RELATIVE_PATH} LIKE ?"
+            val selectionArgsFolder = arrayOf("%$folderName/$fileName/%")
+            try {
+                resolver.delete(collection, selectionFolder, selectionArgsFolder)
+            } catch (_: Exception) {
+                // Ignore failure
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            val dir = File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), folderName)
+            val file = File(dir, fileName)
+            if (file.exists()) {
+                if (file.isDirectory) file.deleteRecursively() else file.delete()
+            }
+        }
+    }
 }

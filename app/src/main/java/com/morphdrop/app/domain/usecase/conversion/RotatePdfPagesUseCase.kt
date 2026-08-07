@@ -28,6 +28,7 @@ class RotatePdfPagesUseCase @Inject constructor(
         try {
             val totalPages = document.numberOfPages
             for (i in 0 until totalPages) {
+                kotlinx.coroutines.yield()
                 val pageNumber = i + 1
                 if (targetPages == null || targetPages.contains(pageNumber)) {
                     val page = document.getPage(i)

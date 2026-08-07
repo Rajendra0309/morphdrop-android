@@ -15,6 +15,10 @@ class HistoryRepositoryImpl @Inject constructor(
         return historyDao.getAllHistory()
     }
 
+    override fun getHistoryById(id: Long): Flow<ConversionHistoryEntity?> {
+        return historyDao.getHistoryById(id)
+    }
+
     override suspend fun insertHistory(history: ConversionHistoryEntity): Long {
         return historyDao.insertHistory(history)
     }

@@ -1,40 +1,135 @@
 <div align="center">
   <!-- Replace with actual logo path when available -->
-  <img src="app/src/main/res/drawable/ic_launcher_foreground.xml" alt="MorphDrop Logo" width="120"/>
+  <img src="app\src\main\ic_launcher-playstore.png" alt="MorphDrop Logo" width="120"/>
 
   <h1>MorphDrop</h1>
 
   <p><strong>Drop. Transform. Done.</strong></p>
   <p>A modern, 100% offline Android file converter built with privacy and simplicity at its core.</p>
-
-  [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-  [![Platform](https://img.shields.io/badge/Platform-Android-green.svg)]()
-  [![Kotlin](https://img.shields.io/badge/Kotlin-2.0.x-purple.svg)]()
-  [![Compose](https://img.shields.io/badge/Compose-BOM_2024.02.00-blue.svg)]()
+  
+  <p>
+    <a href="https://github.com/rajendra0309/MorphDrop_Android/releases" style="text-decoration:none;"><img src="https://img.shields.io/github/v/release/rajendra0309/MorphDrop_Android?style=flat-square&color=6f42c1" alt="GitHub Release"></a>
+    <a href="LICENSE" style="text-decoration:none;"><img src="https://img.shields.io/github/license/rajendra0309/MorphDrop_Android?style=flat-square&color=28a745" alt="License"></a>
+  </p>
 </div>
 
 ---
 
 ## Overview
 
-**MorphDrop** is an offline-first utility app that allows you to convert documents and images directly on your device. No internet required, no data collection, and no file size limits. It leverages powerful libraries like Apache PDFBox and Apache POI to handle complex file transformations locally and securely.
+**MorphDrop** is an offline-first utility app that allows you to convert documents and images directly on your device. No internet required, no data collection, and no file size limits. It leverages powerful libraries like Apache PDFBox and Apache POI to handle complex file transformations locally and securely, while ensuring a premium user experience with a modern Material 3 design language.
 
 ---
 
-## Core Features
+## Table of Contents
 
-- 🛡️ **100% Offline** — Zero internet permissions required. Files never leave your device.
-- ⚡ **Core Conversions** — PDF to Images, Images to PDF, Word to PDF, and more.
-- 📄 **Advanced PDF Tools** — Merge, Split, Compress, Rotate, Reorder, and Password protect PDF files.
-- ✨ **Modern UI** — Built with Jetpack Compose and Material 3 with Dynamic Color support.
-- 🔄 **Background Processing** — Conversions run in the background using WorkManager.
-- 📱 **Material You** — Dynamic theming based on your device's wallpaper.
+- [Overview](#overview)
+- [Screenshots](#screenshots)
+- [Features](#features)
+- [Supported Conversions](#supported-conversions)
+- [Installation & Setup](#installation--setup)
+- [Tech Stack](#tech-stack)
+- [Special Thanks](#special-thanks)
+
+---
+
+## Screenshots
+
+<div align="center">
+  <table style="margin: 0 auto; border-collapse: collapse;">
+    <tr>
+      <td align="center" style="padding: 15px; border: none;">
+        <b>Welcome Screen</b><br><br>
+        <img src="Screenshots/welcome.png" alt="Welcome Screen" width="220" style="border-radius: 12px; box-shadow: 0 8px 16px rgba(0,0,0,0.2);"/>
+      </td>
+      <td align="center" style="padding: 15px; border: none;">
+        <b>Home Screen</b><br><br>
+        <img src="Screenshots/home.png" alt="Home Screen" width="220" style="border-radius: 12px; box-shadow: 0 8px 16px rgba(0,0,0,0.2);"/>
+      </td>
+      <td align="center" style="padding: 15px; border: none;">
+        <b>Conversion Setup</b><br><br>
+        <img src="Screenshots/conversion_setup.png" alt="Conversion Setup" width="220" style="border-radius: 12px; box-shadow: 0 8px 16px rgba(0,0,0,0.2);"/>
+      </td>
+    </tr>
+    <tr>
+      <td align="center" style="padding: 15px; border: none;">
+        <b>History Screen</b><br><br>
+        <img src="Screenshots/history.png" alt="History" width="220" style="border-radius: 12px; box-shadow: 0 8px 16px rgba(0,0,0,0.2);"/>
+      </td>
+      <td align="center" style="padding: 15px; border: none;">
+        <b>Search & Filter</b><br><br>
+        <img src="Screenshots/search.png" alt="Search" width="220" style="border-radius: 12px; box-shadow: 0 8px 16px rgba(0,0,0,0.2);"/>
+      </td>
+      <td align="center" style="padding: 15px; border: none;">
+        <b>Settings & Themes</b><br><br>
+        <img src="Screenshots/settings.png" alt="Settings" width="220" style="border-radius: 12px; box-shadow: 0 8px 16px rgba(0,0,0,0.2);"/>
+      </td>
+    </tr>
+  </table>
+</div>
+
+---
+
+## Features
+
+### What's New
+
+> - **Material You Aesthetic** — Beautiful modern UI with dynamic theming.
+> - **Cooperative Background Tasks** — Safe cancellations without orphaned or corrupted files.
+> - **Search FAB System** — Quick and intuitive search functionality integrated tightly into the navigation.
+> - **Dynamic Material You Colors** — Blends seamlessly with your device’s wallpaper.
+
+<br>
+
+<details>
+<summary><b>Core & Privacy</b></summary>
+<br>
+
+- **100% Offline** — Zero internet permissions required. Files never leave your device.
+- **Privacy-First** — No data collection and absolutely no analytics tracking.
+- **No Size Limits** — Convert large documents locally (subject to device hardware).
+
+</details>
+
+<details>
+<summary><b>File Management</b></summary>
+<br>
+
+- **Organized Storage** — Converted files are safely stored in your device's `Downloads/MorphDrop` directory.
+- **Background Processing** — Conversions run reliably in the background using `WorkManager`.
+- **History Tracker** — Keep a persistent record of all your past conversions.
+
+</details>
+
+<details>
+<summary><b>Advanced PDF Tools</b></summary>
+<br>
+
+- **Merge & Split** — Combine multiple PDFs or extract specific pages.
+- **Compress & Optimize** — Reduce PDF file sizes for easy sharing.
+- **Rotate & Reorder** — Change page orientation and move pages around.
+- **Password Protection** — Lock sensitive PDFs.
+
+</details>
+
+<details>
+<summary><b>Customization & UI</b></summary>
+<br>
+
+- **Modern Jetpack Compose UI** — Clean, performant, and fast navigation.
+- **System Theme Sync** — Smooth transitioning between Light and Dark mode.
+- **Floating Navigation Pill** — Premium bottom navigation component.
+
+</details>
 
 ---
 
 ## Supported Conversions
 
-### Document Conversions
+<details>
+<summary><b>Document Conversions</b></summary>
+<br>
+
 | From | To |
 | :--- | :--- |
 | PDF | Images (PNG, JPG) |
@@ -44,13 +139,46 @@
 | PowerPoint (PPTX) | PDF |
 | Excel (XLSX) | PDF |
 
-### Image Conversions
+</details>
+
+<details>
+<summary><b>Image Conversions</b></summary>
+<br>
+
 | From | To |
 | :--- | :--- |
 | PNG | JPG, WebP, BMP |
 | JPG | PNG, WebP, BMP |
 | WebP | PNG, JPG, BMP |
 | BMP | PNG, JPG, WebP |
+
+</details>
+
+---
+
+## Installation & Setup
+
+### Prerequisites
+- Android Studio Ladybug (2024.2) or newer
+- JDK 17+
+- Android Device/Emulator (API 26+)
+
+### Building from Source
+
+1. **Clone the Repository**
+   ```bash
+   git clone https://github.com/Rajendra0309/morphdrop-android.git
+   cd morphdrop-android
+   ```
+
+2. **Open in Android Studio**
+   Sync the project with Gradle files.
+
+3. **Build the Application**
+   ```bash
+   ./gradlew assembleDebug
+   ```
+4. **Install** the debug APK on your device or emulator.
 
 ---
 
@@ -62,7 +190,7 @@
 | **Language** | Kotlin 2.0.x |
 | **Architecture** | MVVM + Clean Architecture |
 | **DI** | Hilt (Dagger Hilt) |
-| **Database** | Room (Local History & Favorites - Coming Soon) |
+| **Database** | Room (Local History & Favorites) |
 | **Background** | WorkManager |
 | **PDF Engine** | Apache PDFBox Android |
 | **Office Docs** | Apache POI |
@@ -70,51 +198,20 @@
 
 ---
 
-## Project Structure
 
-```
-app/src/main/java/com/morphdrop/app/
-├── di/                    # Hilt Dependency Injection modules
-├── domain/
-│   ├── model/             # Data models (ConversionType, FileType, etc.)
-│   └── usecase/           # Business logic use cases
-├── ui/
-│   ├── components/        # Reusable UI components
-│   ├── navigation/        # Navigation setup (NavGraph, Screen)
-│   ├── screens/           # Screen composables & ViewModels
-│   └── theme/             # Material You theming
-└── util/                  # Utilities (FileHelper)
-```
 
----
+## Special Thanks
 
-## Getting Started
+MorphDrop stands on the shoulders of several excellent open-source projects. Sincere thanks to:
 
-### Prerequisites
-- Android Studio Ladybug (2024.2) or newer
-- JDK 17+
-- Android Device/Emulator (API 26+)
-
-### Building from Source
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/your-username/MorphDrop_Android.git
-   ```
-2. Open the project in Android Studio.
-3. Build the project using the Gradle wrapper:
-   ```bash
-   ./gradlew assembleDebug
-   ```
-4. Install the debug APK on your device/emulator.
-
----
-
-## License
-
-This project is licensed under the **Apache License 2.0**. See the [LICENSE](LICENSE) file for details.
+| Project | Description |
+| :--- | :--- |
+| **[Apache PDFBox](https://pdfbox.apache.org/)** | Core engine for PDF manipulation and processing. |
+| **[Apache POI](https://poi.apache.org/)** | Robust engine for parsing and transforming Microsoft Office formats (Word, PowerPoint, Excel). |
+| **[Jetpack Compose](https://developer.android.com/compose)** | Modern UI toolkit allowing a beautiful, responsive design. |
 
 ---
 
 <div align="center">
-  Built with ❤️ for privacy and efficiency.
+  <p>Licensed under <a href="LICENSE">Apache License 2.0</a></p>
 </div>

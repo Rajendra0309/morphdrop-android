@@ -15,6 +15,20 @@ class MorphDropApplication : Application(), Configuration.Provider {
     override fun onCreate() {
         super.onCreate()
         com.tom_roush.pdfbox.android.PDFBoxResourceLoader.init(this)
+        
+        setupCacheCleanupWorker()
+    }
+
+    private fun setupCacheCleanupWorker() {
+        val cacheCleanupRequest = androidx.work.PeriodicWorkRequestBuilder<com.morphdrop.app.worker.CacheCleanupWorker>(
+            7, java.util.concurrent.TimeUnit.DAYS
+        ).build()
+
+        androidx.work.WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+            "CacheCleanupWork",
+            androidx.work.ExistingPeriodicWorkPolicy.KEEP,
+            cacheCleanupRequest
+        )
     }
 
     override val workManagerConfiguration: Configuration
