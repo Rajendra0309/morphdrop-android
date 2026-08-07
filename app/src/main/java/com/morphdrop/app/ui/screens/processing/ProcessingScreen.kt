@@ -27,6 +27,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Devices
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -61,7 +62,10 @@ fun ProcessingScreen(
     ProcessingScreenContent(
         state = state,
         scrollBehavior = scrollBehavior,
-        onCancel = { onCancel(viewModel.workIdString ?: "") }
+        onCancel = { 
+            viewModel.cancelConversion(context)
+            onCancel(viewModel.workIdString ?: "") 
+        }
     )
 }
 
@@ -147,26 +151,30 @@ fun ProcessingScreenContent(
             Spacer(modifier = Modifier.height(32.dp))
 
             Text(
-                text = "Processing File...",
+                text = "Morphing Your File...", // Changed from "Processing File..."
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             Text(
                 text = state.currentStage,
                 style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Medium,
                 textAlign = TextAlign.Center
             )
+            
+            Spacer(modifier = Modifier.height(4.dp))
             
             Text(
                 text = state.fileName,
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                 textAlign = TextAlign.Center,
-                maxLines = 1
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
 
             Spacer(modifier = Modifier.height(48.dp))

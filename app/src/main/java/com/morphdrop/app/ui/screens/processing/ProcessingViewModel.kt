@@ -50,22 +50,37 @@ class ProcessingViewModel @Inject constructor(
         viewModelScope.launch {
             workManager.getWorkInfoByIdFlow(workId).collect { workInfo ->
                 if (workInfo != null) {
+                    // Critical Fix: Do not update state if we are already in a terminal success state
+                    if (_uiState.value.isCompleted) return@collect
+
                     val rawProgress = workInfo.progress.getInt("progress", 0)
                     val outputName = workInfo.progress.getString("output_name") ?: ""
-                    val progress = (rawProgress / 100f).coerceIn(0f, 1f)
+                    
+                    val isSucceeded = workInfo.state == androidx.work.WorkInfo.State.SUCCEEDED
+                    
+                    val currentProgress = if (isSucceeded) 1.0f else (rawProgress / 100f).coerceIn(0f, 1f)
+                    
+                    // Logic to prevent progress from decreasing
+                    val previousProgress = _uiState.value.progress / 100f
+                    if (currentProgress < previousProgress && !isSucceeded) {
+                         return@collect
+                    }
+                    
                     val stage = when {
-                        progress < 0.2f -> "Initializing conversion..."
-                        progress < 0.5f -> "Processing content..."
-                        progress < 0.9f -> "Rendering output document..."
-                        else -> "Finalizing..."
+                        isSucceeded -> "Success!"
+                        currentProgress < 0.1f -> "Initializing..."
+                        currentProgress < 0.3f -> "Loading file..."
+                        currentProgress < 0.7f -> "Converting..."
+                        currentProgress < 0.95f -> "Finalizing..."
+                        else -> "Processing..."
                     }
                     
                     _uiState.update {
                         it.copy(
-                            progress = progress,
+                            progress = currentProgress * 100f,
                             currentStage = stage,
-                            fileName = outputName.ifBlank { it.conversionType?.name ?: it.fileName },
-                            isCompleted = workInfo.state == androidx.work.WorkInfo.State.SUCCEEDED,
+                            fileName = if (outputName.isNotBlank()) outputName else it.fileName,
+                            isCompleted = isSucceeded,
                             isCancelled = workInfo.state == androidx.work.WorkInfo.State.CANCELLED || workInfo.state == androidx.work.WorkInfo.State.FAILED
                         )
                     }

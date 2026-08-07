@@ -154,16 +154,15 @@ fun OnboardingPagerItem(page: OnboardingPage) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(24.dp),
+            .padding(horizontal = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
         LottieAnimationView(
             resId = page.lottieRes,
             modifier = Modifier
-                .weight(1f)
+                .fillMaxHeight(0.45f) // Take up 45% of height to look good on all screens
                 .aspectRatio(1f)
-                .padding(32.dp)
         )
 
         Spacer(modifier = Modifier.height(24.dp))
@@ -203,11 +202,13 @@ fun LottieAnimationView(resId: Int, modifier: Modifier = Modifier) {
         iterations = LottieConstants.IterateForever
     )
 
-    LottieAnimation(
-        composition = composition,
-        progress = { progress },
-        modifier = modifier
-    )
+    if (composition != null) {
+        LottieAnimation(
+            composition = composition,
+            progress = { progress },
+            modifier = modifier
+        )
+    }
 }
 
 sealed class OnboardingPage(
@@ -218,24 +219,24 @@ sealed class OnboardingPage(
     data object Welcome : OnboardingPage(
         title = "Welcome to MorphDrop",
         description = "The easiest way to convert files on your phone with elegance and speed.",
-        R.raw.welcome
+        com.morphdrop.app.R.raw.welcome
     )
 
     data object Convert : OnboardingPage(
         title = "Convert Any File",
         description = "PDF, Word, Excel, Images, and more. Support for all your essential formats.",
-        R.raw.convert
-        )
+        com.morphdrop.app.R.raw.convert
+    )
 
     data object Privacy : OnboardingPage(
         title = "100% Offline & Private",
         description = "Your files never leave your device. Privacy is our priority, no internet required.",
-        R.raw.privacy
+        com.morphdrop.app.R.raw.privacy
     )
 
     data object Speed : OnboardingPage(
         title = "Beautiful & Fast",
         description = "Material You design that adapts to your style while delivering peak performance.",
-        R.raw.performance
+        com.morphdrop.app.R.raw.performance
     )
 }

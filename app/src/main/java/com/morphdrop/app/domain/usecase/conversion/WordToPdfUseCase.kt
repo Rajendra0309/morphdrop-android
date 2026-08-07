@@ -83,7 +83,7 @@ class WordToPdfUseCase @Inject constructor(
     // =========================================================================
     // 1. APACHE POI HIGH-FIDELITY ENGINE
     // =========================================================================
-    private fun renderDocxWithPoi(bytes: ByteArray): ByteArray {
+    private suspend fun renderDocxWithPoi(bytes: ByteArray): ByteArray {
         val document = XWPFDocument(ByteArrayInputStream(bytes))
         val pdfDocument = PdfDocument()
 
@@ -113,6 +113,7 @@ class WordToPdfUseCase @Inject constructor(
         val listCounters = mutableMapOf<String, Int>()
         val elements = document.bodyElements
         for (element in elements) {
+            kotlinx.coroutines.yield()
             when (element) {
                 is XWPFParagraph -> {
                     currentY = renderPoiParagraph(canvas, element, currentY, listCounters) { heightNeeded ->
@@ -511,7 +512,7 @@ class WordToPdfUseCase @Inject constructor(
     // =========================================================================
     // 2. FALLBACK OOXML ZIP CANVAS ENGINE
     // =========================================================================
-    private fun renderDocxWithZipFallback(bytes: ByteArray): ByteArray {
+    private suspend fun renderDocxWithZipFallback(bytes: ByteArray): ByteArray {
         var docXml = ""
         var relsXml = ""
         val mediaMap = mutableMapOf<String, ByteArray>()

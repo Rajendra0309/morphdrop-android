@@ -44,6 +44,7 @@ class CompressPdfUseCase @Inject constructor(
 
         try {
             for (page in document.pages) {
+                kotlinx.coroutines.yield()
                 val resources = page.resources ?: continue
                 for (name in resources.xObjectNames) {
                     val xObject = resources.getXObject(name)

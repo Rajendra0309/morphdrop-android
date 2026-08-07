@@ -104,15 +104,15 @@ fun HomeScreenContent(
     val keyboardController = LocalSoftwareKeyboardController.current
     
     // Track search FAB visibility and sync with MainViewModel
-    val showSearchFab by remember {
+    val isScrolledDown by remember {
         derivedStateOf { 
-            gridState.firstVisibleItemIndex > 0 || gridState.firstVisibleItemScrollOffset > 40
+            gridState.firstVisibleItemIndex > 0
         }
     }
 
     // Reactive sync: ensure visibility is updated whenever it changes OR on screen entry
-    LaunchedEffect(showSearchFab) {
-        setSearchFabVisibility(showSearchFab)
+    LaunchedEffect(isScrolledDown) {
+        setSearchFabVisibility(isScrolledDown)
     }
 
     // Re-register click listener whenever the screen is active
@@ -129,10 +129,9 @@ fun HomeScreenContent(
 
     // Force re-sync when screen is revealed (e.g. from background or backstack)
     DisposableEffect(Unit) {
-        setSearchFabVisibility(showSearchFab)
+        setSearchFabVisibility(isScrolledDown)
         onDispose {
-            setSearchFabVisibility(false)
-            setOnSearchFabClick(null)
+            // No reset here to prevent jitter on navigation
         }
     }
 

@@ -45,7 +45,7 @@ class PdfToImagesUseCase @Inject constructor(
         }
         
         val outputDir = "$baseFolder/$chosenFolder"
-        FileHelper.createOutputDirectory(context, outputDir)
+        FileHelper.createOutputDirectory(outputDir)
         val results = mutableListOf<Uri>()
 
         val fileDescriptor = try {
@@ -83,6 +83,7 @@ class PdfToImagesUseCase @Inject constructor(
             val isSinglePage = range.count() == 1
 
             for (i in range) {
+                kotlinx.coroutines.yield()
                 val page = renderer.openPage(i)
                 val width = page.width * 2
                 val height = page.height * 2

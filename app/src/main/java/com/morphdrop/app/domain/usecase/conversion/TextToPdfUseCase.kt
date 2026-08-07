@@ -34,7 +34,8 @@ class TextToPdfUseCase @Inject constructor(
 
     suspend operator fun invoke(
         txtUri: Uri,
-        outputFileName: String = "text_to_pdf_${System.currentTimeMillis()}.pdf"
+        outputFileName: String = "text_to_pdf_${System.currentTimeMillis()}.pdf",
+        onProgress: (Int) -> Unit = {}
     ): Uri = withContext(Dispatchers.IO) {
         val sanitizedFileName = if (outputFileName.endsWith(".pdf", ignoreCase = true)) {
             outputFileName
@@ -42,8 +43,13 @@ class TextToPdfUseCase @Inject constructor(
             "$outputFileName.pdf"
         }
 
+        onProgress(10)
         val inputStream = FileHelper.readFileFromUri(context, txtUri)
-        val reader = BufferedReader(InputStreamReader(inputStream, Charsets.UTF_8))
+        val bytes = inputStream.readBytes()
+        val textContent = String(bytes, Charsets.UTF_8)
+        val lines = textContent.split(Regex("[\\r\\n]+"))
+        onProgress(30)
+        
         val pdfDocument = PdfDocument()
 
         try {
@@ -62,8 +68,8 @@ class TextToPdfUseCase @Inject constructor(
                 typeface = Typeface.DEFAULT
             }
 
-            var line: String? = reader.readLine()
-            while (line != null) {
+            for ((index, line) in lines.withIndex()) {
+                kotlinx.coroutines.yield() // Support cancellation
                 if (line.isEmpty()) {
                     yPos += spToPx(9.5f) * 1.5f // Adjusted spacing
                     if (yPos > maxBottom) {
@@ -74,7 +80,6 @@ class TextToPdfUseCase @Inject constructor(
                         canvas = currentPage.canvas
                         yPos = MARGIN_TOP
                     }
-                    line = reader.readLine()
                     continue
                 }
 
@@ -96,8 +101,9 @@ class TextToPdfUseCase @Inject constructor(
                 canvas.restore()
 
                 yPos += layoutHeight + 4f
-
-                line = reader.readLine()
+                
+                val currentProgress = 30 + ((index + 1).toFloat() / lines.size * 60).toInt()
+                onProgress(currentProgress)
             }
 
             pdfDocument.finishPage(currentPage)
@@ -109,10 +115,10 @@ class TextToPdfUseCase @Inject constructor(
 
             val baos = ByteArrayOutputStream()
             pdfDocument.writeTo(baos)
+            onProgress(95)
             FileHelper.saveToFile(context, settingsRepository, sanitizedFileName, baos.toByteArray())
         } finally {
             try { pdfDocument.close() } catch (_: Exception) {}
-            try { reader.close() } catch (_: Exception) {}
             try { inputStream.close() } catch (_: Exception) {}
         }
     }

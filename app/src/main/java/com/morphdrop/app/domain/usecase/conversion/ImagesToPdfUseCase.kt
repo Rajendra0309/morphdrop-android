@@ -56,6 +56,7 @@ class ImagesToPdfUseCase @Inject constructor(
 
         try {
             for (uri in imageUris) {
+                kotlinx.coroutines.yield() // Allow cooperative cancellation
                 val bitmap = loadAndDownsampleBitmap(uri) ?: continue
 
                 try {

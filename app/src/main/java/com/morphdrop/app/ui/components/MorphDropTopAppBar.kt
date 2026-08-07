@@ -2,9 +2,12 @@ package com.morphdrop.app.ui.components
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -17,8 +20,8 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -37,63 +40,84 @@ fun MorphDropTopAppBar(
     actions: @Composable () -> Unit = {}
 ) {
     val collapsedFraction = scrollBehavior.state.collapsedFraction
-    
-    // Smooth linear scaling: 36sp expanded -> 22sp collapsed
-    val fontSize = lerp(36.sp, 22.sp, collapsedFraction)
+
+    // Smooth alpha for the tagline (fades out early)
+    val taglineAlpha = (1f - (collapsedFraction * 4f)).coerceIn(0f, 1f)
     
     val isHomeBrand = title == "MorphDrop"
-    
-    // Smooth transition from left corner (-1.0) to center (0.0)
-    val horizontalBias = (-1f + (1f * collapsedFraction)).coerceIn(-1f, 0f)
-
-    // Weight policy: Black for Home brand, Bold for others
     val titleWeight = if (isHomeBrand) FontWeight.Black else FontWeight.Bold
+
+    // We need to calculate the offset to keep the title exactly in the screen center
+    // when the bar is collapsed.
+    // Nav Icon area: 48dp (if present)
+    // Actions area: variable (48dp per action)
 
     LargeTopAppBar(
         title = {
-            // Smooth motion using BiasAlignment (native Compose behavior)
+            // Expanded state: standard slot behavior
+            // Collapsed state: absolute centering using negative translation
             Box(
                 modifier = Modifier.fillMaxWidth(),
-                contentAlignment = BiasAlignment(horizontalBias, 0f)
+                contentAlignment = Alignment.CenterStart
             ) {
+                // Left Expanded Title (Fades out)
                 Column(
                     horizontalAlignment = Alignment.Start,
                     modifier = Modifier
-                        .padding(
-                            start = if (horizontalBias < -0.99f) 16.dp else 0.dp,
-                            bottom = (8 * (1f - collapsedFraction)).dp
-                        )
-                        .offset(
-                            x = if (collapsedFraction > 0.1f) {
-                                // Absolute centering correction: (ActionsWidth - NavWidth) / 2
-                                val navWidth = if (showBackArrow) 48.dp else 0.dp
-                                val actionWidth = if (hasActions) 48.dp else 0.dp
-                                (actionWidth - navWidth) / 2f * collapsedFraction
-                            } else 0.dp
-                        )
+                        .padding(start = if (showBackArrow) 0.dp else 4.dp)
+                        .graphicsLayer { 
+                            alpha = (1f - collapsedFraction * 2.5f).coerceIn(0f, 1f)
+                        }
                 ) {
                     Text(
                         text = title,
                         style = MaterialTheme.typography.headlineMedium,
                         fontWeight = titleWeight,
-                        fontSize = fontSize,
+                        fontSize = 32.sp,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    )
+                    
+                    if (showTagline && isHomeBrand && taglineAlpha > 0.01f) {
+                        Text(
+                            text = "Drop. Transform. Done.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = taglineAlpha),
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+
+                // Centered Collapsed Title (Fades in)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .graphicsLayer { 
+                            alpha = if (collapsedFraction > 0.6f) (collapsedFraction - 0.6f) * 2.5f else 0f
+
+                            // Absolute Screen Centering Logic:
+                            // The LargeTopAppBar title slot is horizontally biased by the nav icon area.
+                            // navWidth: area on the left (Back Arrow 48dp or Home 16dp).
+                            // actionWidth: area on the right (Actions 48dp or balanced spacer 48dp).
+                            val left = if (showBackArrow) 48f else 16f
+                            val right = if (hasActions || showBackArrow) 48f else 0f
+
+                            // Shift to reach absolute horizontal screen center
+                            translationX = (right - left) / 2f
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = titleWeight,
+                        fontSize = 19.sp, 
                         color = MaterialTheme.colorScheme.onBackground,
                         maxLines = 1,
                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                        textAlign = TextAlign.Start
+                        modifier = Modifier.offset(y = (-3.5).dp) // Exactly aligned with arrow center
                     )
-                    
-                    if (showTagline && isHomeBrand) {
-                        val taglineOpacity = (1f - (collapsedFraction * 4f)).coerceIn(0f, 1f)
-                        if (taglineOpacity > 0.01f) {
-                            Text(
-                                text = "Drop. Transform. Done.",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.primary.copy(alpha = taglineOpacity),
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
-                    }
                 }
             }
         },
@@ -108,7 +132,16 @@ fun MorphDropTopAppBar(
                 }
             }
         },
-        actions = { actions() },
+        actions = { 
+            // Wrap actions to maintain layout balance
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                actions()
+                if (showBackArrow && !hasActions) {
+                   // Spacer for balance if only back arrow is present
+                   Spacer(modifier = Modifier.width(48.dp))
+                }
+            }
+        },
         scrollBehavior = scrollBehavior,
         colors = TopAppBarDefaults.topAppBarColors(
             containerColor = MaterialTheme.colorScheme.background,

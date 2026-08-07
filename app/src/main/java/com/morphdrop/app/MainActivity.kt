@@ -5,12 +5,14 @@ import android.os.Bundle
 import android.view.View
 import android.view.animation.AnticipateInterpolator
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.LaunchedEffect
@@ -39,45 +41,47 @@ class MainActivity : ComponentActivity() {
         val splashScreen = installSplashScreen()
         super.onCreate(savedInstanceState)
         
-        splashScreen.setKeepOnScreenCondition {
-            viewModel.hasSeenWelcome.value == null
-        }
+        val isLowEnd = (getSystemService(android.content.Context.ACTIVITY_SERVICE) as android.app.ActivityManager).isLowRamDevice
 
-        // Custom exit animation for the splash screen
+
+        // Immediate exit for all devices to reduce splash screen delay to zero.
         splashScreen.setOnExitAnimationListener { splashScreenView ->
-            val slideUp = ObjectAnimator.ofFloat(
-                splashScreenView.view,
-                View.TRANSLATION_Y,
-                0f,
-                -splashScreenView.view.height.toFloat()
-            )
-            slideUp.interpolator = AnticipateInterpolator()
-            slideUp.duration = 400L
-
-            val fadeOut = ObjectAnimator.ofFloat(
-                splashScreenView.view,
-                View.ALPHA,
-                1f,
-                0f
-            )
-            fadeOut.duration = 400L
-
-            // Call remove when animation is done
-            slideUp.doOnEnd { splashScreenView.remove() }
-
-            // Run animations together
-            slideUp.start()
-            fadeOut.start()
+            splashScreenView.remove()
         }
-        
-        enableEdgeToEdge()
+
         setContent {
-            val isDarkMode by viewModel.isDarkMode.collectAsState()
+            val themeMode by viewModel.themeMode.collectAsState()
+            val isSystemDark = androidx.compose.foundation.isSystemInDarkTheme()
+
+            // Notify ViewModel of system theme changes to handle override resets
+            LaunchedEffect(isSystemDark) {
+                viewModel.onSystemThemeChanged(isSystemDark)
+            }
+
+            val isDarkMode = when (themeMode) {
+                com.morphdrop.app.domain.model.ThemeMode.DARK -> true
+                com.morphdrop.app.domain.model.ThemeMode.LIGHT -> false
+                com.morphdrop.app.domain.model.ThemeMode.SYSTEM -> isSystemDark
+            }
+
+            androidx.compose.runtime.DisposableEffect(isDarkMode) {
+                enableEdgeToEdge(
+                    statusBarStyle = androidx.activity.SystemBarStyle.auto(
+                        android.graphics.Color.TRANSPARENT,
+                        android.graphics.Color.TRANSPARENT
+                    ) { isDarkMode },
+                    navigationBarStyle = androidx.activity.SystemBarStyle.auto(
+                        android.graphics.Color.TRANSPARENT,
+                        android.graphics.Color.TRANSPARENT
+                    ) { isDarkMode }
+                )
+                onDispose {}
+            }
             val hasSeenWelcome by viewModel.hasSeenWelcome.collectAsState()
             
             val showSearchFab by viewModel.showSearchFab.collectAsState()
             val onSearchFabClick by viewModel.onSearchFabClick.collectAsState()
-            
+
             if (hasSeenWelcome != null) {
                 val initialRoute = remember {
                     if (hasSeenWelcome == true) Screen.Home.route else Screen.Welcome.route
@@ -104,34 +108,43 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    Box(modifier = Modifier
-                        .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.background)
-                    ) {
+                    Box(modifier = Modifier.fillMaxSize()) {
                         NavGraph(
                             navController = navController, 
                             mainViewModel = viewModel,
                             startDestination = initialRoute
                         )
-                        
+
                         if (showBottomNav) {
                             MorphDropBottomNavigation(
                                 currentRoute = currentRoute,
                                 onNavigate = { route ->
-                                    navController.navigate(route) {
-                                        popUpTo(navController.graph.findStartDestination().id) {
-                                            saveState = true
+                                    if (currentRoute != route) {
+                                        navController.navigate(route) {
+                                            popUpTo(Screen.Home.route) {
+                                                saveState = true
+                                            }
+                                            launchSingleTop = true
+                                            restoreState = true
                                         }
-                                        launchSingleTop = true
-                                        restoreState = true
                                     }
                                 },
                                 showSearchIcon = isSearchable && showSearchFab,
-                                onSearchClick = { onSearchFabClick?.invoke() },
+                                onSearchClick = {
+                                    onSearchFabClick?.invoke()
+                                },
                                 modifier = Modifier.align(Alignment.BottomCenter)
                             )
                         }
                     }
+                }
+            } else {
+                // Fallback while loading
+                MorphDropTheme(darkTheme = isDarkMode) {
+                    androidx.compose.material3.Surface(
+                        modifier = Modifier.fillMaxSize(),
+                        color = androidx.compose.material3.MaterialTheme.colorScheme.background
+                    ) {}
                 }
             }
         }

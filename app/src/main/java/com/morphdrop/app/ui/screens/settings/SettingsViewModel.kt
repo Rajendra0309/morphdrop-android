@@ -14,10 +14,12 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 import javax.inject.Inject
+import com.morphdrop.app.domain.model.ThemeMode
 
 data class SettingsUiState(
-    val isDarkMode: Boolean = false,
+    val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val defaultOutputDirectory: String = "Downloads/MorphDrop",
     val cacheSizeFormatted: String = "0 B",
     val appVersion: String = "v1.0.0"
@@ -34,8 +36,8 @@ class SettingsViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            settingsRepository.isDarkMode.collect { isDark ->
-                _uiState.update { it.copy(isDarkMode = isDark) }
+            settingsRepository.themeMode.collect { mode ->
+                _uiState.update { it.copy(themeMode = mode) }
             }
         }
         viewModelScope.launch {
@@ -48,11 +50,15 @@ class SettingsViewModel @Inject constructor(
     fun calculateCacheSize(context: Context) {
         viewModelScope.launch {
             val size = withContext(Dispatchers.IO) {
-                var totalBytes = 0L
-                context.cacheDir?.listFiles()?.forEach { file ->
-                    totalBytes += file.length()
+                val cacheDirs = mutableListOf<File>()
+                context.cacheDir?.let { cacheDirs.add(it) }
+                context.externalCacheDir?.let { cacheDirs.add(it) }
+                
+                cacheDirs.sumOf { dir ->
+                    if (dir.exists()) {
+                        dir.walkTopDown().filter { it.isFile }.sumOf { it.length() }
+                    } else 0L
                 }
-                totalBytes
             }
             _uiState.update { it.copy(cacheSizeFormatted = FileHelper.formatFileSize(size)) }
         }
@@ -61,8 +67,20 @@ class SettingsViewModel @Inject constructor(
     fun clearCache(context: Context) {
         viewModelScope.launch {
             withContext(Dispatchers.IO) {
-                context.cacheDir?.listFiles()?.forEach { file ->
-                    file.deleteRecursively()
+                val cacheDirs = mutableListOf<File>()
+                context.cacheDir?.let { cacheDirs.add(it) }
+                context.externalCacheDir?.let { cacheDirs.add(it) }
+                
+                cacheDirs.forEach { dir ->
+                    if (dir.exists()) {
+                        dir.listFiles()?.forEach { file ->
+                            try {
+                                file.deleteRecursively()
+                            } catch (e: Exception) {
+                                // Ignore files that cannot be deleted
+                            }
+                        }
+                    }
                 }
             }
             calculateCacheSize(context)
@@ -75,9 +93,9 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun toggleDarkMode(enabled: Boolean) {
+    fun setThemeMode(mode: ThemeMode) {
         viewModelScope.launch {
-            settingsRepository.setDarkMode(enabled)
+            settingsRepository.setThemeMode(mode)
         }
     }
 

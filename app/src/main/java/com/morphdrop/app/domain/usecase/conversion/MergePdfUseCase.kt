@@ -46,6 +46,7 @@ class MergePdfUseCase @Inject constructor(
 
         try {
             for (uri in pdfUris) {
+                kotlinx.coroutines.yield()
                 val bytes = try {
                     val inputStream = FileHelper.readFileFromUri(context, uri)
                     val b = inputStream.readBytes()
@@ -70,6 +71,7 @@ class MergePdfUseCase @Inject constructor(
                     throw MergeException.PasswordProtected(uri)
                 }
                 for (i in 0 until sourceDoc.numberOfPages) {
+                    kotlinx.coroutines.yield()
                     mergedDoc.importPage(sourceDoc.getPage(i))
                 }
             }

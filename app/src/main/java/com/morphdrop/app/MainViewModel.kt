@@ -17,18 +17,18 @@ import javax.inject.Inject
 class MainViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository
 ) : ViewModel() {
-    val isDarkMode: StateFlow<Boolean> = settingsRepository.isDarkMode
+    val themeMode: StateFlow<com.morphdrop.app.domain.model.ThemeMode> = settingsRepository.themeMode
         .stateIn(
             scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = false
+            started = SharingStarted.Eagerly,
+            initialValue = com.morphdrop.app.domain.model.ThemeMode.SYSTEM
         )
 
     val hasSeenWelcome: StateFlow<Boolean?> = settingsRepository.hasSeenWelcome
         .map { it }
         .stateIn(
             scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
+            started = SharingStarted.Eagerly,
             initialValue = null // Use null to indicate "loading" state
         )
 
@@ -38,7 +38,12 @@ class MainViewModel @Inject constructor(
     private val _onSearchFabClick = MutableStateFlow<(() -> Unit)?>(null)
     val onSearchFabClick = _onSearchFabClick.asStateFlow()
 
+    // Persistent state for scroll-based visibility to prevent jitter on navigation
+    private val _isSearchFabVisibleByScroll = MutableStateFlow(false)
+    val isSearchFabVisibleByScroll = _isSearchFabVisibleByScroll.asStateFlow()
+
     fun setSearchFabVisibility(show: Boolean) {
+        _isSearchFabVisibleByScroll.value = show
         _showSearchFab.value = show
     }
 
@@ -48,6 +53,7 @@ class MainViewModel @Inject constructor(
 
     fun resetSearchFab() {
         _showSearchFab.value = false
+        _isSearchFabVisibleByScroll.value = false
         _onSearchFabClick.value = null
     }
 
@@ -55,5 +61,17 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch {
             settingsRepository.setHasSeenWelcome(true)
         }
+    }
+
+    private var lastKnownSystemDark: Boolean? = null
+
+    fun onSystemThemeChanged(isSystemDark: Boolean) {
+        if (lastKnownSystemDark != null && lastKnownSystemDark != isSystemDark) {
+            // System theme changed! Reset manual override so app follows system again.
+            viewModelScope.launch {
+                settingsRepository.setThemeMode(com.morphdrop.app.domain.model.ThemeMode.SYSTEM)
+            }
+        }
+        lastKnownSystemDark = isSystemDark
     }
 }

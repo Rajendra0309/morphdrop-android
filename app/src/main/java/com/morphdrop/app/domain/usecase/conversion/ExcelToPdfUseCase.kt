@@ -43,7 +43,8 @@ class ExcelToPdfUseCase @Inject constructor(
 
     suspend operator fun invoke(
         xlsxUri: Uri,
-        outputFileName: String = "excel_to_pdf_${System.currentTimeMillis()}.pdf"
+        outputFileName: String = "excel_to_pdf_${System.currentTimeMillis()}.pdf",
+        onProgress: (Int) -> Unit = {}
     ): Uri = withContext(Dispatchers.IO) {
         val sanitizedFileName = if (outputFileName.endsWith(".pdf", ignoreCase = true)) {
             outputFileName
@@ -51,15 +52,17 @@ class ExcelToPdfUseCase @Inject constructor(
             "$outputFileName.pdf"
         }
 
+        onProgress(10)
         val inputStream = FileHelper.readFileFromUri(context, xlsxUri)
         val bytes = inputStream.readBytes()
         try { inputStream.close() } catch (_: Exception) {}
+        onProgress(30)
 
         val fileName = FileHelper.getFileName(context, xlsxUri).lowercase()
         val isCsv = fileName.endsWith(".csv")
 
         if (isCsv) {
-            return@withContext convertCsvToPdf(bytes, sanitizedFileName)
+            return@withContext convertCsvToPdf(bytes, sanitizedFileName, onProgress)
         }
 
         // Try POI first
@@ -71,7 +74,7 @@ class ExcelToPdfUseCase @Inject constructor(
 
         if (workbook != null) {
             try {
-                return@withContext convertPoiWorkbookToPdf(workbook, sanitizedFileName)
+                return@withContext convertPoiWorkbookToPdf(workbook, sanitizedFileName, onProgress)
             } catch (_: Throwable) {
                 // Fall back to native XML/ZIP parser
             } finally {
@@ -82,20 +85,21 @@ class ExcelToPdfUseCase @Inject constructor(
         // Try native OOXML ZIP parser for .xlsx
         val table = parseXlsxFromZip(bytes)
         if (table.isNotEmpty()) {
-            return@withContext renderTableToPdf(table, "Spreadsheet Content", sanitizedFileName)
+            return@withContext renderTableToPdf(table, sanitizedFileName, onProgress)
         }
 
         // Fall back to CSV/text parsing
-        return@withContext convertCsvToPdf(bytes, sanitizedFileName)
+        return@withContext convertCsvToPdf(bytes, sanitizedFileName, onProgress)
     }
 
-    private suspend fun convertPoiWorkbookToPdf(workbook: Workbook, outputFileName: String): Uri {
+    private suspend fun convertPoiWorkbookToPdf(workbook: Workbook, outputFileName: String, onProgress: (Int) -> Unit): Uri {
         val pdfDocument = PdfDocument()
         val formatter = DataFormatter()
 
         try {
             var pageCounter = 1
-            for (sheetIndex in 0 until workbook.numberOfSheets) {
+            val totalSheets = workbook.numberOfSheets
+            for (sheetIndex in 0 until totalSheets) {
                 val sheet = workbook.getSheetAt(sheetIndex) ?: continue
                 if (sheet.physicalNumberOfRows == 0) continue
 
@@ -121,8 +125,13 @@ class ExcelToPdfUseCase @Inject constructor(
                 }
 
                 if (sheetTable.isNotEmpty()) {
-                    pageCounter = renderTableToDoc(pdfDocument, sheetTable, "Sheet: ${sheet.sheetName}", pageCounter)
+                    pageCounter = renderTableToDoc(pdfDocument, sheetTable, pageCounter)
                 }
+                
+                kotlinx.coroutines.yield() // Allow cancellation during heavy loops
+                
+                val currentProgress = 30 + ((sheetIndex + 1).toFloat() / totalSheets * 50).toInt()
+                onProgress(currentProgress)
             }
 
             if (pdfDocument.pages.isEmpty()) {
@@ -133,6 +142,8 @@ class ExcelToPdfUseCase @Inject constructor(
 
             val baos = ByteArrayOutputStream()
             pdfDocument.writeTo(baos)
+            onProgress(95)
+            // Fix: Use sanitized outputFileName (this method receives it from invoke)
             return FileHelper.saveToFile(context, settingsRepository, outputFileName, baos.toByteArray())
         } finally {
             try { pdfDocument.close() } catch (_: Throwable) {}
@@ -288,35 +299,35 @@ class ExcelToPdfUseCase @Inject constructor(
         return if (col > 0) col - 1 else 0
     }
 
-    private suspend fun convertCsvToPdf(bytes: ByteArray, outputFileName: String): Uri {
+    private suspend fun convertCsvToPdf(bytes: ByteArray, outputFileName: String, onProgress: (Int) -> Unit): Uri {
         val contentStr = String(bytes, Charsets.UTF_8)
         val lines = contentStr.split(Regex("[\\r\\n]+")).filter { it.isNotBlank() }
         val table = lines.map { line ->
             line.split(",").map { cell -> cell.trim().removeSurrounding("\"") }
         }
-        return renderTableToPdf(table, "CSV Spreadsheet", outputFileName)
+        return renderTableToPdf(table, outputFileName, onProgress)
     }
 
     private suspend fun renderTableToPdf(
         table: List<List<String>>,
-        title: String,
-        outputFileName: String
+        outputFileName: String,
+        onProgress: (Int) -> Unit
     ): Uri {
         val pdfDocument = PdfDocument()
         try {
-            renderTableToDoc(pdfDocument, table, title, 1)
+            renderTableToDoc(pdfDocument, table, 1)
             val baos = ByteArrayOutputStream()
             pdfDocument.writeTo(baos)
+            onProgress(95)
             return FileHelper.saveToFile(context, settingsRepository, outputFileName, baos.toByteArray())
         } finally {
             try { pdfDocument.close() } catch (_: Throwable) {}
         }
     }
 
-    private fun renderTableToDoc(
+    private suspend fun renderTableToDoc(
         pdfDocument: PdfDocument,
         table: List<List<String>>,
-        title: String,
         startPageNum: Int
     ): Int {
         if (table.isEmpty()) return startPageNum
@@ -325,7 +336,6 @@ class ExcelToPdfUseCase @Inject constructor(
         val maxBottom = PAGE_HEIGHT - MARGIN_BOTTOM
         val totalCols = table.maxOfOrNull { it.size } ?: 1
 
-        // Calculate max character lengths per column
         val colLengths = IntArray(totalCols) { 1 }
         for (row in table) {
             for (c in 0 until min(row.size, totalCols)) {
@@ -334,115 +344,119 @@ class ExcelToPdfUseCase @Inject constructor(
             }
         }
 
-        // Horizontal pagination: split into column groups if wide (max 8 columns per part)
-        val maxColsPerPage = 8
-        val colGroups = mutableListOf<IntRange>()
-        var startCol = 0
-        while (startCol < totalCols) {
-            val endCol = min(startCol + maxColsPerPage, totalCols)
-            colGroups.add(startCol until endCol)
-            startCol = endCol
+        // Measure text precisely using Paint
+        val basePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            textSize = 9f // Default point size
+            typeface = Typeface.DEFAULT
         }
+
+        val rawColWidths = FloatArray(totalCols)
+        var totalTableWidth = 0f
+        for (i in 0 until totalCols) {
+            // Find max text width in this column
+            var maxWidth = 10f
+            for (row in table) {
+                if (i < row.size) {
+                    val w = basePaint.measureText(row[i].trim())
+                    if (w > maxWidth) maxWidth = w
+                }
+            }
+            rawColWidths[i] = maxWidth + 12f // Add padding
+            totalTableWidth += rawColWidths[i]
+        }
+
+        // Scaling logic: Fit all columns to width
+        val scaleFactor = if (totalTableWidth > usableWidth) {
+            usableWidth / totalTableWidth
+        } else 1.0f
+
+        val finalColWidths = FloatArray(totalCols) { rawColWidths[it] * scaleFactor }
+        val fontSize = 9f * scaleFactor.coerceAtLeast(0.5f)
 
         var currentPageNumber = startPageNum
 
         val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.parseColor("#D0D7DE")
+            color = Color.parseColor("#999999")
             style = Paint.Style.STROKE
             strokeWidth = 0.5f
         }
 
         val headerBgPaint = Paint().apply {
-            color = Color.parseColor("#F6F8FA")
+            color = Color.parseColor("#EEEEEE")
             style = Paint.Style.FILL
         }
 
         val titlePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.parseColor("#1F2328")
-            textSize = spToPx(11f) // Reduced from 13f
+            color = Color.BLACK
+            textSize = spToPx(13f)
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
 
-        for ((groupIndex, colRange) in colGroups.withIndex()) {
-            val groupColCount = colRange.count()
-            val totalGroupUnits = colRange.sumOf { colLengths[it].coerceIn(10, 80) } // Increased range for better weight
-            val colWidths = FloatArray(groupColCount)
-            for ((idx, colIdx) in colRange.withIndex()) {
-                val units = colLengths[colIdx].coerceIn(10, 80)
-                colWidths[idx] = (units.toFloat() / totalGroupUnits.toFloat()) * usableWidth
-            }
-
-            var pageInfo = PdfDocument.PageInfo.Builder(PAGE_WIDTH, PAGE_HEIGHT, currentPageNumber).create()
-            var page = pdfDocument.startPage(pageInfo)
-            var canvas = page.canvas
-            var yPos = MARGIN_TOP
-
-            // Title line
-            val headerTitle = if (colGroups.size > 1) "$title (Part ${groupIndex + 1} of ${colGroups.size})" else title
-            canvas.drawText(headerTitle, MARGIN_LEFT, yPos + spToPx(11f), titlePaint)
-            yPos += 24f
-
-            for ((rIndex, row) in table.withIndex()) {
-                val isHeaderRow = rIndex == 0
-                val layoutsForCell = mutableListOf<StaticLayout>()
-                var maxRowHeight = 22f
-
-                for ((idx, colIdx) in colRange.withIndex()) {
-                    val cellText = if (colIdx < row.size) row[colIdx].trim() else ""
-                    val width = colWidths[idx]
-
-                    val paint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-                        color = Color.parseColor("#1F2328")
-                        textSize = spToPx(7.5f) // Reduced further for better fit
-                        typeface = if (isHeaderRow) Typeface.create(Typeface.DEFAULT, Typeface.BOLD) else Typeface.DEFAULT
-                    }
-
-                    val layout = createStaticLayout(cellText, paint, (width - 8).toInt().coerceAtLeast(1))
-                    layoutsForCell.add(layout)
-
-                    val cellHeight = layout.height + 8f
-                    if (cellHeight > maxRowHeight) {
-                        maxRowHeight = cellHeight
-                    }
-                }
-
-                // Check vertical page overflow
-                if (yPos + maxRowHeight > maxBottom) {
-                    pdfDocument.finishPage(page)
-                    currentPageNumber++
-                    pageInfo = PdfDocument.PageInfo.Builder(PAGE_WIDTH, PAGE_HEIGHT, currentPageNumber).create()
-                    page = pdfDocument.startPage(pageInfo)
-                    canvas = page.canvas
-                    yPos = MARGIN_TOP
-                }
-
-                var xPos = MARGIN_LEFT
-                for ((idx, layout) in layoutsForCell.withIndex()) {
-                    val width = colWidths[idx]
-                    val cellRect = RectF(xPos, yPos, xPos + width, yPos + maxRowHeight)
-
-                    if (isHeaderRow) {
-                        canvas.drawRect(cellRect, headerBgPaint)
-                    }
-
-                    canvas.drawRect(cellRect, borderPaint)
-
-                    canvas.save()
-                    canvas.translate(xPos + 4f, yPos + 4f)
-                    layout.draw(canvas)
-                    canvas.restore()
-
-                    xPos += width
-                }
-
-                yPos += maxRowHeight
-            }
-
-            pdfDocument.finishPage(page)
-            currentPageNumber++
+        val cellPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.BLACK
+            textSize = fontSize
+            typeface = Typeface.DEFAULT
         }
 
-        return currentPageNumber
+        var pageInfo = PdfDocument.PageInfo.Builder(PAGE_WIDTH, PAGE_HEIGHT, currentPageNumber).create()
+        var page = pdfDocument.startPage(pageInfo)
+        var canvas = page.canvas
+        var yPos = MARGIN_TOP
+
+        // Title line removed as requested
+
+        for ((rIndex, row) in table.withIndex()) {
+            kotlinx.coroutines.yield() // Support cancellation
+            val isHeaderRow = rIndex == 0
+            val layoutsForCell = mutableListOf<StaticLayout>()
+            var maxRowHeight = 0f
+
+            val currentCellPaint = TextPaint(cellPaint).apply {
+                if (isHeaderRow) typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            }
+
+            // Create layouts for each cell
+            for (cIndex in 0 until totalCols) {
+                val text = if (cIndex < row.size) row[cIndex].trim() else ""
+                val width = finalColWidths[cIndex]
+                val layout = createStaticLayout(text, currentCellPaint, (width - 8f).toInt().coerceAtLeast(1))
+                layoutsForCell.add(layout)
+                if (layout.height + 8f > maxRowHeight) {
+                    maxRowHeight = layout.height + 8f
+                }
+            }
+
+            // Page overflow
+            if (yPos + maxRowHeight > maxBottom) {
+                pdfDocument.finishPage(page)
+                currentPageNumber++
+                pageInfo = PdfDocument.PageInfo.Builder(PAGE_WIDTH, PAGE_HEIGHT, currentPageNumber).create()
+                page = pdfDocument.startPage(pageInfo)
+                canvas = page.canvas
+                yPos = MARGIN_TOP
+            }
+
+            // Draw cells
+            var xPos = MARGIN_LEFT
+            for (cIndex in 0 until totalCols) {
+                val width = finalColWidths[cIndex]
+                val rect = RectF(xPos, yPos, xPos + width, yPos + maxRowHeight)
+
+                if (isHeaderRow) canvas.drawRect(rect, headerBgPaint)
+                canvas.drawRect(rect, borderPaint)
+
+                canvas.save()
+                canvas.translate(xPos + 4f, yPos + 4f)
+                layoutsForCell[cIndex].draw(canvas)
+                canvas.restore()
+
+                xPos += width
+            }
+            yPos += maxRowHeight
+        }
+
+        pdfDocument.finishPage(page)
+        return currentPageNumber + 1
     }
 
     private fun createStaticLayout(

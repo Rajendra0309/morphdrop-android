@@ -38,6 +38,7 @@ class PdfToWordUseCase @Inject constructor(
             val lines = extractedText.split("\n")
 
             for (line in lines) {
+                kotlinx.coroutines.yield()
                 val trimmed = line.trim()
                 if (trimmed.isNotEmpty()) {
                     val p = wordDoc.createParagraph()

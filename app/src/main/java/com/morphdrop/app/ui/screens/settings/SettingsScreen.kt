@@ -64,6 +64,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.morphdrop.app.ui.components.MorphDropTopAppBar
 import com.morphdrop.app.ui.components.ThemeAnimationManager
 import com.morphdrop.app.ui.theme.MorphDropTheme
+import com.morphdrop.app.domain.model.ThemeMode
 
 @Composable
 fun SettingsScreen(
@@ -79,7 +80,7 @@ fun SettingsScreen(
 
     SettingsScreenContent(
         state = uiState,
-        onToggleDarkMode = viewModel::toggleDarkMode,
+        onSetThemeMode = viewModel::setThemeMode,
         onClearCache = {
             viewModel.clearCache(context)
             Toast.makeText(context, "Cache cleared successfully", Toast.LENGTH_SHORT).show()
@@ -108,7 +109,7 @@ fun SettingsScreen(
 @Composable
 fun SettingsScreenContent(
     state: SettingsUiState,
-    onToggleDarkMode: (Boolean) -> Unit,
+    onSetThemeMode: (ThemeMode) -> Unit,
     onClearCache: () -> Unit,
     onOutputFolderChange: (String) -> Unit,
     onRateApp: () -> Unit,
@@ -117,6 +118,15 @@ fun SettingsScreenContent(
     var showClearCacheDialog by remember { mutableStateOf(false) }
     var showEditFolderDialog by remember { mutableStateOf(false) }
     var tempFolderName by remember { mutableStateOf(state.defaultOutputDirectory) }
+    
+    val isSystemDark = androidx.compose.foundation.isSystemInDarkTheme()
+    val isDarkMode = when (state.themeMode) {
+        ThemeMode.DARK -> true
+        ThemeMode.LIGHT -> false
+        ThemeMode.SYSTEM -> isSystemDark
+    }
+
+
 
     if (showClearCacheDialog) {
         AlertDialog(
@@ -191,10 +201,12 @@ fun SettingsScreenContent(
             SettingsSection(title = "Appearance") {
                 SettingsToggleItem(
                     title = "Dark Mode",
-                    description = "Enable darker interface colors",
+                    description = if (state.themeMode == ThemeMode.SYSTEM) "Following system default" else "Manually set",
                     icon = Icons.Default.DarkMode,
-                    checked = state.isDarkMode,
-                    onCheckedChange = onToggleDarkMode
+                    checked = isDarkMode,
+                    onCheckedChange = { isDark ->
+                        onSetThemeMode(if (isDark) ThemeMode.DARK else ThemeMode.LIGHT)
+                    }
                 )
             }
 
@@ -364,12 +376,12 @@ fun SettingsScreenLightPreview() {
     MorphDropTheme(darkTheme = false) {
         SettingsScreenContent(
             state = SettingsUiState(
-                isDarkMode = false,
+                themeMode = ThemeMode.LIGHT,
                 defaultOutputDirectory = "Downloads/MorphDrop",
                 cacheSizeFormatted = "12 MB",
                 appVersion = "1.0.0"
             ),
-            onToggleDarkMode = {},
+            onSetThemeMode = {},
             onClearCache = {},
             onOutputFolderChange = {},
             onRateApp = {},
@@ -384,12 +396,12 @@ fun SettingsScreenDarkPreview() {
     MorphDropTheme(darkTheme = true) {
         SettingsScreenContent(
             state = SettingsUiState(
-                isDarkMode = true,
+                themeMode = ThemeMode.DARK,
                 defaultOutputDirectory = "Downloads/MorphDrop",
                 cacheSizeFormatted = "12 MB",
                 appVersion = "1.0.0"
             ),
-            onToggleDarkMode = {},
+            onSetThemeMode = {},
             onClearCache = {},
             onOutputFolderChange = {},
             onRateApp = {},

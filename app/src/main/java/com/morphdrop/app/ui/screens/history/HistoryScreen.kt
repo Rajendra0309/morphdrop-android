@@ -43,17 +43,20 @@ import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Devices
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.airbnb.lottie.compose.*
 import com.morphdrop.app.MainViewModel
 import com.morphdrop.app.data.local.entity.ConversionHistoryEntity
 import com.morphdrop.app.ui.components.EmptyStateAnimation
@@ -161,8 +164,7 @@ fun HistoryScreenContent(
     DisposableEffect(Unit) {
         setSearchFabVisibility(showSearchFab)
         onDispose {
-            setSearchFabVisibility(false)
-            setOnSearchFabClick(null)
+            // No reset here to prevent jitter on navigation
         }
     }
 
@@ -216,57 +218,80 @@ fun HistoryScreenContent(
 
                 if (historyList.isEmpty() && searchQuery.isNotEmpty()) {
                     item {
-                        Box(
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(32.dp),
-                            contentAlignment = Alignment.Center
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
                         ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            val context = LocalContext.current
+                            val lottieRes = remember {
+                                val id = context.resources.getIdentifier("empty_search", "raw", context.packageName)
+                                if (id != 0) id else -1
+                            }
+                            
+                            val composition by rememberLottieComposition(
+                                if (lottieRes != -1) LottieCompositionSpec.RawRes(lottieRes) 
+                                else LottieCompositionSpec.RawRes(0)
+                            )
+                            val progress by animateLottieCompositionAsState(
+                                composition = composition,
+                                iterations = LottieConstants.IterateForever
+                            )
+
+                            if (composition != null) {
+                                LottieAnimation(
+                                    composition = composition,
+                                    progress = { progress },
+                                    modifier = Modifier.size(160.dp)
+                                )
+                            } else {
                                 Icon(
                                     imageVector = Icons.Default.History,
                                     contentDescription = null,
                                     modifier = Modifier.size(64.dp),
                                     tint = MaterialTheme.colorScheme.secondary.copy(alpha = 0.5f)
                                 )
-                                Spacer(modifier = Modifier.height(16.dp))
-                                Text(
-                                    text = "No matching history",
-                                    style = MaterialTheme.typography.titleMedium
-                                )
                             }
+                            
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                text = "No matching history",
+                                style = MaterialTheme.typography.titleMedium
+                            )
                         }
                     }
                 } else if (historyList.isEmpty()) {
                     item {
-                        Box(
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center,
                             modifier = Modifier
-                                .fillParentMaxSize()
-                                .padding(bottom = innerPadding.calculateTopPadding()),
-                            contentAlignment = Alignment.Center
+                                .fillParentMaxHeight() // Fill available space
+                                .fillMaxWidth()
+                                .padding(horizontal = 32.dp)
+                                .padding(vertical = 24.dp)
                         ) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.Center,
-                                modifier = Modifier.padding(32.dp)
-                            ) {
-                                EmptyStateAnimation(
-                                    icon = Icons.Default.History,
-                                    modifier = Modifier.size(120.dp)
-                                )
-                                Spacer(modifier = Modifier.height(24.dp))
-                                Text(
-                                    text = "No history yet",
-                                    style = MaterialTheme.typography.titleLarge,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text(
-                                    text = "Your converted files will appear here",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
+                            EmptyStateAnimation(
+                                icon = Icons.Default.History,
+                                modifier = Modifier.size(100.dp) // Slightly smaller for better fit
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                text = "No history yet",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "Your converted files will appear here",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center
+                            )
+                            // Add extra spacer at bottom to ensure centering
+                            Spacer(modifier = Modifier.height(100.dp))
                         }
                     }
                 } else {

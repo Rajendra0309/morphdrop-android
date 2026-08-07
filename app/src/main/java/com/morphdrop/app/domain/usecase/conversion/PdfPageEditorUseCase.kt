@@ -29,6 +29,7 @@ class PdfPageEditorUseCase @Inject constructor(
         try {
             val totalPages = sourceDoc.numberOfPages
             for (index in newOrder) {
+                kotlinx.coroutines.yield()
                 if (index in 0 until totalPages) {
                     val page = sourceDoc.getPage(index)
                     val rotation = rotations[index] ?: 0
