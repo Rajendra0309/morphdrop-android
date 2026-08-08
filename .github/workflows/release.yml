@@ -44,6 +44,6 @@ jobs:
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: ${{steps.sign_app.outputs.signedReleaseFile}}
-          asset_name: MorphDrop-v1.0.0.apk
+          asset_name: MorphDrop-${{ github.ref_name }}.apk
           tag: ${{ github.ref }}
           overwrite: true
