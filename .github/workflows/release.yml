@@ -22,8 +22,6 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-
-
       - name: Build Release APK
         run: ./gradlew assembleRelease
 
@@ -36,6 +34,7 @@ jobs:
           alias: ${{ secrets.KEY_ALIAS }}
           keyStorePassword: ${{ secrets.KEYSTORE_PASSWORD }}
           keyPassword: ${{ secrets.KEY_PASSWORD }}
+          buildToolsVersion: 34.0.0
 
       - name: Upload Signed APK to GitHub Release
         uses: svenstaro/upload-release-action@v2
