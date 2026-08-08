@@ -25,9 +25,6 @@ jobs:
       - name: Build Release APK
         run: ./gradlew assembleRelease
 
-      - name: Install Android Build Tools 29.0.3
-        run: echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "build-tools;29.0.3"
-
       - name: Sign APK
         id: sign_app
         uses: r0adkll/sign-android-release@v1
@@ -37,6 +34,8 @@ jobs:
           alias: ${{ secrets.KEY_ALIAS }}
           keyStorePassword: ${{ secrets.KEYSTORE_PASSWORD }}
           keyPassword: ${{ secrets.KEY_PASSWORD }}
+        env:
+          BUILD_TOOLS_VERSION: "34.0.0"
 
       - name: Upload Signed APK to GitHub Release
         uses: svenstaro/upload-release-action@v2
