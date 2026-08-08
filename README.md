@@ -1,6 +1,5 @@
 <div align="center">
-  <!-- Replace with actual logo path when available -->
-  <img src="app/src/main/ic_launcher-playstore.png" alt="MorphDrop Logo" width="120"/>
+  <img src="app/src/main/ic_launcher-playstore.png" alt="MorphDrop Logo" width="120" style="border-radius: 20px;"/>
 
   <h1>MorphDrop</h1>
 
