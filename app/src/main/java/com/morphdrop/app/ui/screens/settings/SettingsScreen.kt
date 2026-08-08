@@ -86,20 +86,20 @@ fun SettingsScreen(
             Toast.makeText(context, "Cache cleared successfully", Toast.LENGTH_SHORT).show()
         },
         onOutputFolderChange = viewModel::updateOutputFolderName,
-        onRateApp = {
-            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=${context.packageName}"))
+        onStarGithub = {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Rajendra0309/morphdrop-android"))
             try {
                 context.startActivity(intent)
             } catch (e: Exception) {
-                Toast.makeText(context, "MorphDrop v${uiState.appVersion}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Could not open browser", Toast.LENGTH_SHORT).show()
             }
         },
         onReportBug = {
-            val intent = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:support@morphdrop.app"))
+            val intent = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:morphdrop88@gmail.com"))
             try {
                 context.startActivity(intent)
             } catch (e: Exception) {
-                Toast.makeText(context, "Email support@morphdrop.app", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Email morphdrop88@gmail.com", Toast.LENGTH_SHORT).show()
             }
         }
     )
@@ -112,11 +112,13 @@ fun SettingsScreenContent(
     onSetThemeMode: (ThemeMode) -> Unit,
     onClearCache: () -> Unit,
     onOutputFolderChange: (String) -> Unit,
-    onRateApp: () -> Unit,
+    onStarGithub: () -> Unit,
     onReportBug: () -> Unit
 ) {
     var showClearCacheDialog by remember { mutableStateOf(false) }
     var showEditFolderDialog by remember { mutableStateOf(false) }
+    var showPrivacyDialog by remember { mutableStateOf(false) }
+    var showAboutDialog by remember { mutableStateOf(false) }
     var tempFolderName by remember { mutableStateOf(state.defaultOutputDirectory) }
     
     val isSystemDark = androidx.compose.foundation.isSystemInDarkTheme()
@@ -125,9 +127,31 @@ fun SettingsScreenContent(
         ThemeMode.LIGHT -> false
         ThemeMode.SYSTEM -> isSystemDark
     }
+    if (showPrivacyDialog) {
+        AlertDialog(
+            onDismissRequest = { showPrivacyDialog = false },
+            title = { Text("Privacy Policy") },
+            text = { Text("MorphDrop is 100% offline. We do not collect, store, or transmit your files or any personal data. All conversions happen entirely on your device.") },
+            confirmButton = {
+                TextButton(onClick = { showPrivacyDialog = false }) {
+                    Text("OK", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                }
+            }
+        )
+    }
 
-
-
+    if (showAboutDialog) {
+        AlertDialog(
+            onDismissRequest = { showAboutDialog = false },
+            title = { Text("About MorphDrop") },
+            text = { Text("MorphDrop is an open-source, powerful file converter built with privacy in mind.\n\nVersion ${state.appVersion}") },
+            confirmButton = {
+                TextButton(onClick = { showAboutDialog = false }) {
+                    Text("OK", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                }
+            }
+        )
+    }
     if (showClearCacheDialog) {
         AlertDialog(
             onDismissRequest = { showClearCacheDialog = false },
@@ -236,10 +260,10 @@ fun SettingsScreenContent(
 
             SettingsSection(title = "Support & About") {
                 SettingsItem(
-                    title = "Rate App",
-                    description = "Love the app? Let us know!",
+                    title = "Star on GitHub",
+                    description = "Love the app? Leave a star!",
                     icon = Icons.Default.Star,
-                    onClick = onRateApp
+                    onClick = onStarGithub
                 )
                 
                 HorizontalDivider(
@@ -263,7 +287,7 @@ fun SettingsScreenContent(
                     title = "Privacy Policy",
                     description = "Read our data handling practices",
                     icon = Icons.Default.Policy,
-                    onClick = { }
+                    onClick = { showPrivacyDialog = true }
                 )
                 
                 HorizontalDivider(
@@ -275,7 +299,7 @@ fun SettingsScreenContent(
                     title = "About MorphDrop",
                     description = "Version ${state.appVersion}",
                     icon = Icons.Default.Info,
-                    onClick = { }
+                    onClick = { showAboutDialog = true }
                 )
             }
             
@@ -384,7 +408,7 @@ fun SettingsScreenLightPreview() {
             onSetThemeMode = {},
             onClearCache = {},
             onOutputFolderChange = {},
-            onRateApp = {},
+            onStarGithub = {},
             onReportBug = {}
         )
     }
@@ -404,7 +428,7 @@ fun SettingsScreenDarkPreview() {
             onSetThemeMode = {},
             onClearCache = {},
             onOutputFolderChange = {},
-            onRateApp = {},
+            onStarGithub = {},
             onReportBug = {}
         )
     }

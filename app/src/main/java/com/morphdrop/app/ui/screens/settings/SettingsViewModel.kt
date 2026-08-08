@@ -22,7 +22,7 @@ data class SettingsUiState(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val defaultOutputDirectory: String = "Downloads/MorphDrop",
     val cacheSizeFormatted: String = "0 B",
-    val appVersion: String = "v1.0.0"
+    val appVersion: String = "v1.0.1"
 )
 
 @HiltViewModel

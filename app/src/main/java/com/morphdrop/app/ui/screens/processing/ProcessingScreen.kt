@@ -95,15 +95,7 @@ fun ProcessingScreenContent(
             verticalArrangement = Arrangement.Center
         ) {
             val context = LocalContext.current
-            val lottieRes = remember {
-                val id = context.resources.getIdentifier("processing", "raw", context.packageName)
-                if (id != 0) id else -1
-            }
-            
-            val composition by rememberLottieComposition(
-                if (lottieRes != -1) LottieCompositionSpec.RawRes(lottieRes) 
-                else LottieCompositionSpec.RawRes(0)
-            )
+            val composition by rememberLottieComposition(LottieCompositionSpec.RawRes(com.morphdrop.app.R.raw.processing))
             
             val progressLottie by animateLottieCompositionAsState(
                 composition = composition,
