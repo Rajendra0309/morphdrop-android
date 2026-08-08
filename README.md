@@ -7,8 +7,8 @@
   <p>A modern, 100% offline Android file converter built with privacy and simplicity at its core.</p>
   
   <p>
-    <a href="https://github.com/Rajendra0309/morphdrop-android/releases" style="text-decoration:none;"><img src="https://img.shields.io/github/v/release/Rajendra0309/morphdrop-android?style=flat-square&color=6f42c1" alt="GitHub Release"></a>
-    <a href="LICENSE" style="text-decoration:none;"><img src="https://img.shields.io/github/license/Rajendra0309/morphdrop-android?style=flat-square&color=28a745" alt="License"></a>
+    <a href="https://github.com/Rajendra0309/morphdrop-android/releases" style="text-decoration:none;"><img src="https://img.shields.io/github/v/release/Rajendra0309/morphdrop-android?style=flat-square&color=6f42c1&logo=github" alt="GitHub Release"></a>
+    <a href="LICENSE" style="text-decoration:none;"><img src="https://img.shields.io/github/license/Rajendra0309/morphdrop-android?style=flat-square&color=28a745&logo=apache" alt="License"></a>
   </p>
 </div>
 
