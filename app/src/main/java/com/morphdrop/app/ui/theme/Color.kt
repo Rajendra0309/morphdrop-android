@@ -45,7 +45,6 @@ val Primary = NeonEmerald
 val Secondary = CrimsonGlow
 val Tertiary = AmberWarn
 val Background = MidnightBlue
-val ColorPPT = Color(0xFFFF9800)    // Orange
 val ColorImage = Color(0xFF9C27B0)  // Purple
 
 // Standard Compose Colors

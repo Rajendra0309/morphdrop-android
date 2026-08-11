@@ -133,9 +133,6 @@
 | :--- | :--- |
 | PDF | Images (PNG, JPG) |
 | Images (PNG, JPG, WebP, BMP) | PDF |
-| Word (DOCX) | PDF |
-| PDF | Word (DOCX) |
-| PowerPoint (PPTX) | PDF |
 | Excel (XLSX) | PDF |
 
 </details>
@@ -206,7 +203,7 @@ MorphDrop stands on the shoulders of several excellent open-source projects. Sin
 | Project | Description |
 | :--- | :--- |
 | **[Apache PDFBox](https://pdfbox.apache.org/)** | Core engine for PDF manipulation and processing. |
-| **[Apache POI](https://poi.apache.org/)** | Robust engine for parsing and transforming Microsoft Office formats (Word, PowerPoint, Excel). |
+| **[Apache POI](https://poi.apache.org/)** | Robust engine for parsing and transforming Excel formats. |
 | **[Jetpack Compose](https://developer.android.com/compose)** | Modern UI toolkit allowing a beautiful, responsive design. |
 
 ---

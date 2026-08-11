@@ -70,9 +70,7 @@ class ConversionConfigViewModel @Inject constructor(
     fun getAllowedExtensions(type: ConversionType?): List<String> {
         val t = type ?: return emptyList()
         return when (t.id) {
-            "word_to_pdf" -> listOf("doc", "docx")
             "excel_to_pdf" -> listOf("xls", "xlsx", "csv")
-            "ppt_to_pdf" -> listOf("ppt", "pptx")
             "text_to_pdf" -> listOf("txt")
             "md_to_pdf" -> listOf("md", "markdown")
             "pdf_to_images", "split_pdf", "compress_pdf", "protect_pdf", "organize_pdf", "merge_pdf" -> listOf("pdf")

@@ -224,7 +224,7 @@ sealed class OnboardingPage(
 
     data object Convert : OnboardingPage(
         title = "Convert Any File",
-        description = "PDF, Word, Excel, Images, and more. Support for all your essential formats.",
+        description = "PDF, Excel, Images, and more. Support for all your essential formats.",
         com.morphdrop.app.R.raw.convert
     )
 

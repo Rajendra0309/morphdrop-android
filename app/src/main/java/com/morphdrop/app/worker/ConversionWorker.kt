@@ -18,13 +18,10 @@ import com.morphdrop.app.domain.usecase.conversion.MergePdfUseCase
 import com.morphdrop.app.domain.usecase.conversion.PdfPageEditorUseCase
 import com.morphdrop.app.domain.usecase.conversion.PdfPasswordUseCase
 import com.morphdrop.app.domain.usecase.conversion.PdfToImagesUseCase
-import com.morphdrop.app.domain.usecase.conversion.PdfToWordUseCase
-import com.morphdrop.app.domain.usecase.conversion.PowerPointToPdfUseCase
 import com.morphdrop.app.domain.usecase.conversion.ReorderPdfPagesUseCase
 import com.morphdrop.app.domain.usecase.conversion.RotatePdfPagesUseCase
 import com.morphdrop.app.domain.usecase.conversion.SplitPdfUseCase
 import com.morphdrop.app.domain.usecase.conversion.TextToPdfUseCase
-import com.morphdrop.app.domain.usecase.conversion.WordToPdfUseCase
 import com.morphdrop.app.util.FileHelper
 import com.morphdrop.app.util.NotificationHelper
 import dagger.assisted.Assisted
@@ -38,10 +35,7 @@ class ConversionWorker @AssistedInject constructor(
     @Assisted private val workerParams: WorkerParameters,
     private val pdfToImagesUseCase: PdfToImagesUseCase,
     private val imagesToPdfUseCase: ImagesToPdfUseCase,
-    private val wordToPdfUseCase: WordToPdfUseCase,
-    private val pdfToWordUseCase: PdfToWordUseCase,
     private val excelToPdfUseCase: ExcelToPdfUseCase,
-    private val powerPointToPdfUseCase: PowerPointToPdfUseCase,
     private val textToPdfUseCase: TextToPdfUseCase,
     private val mdToPdfUseCase: MdToPdfUseCase,
     private val imageConverterUseCase: ImageConverterUseCase,
@@ -97,7 +91,7 @@ class ConversionWorker @AssistedInject constructor(
         val outputFileName = if (!outputFileNameInput.contains(".")) {
             val ext = when (conversionType) {
                 "pdf_to_images", "split_pdf" -> "" // Folder
-                "images_to_pdf", "word_to_pdf", "excel_to_pdf", "ppt_to_pdf", "txt_to_pdf", "md_to_pdf", "compress_pdf" -> "pdf"
+                "images_to_pdf", "excel_to_pdf", "txt_to_pdf", "md_to_pdf", "compress_pdf" -> "pdf"
                 "image_converter", "compress_images" -> inputData.getString(KEY_TARGET_FORMAT) ?: "jpg"
                 else -> "pdf"
             }
@@ -161,30 +155,6 @@ class ConversionWorker @AssistedInject constructor(
                     result
                 }
 
-                "word_to_pdf" -> {
-                    checkCancellation()
-                    notificationHelper.showProgressNotification(notificationId, conversionType, 40)
-                    setProgress(workDataOf("progress" to 40))
-                    val uri = Uri.parse(requireNotNull(inputUriString))
-                    val result = listOf(wordToPdfUseCase(uri, outputFileName = outputFileName))
-                    checkCancellation()
-                    notificationHelper.showProgressNotification(notificationId, conversionType, 80)
-                    setProgress(workDataOf("progress" to 80))
-                    result
-                }
-
-                "pdf_to_word" -> {
-                    checkCancellation()
-                    notificationHelper.showProgressNotification(notificationId, conversionType, 40)
-                    setProgress(workDataOf("progress" to 40))
-                    val uri = Uri.parse(requireNotNull(inputUriString))
-                    val result = listOf(pdfToWordUseCase(uri, outputFileName = outputFileName))
-                    checkCancellation()
-                    notificationHelper.showProgressNotification(notificationId, conversionType, 80)
-                    setProgress(workDataOf("progress" to 80))
-                    result
-                }
-
                 "excel_to_pdf" -> {
                     checkCancellation()
                     val uri = Uri.parse(requireNotNull(inputUriString))
@@ -198,18 +168,6 @@ class ConversionWorker @AssistedInject constructor(
                             kotlinx.coroutines.runBlocking { setProgress(workDataOf("progress" to mappedProgress)) }
                         }
                     ))
-                    result
-                }
-
-                "ppt_to_pdf" -> {
-                    checkCancellation()
-                    notificationHelper.showProgressNotification(notificationId, conversionType, 40)
-                    setProgress(workDataOf("progress" to 40))
-                    val uri = Uri.parse(requireNotNull(inputUriString))
-                    val result = listOf(powerPointToPdfUseCase(uri, outputFileName = outputFileName))
-                    checkCancellation()
-                    notificationHelper.showProgressNotification(notificationId, conversionType, 80)
-                    setProgress(workDataOf("progress" to 80))
                     result
                 }
 

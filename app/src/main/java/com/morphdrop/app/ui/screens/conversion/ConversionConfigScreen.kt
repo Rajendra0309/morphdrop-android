@@ -71,9 +71,7 @@ fun ConversionConfigScreen(
     val context = LocalContext.current
 
     val mimeFilter = when (state.conversionType?.id) {
-        "word_to_pdf" -> arrayOf("application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/msword")
         "excel_to_pdf" -> arrayOf("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.ms-excel", "text/csv")
-        "ppt_to_pdf" -> arrayOf("application/vnd.openxmlformats-officedocument.presentationml.presentation", "application/vnd.ms-powerpoint")
         "text_to_pdf" -> arrayOf("text/plain")
         "md_to_pdf" -> arrayOf("text/markdown", "text/x-markdown", "text/plain")
         "pdf_to_images", "split_pdf", "compress_pdf", "protect_pdf", "organize_pdf", "merge_pdf" -> arrayOf("application/pdf")

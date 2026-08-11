@@ -30,7 +30,6 @@ data class ConversionType(
         const val CATEGORY_CONVERSIONS = "Conversions"
         const val CATEGORY_PDF_TOOLS = "PDF Tools"
         const val CATEGORY_IMAGE_TOOLS = "Image Tools"
-        const val CATEGORY_UNOPTIMIZED = "Unoptimized (Experimental)"
 
         val defaultList = listOf(
             // Conversions
@@ -55,16 +54,6 @@ data class ConversionType(
                 isMultiFileAllowed = true
             ),
             ConversionType(
-                id = "word_to_pdf",
-                name = "Word to PDF",
-                description = "Convert DOCX documents into PDF (Experimental formatting)",
-                inputType = FileType.DOCX,
-                outputType = FileType.PDF,
-                icon = Icons.Outlined.Description,
-                category = CATEGORY_UNOPTIMIZED,
-                isMultiFileAllowed = false
-            ),
-            ConversionType(
                 id = "excel_to_pdf",
                 name = "Excel to PDF",
                 description = "Convert XLSX spreadsheets to PDF format",
@@ -72,16 +61,6 @@ data class ConversionType(
                 outputType = FileType.PDF,
                 icon = Icons.Outlined.TableChart,
                 category = CATEGORY_CONVERSIONS,
-                isMultiFileAllowed = false
-            ),
-            ConversionType(
-                id = "ppt_to_pdf",
-                name = "PPT to PDF",
-                description = "Convert PPTX slide decks into PDF (Experimental multi-slide)",
-                inputType = FileType.PPTX,
-                outputType = FileType.PDF,
-                icon = Icons.Outlined.Slideshow,
-                category = CATEGORY_UNOPTIMIZED,
                 isMultiFileAllowed = false
             ),
             ConversionType(

@@ -9,9 +9,7 @@ enum class FileType(
     val color: Color
 ) {
     PDF("PDF", "pdf", Color(0xFFE53935)), // Red
-    DOCX("DOCX", "docx", Color(0xFF1E88E5)), // Blue
     XLSX("XLSX", "xlsx", Color(0xFF43A047)), // Green
-    PPTX("PPTX", "pptx", Color(0xFFFF8F00)), // Orange
     PNG("PNG", "png", Color(0xFF8E24AA)), // Purple
     JPG("JPG", "jpg", Color(0xFFE91E63)),
     WEBP("WEBP", "webp", Color(0xFF00BCD4)),

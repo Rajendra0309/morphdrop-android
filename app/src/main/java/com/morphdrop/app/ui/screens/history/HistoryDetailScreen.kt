@@ -402,9 +402,9 @@ fun HistoryDetailScreenDarkPreview() {
             state = HistoryDetailUiState(
                 historyItem = ConversionHistoryEntity(
                     id = 2,
-                    conversionType = "Word to PDF",
-                    inputFileName = "Project_Report.docx",
-                    outputFileNames = "Project_Report.pdf",
+                    conversionType = "Excel to PDF",
+                    inputFileName = "Financial_Report.xlsx",
+                    outputFileNames = "Financial_Report.pdf",
                     timestamp = System.currentTimeMillis() - 86400000,
                     duration = 3200L,
                     success = true
