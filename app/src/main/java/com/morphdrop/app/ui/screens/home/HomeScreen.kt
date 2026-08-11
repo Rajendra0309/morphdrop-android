@@ -208,8 +208,7 @@ fun HomeScreenContent(
                     val categories = listOf(
                         ConversionType.CATEGORY_CONVERSIONS,
                         ConversionType.CATEGORY_PDF_TOOLS,
-                        ConversionType.CATEGORY_IMAGE_TOOLS,
-                        ConversionType.CATEGORY_UNOPTIMIZED
+                        ConversionType.CATEGORY_IMAGE_TOOLS
                     )
 
                     categories.forEach { categoryName ->
