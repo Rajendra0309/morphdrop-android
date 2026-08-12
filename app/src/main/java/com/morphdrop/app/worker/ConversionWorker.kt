@@ -66,6 +66,16 @@ class ConversionWorker @AssistedInject constructor(
         const val KEY_OUTPUT_URI = "output_uri"
         const val KEY_OUTPUT_URIS = "output_uris"
         const val KEY_ERROR = "error"
+        
+        // Advanced Image Tool Keys
+        const val KEY_TARGET_WIDTH = "target_width"
+        const val KEY_TARGET_HEIGHT = "target_height"
+        const val KEY_PADDING_COLOR = "padding_color"
+        const val KEY_TARGET_SIZE_KB = "target_size_kb"
+        const val KEY_CROP_RECT_LEFT = "crop_rect_left"
+        const val KEY_CROP_RECT_TOP = "crop_rect_top"
+        const val KEY_CROP_RECT_RIGHT = "crop_rect_right"
+        const val KEY_CROP_RECT_BOTTOM = "crop_rect_bottom"
     }
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
@@ -203,7 +213,36 @@ class ConversionWorker @AssistedInject constructor(
                     val uri = Uri.parse(requireNotNull(inputUriString))
                     val targetFormat = inputData.getString(KEY_TARGET_FORMAT) ?: "jpg"
                     val quality = inputData.getInt(KEY_QUALITY, 90)
-                    val result = listOf(imageConverterUseCase(inputUri = uri, outputFormat = targetFormat, quality = quality, outputFileName = outputFileName))
+                    
+                    val targetWidth = if (inputData.getInt(KEY_TARGET_WIDTH, -1) != -1) inputData.getInt(KEY_TARGET_WIDTH, -1) else null
+                    val targetHeight = if (inputData.getInt(KEY_TARGET_HEIGHT, -1) != -1) inputData.getInt(KEY_TARGET_HEIGHT, -1) else null
+                    val paddingColor = if (inputData.getInt(KEY_PADDING_COLOR, Int.MIN_VALUE) != Int.MIN_VALUE) inputData.getInt(KEY_PADDING_COLOR, 0) else null
+                    val targetSizeKb = if (inputData.getInt(KEY_TARGET_SIZE_KB, -1) != -1) inputData.getInt(KEY_TARGET_SIZE_KB, -1) else null
+                    
+                    val cropLeft = inputData.getInt(KEY_CROP_RECT_LEFT, -1)
+                    val cropRect = if (cropLeft != -1) {
+                        android.graphics.Rect(
+                            cropLeft,
+                            inputData.getInt(KEY_CROP_RECT_TOP, 0),
+                            inputData.getInt(KEY_CROP_RECT_RIGHT, 0),
+                            inputData.getInt(KEY_CROP_RECT_BOTTOM, 0)
+                        )
+                    } else null
+                    
+                    val rotationDegrees = inputData.getInt(KEY_ROTATION_DEGREES, 0)
+
+                    val result = listOf(imageConverterUseCase(
+                        inputUri = uri, 
+                        outputFormat = targetFormat, 
+                        quality = quality, 
+                        targetWidth = targetWidth,
+                        targetHeight = targetHeight,
+                        paddingColor = paddingColor,
+                        cropRect = cropRect,
+                        rotationDegrees = rotationDegrees,
+                        targetSizeKb = targetSizeKb,
+                        outputFileName = outputFileName
+                    ))
                     notificationHelper.showProgressNotification(notificationId, conversionType, 85)
                     setProgress(workDataOf("progress" to 85))
                     result
@@ -216,6 +255,24 @@ class ConversionWorker @AssistedInject constructor(
                         ?: listOf(Uri.parse(requireNotNull(inputUriString)))
                     val targetFormat = inputData.getString(KEY_TARGET_FORMAT) ?: "jpg"
                     val quality = inputData.getInt(KEY_QUALITY, 60)
+                    
+                    val targetWidth = if (inputData.getInt(KEY_TARGET_WIDTH, -1) != -1) inputData.getInt(KEY_TARGET_WIDTH, -1) else null
+                    val targetHeight = if (inputData.getInt(KEY_TARGET_HEIGHT, -1) != -1) inputData.getInt(KEY_TARGET_HEIGHT, -1) else null
+                    val paddingColor = if (inputData.getInt(KEY_PADDING_COLOR, Int.MIN_VALUE) != Int.MIN_VALUE) inputData.getInt(KEY_PADDING_COLOR, 0) else null
+                    val targetSizeKb = if (inputData.getInt(KEY_TARGET_SIZE_KB, -1) != -1) inputData.getInt(KEY_TARGET_SIZE_KB, -1) else null
+                    
+                    val cropLeft = inputData.getInt(KEY_CROP_RECT_LEFT, -1)
+                    val cropRect = if (cropLeft != -1) {
+                        android.graphics.Rect(
+                            cropLeft,
+                            inputData.getInt(KEY_CROP_RECT_TOP, 0),
+                            inputData.getInt(KEY_CROP_RECT_RIGHT, 0),
+                            inputData.getInt(KEY_CROP_RECT_BOTTOM, 0)
+                        )
+                    } else null
+                    
+                    val rotationDegrees = inputData.getInt(KEY_ROTATION_DEGREES, 0)
+
                     val result = uris.mapIndexed { idx, u ->
                         val genName = "compressed_${idx}_${System.currentTimeMillis()}.$targetFormat"
                         generatedFileNames.add(genName)
@@ -223,6 +280,12 @@ class ConversionWorker @AssistedInject constructor(
                             inputUri = u,
                             outputFormat = targetFormat,
                             quality = quality,
+                            targetWidth = targetWidth,
+                            targetHeight = targetHeight,
+                            paddingColor = paddingColor,
+                            targetSizeKb = targetSizeKb,
+                            cropRect = cropRect,
+                            rotationDegrees = rotationDegrees,
                             outputFileName = genName
                         )
                         val p = 20 + ((idx + 1).toFloat() / uris.size * 60).toInt()
@@ -342,7 +405,10 @@ class ConversionWorker @AssistedInject constructor(
             setProgress(workDataOf("progress" to 100))
 
             val duration = System.currentTimeMillis() - startTime
-            val outputNames = resultUris.joinToString(",") { Uri.parse(it.toString()).lastPathSegment ?: "converted_file" }
+            val outputNames = resultUris.joinToString(", ") { uri ->
+                val name = FileHelper.getFileName(appContext, uri as Uri)
+                if (name == "unknown" || name.isBlank()) uri.lastPathSegment ?: "converted_file" else name
+            }
             val outUrisString = resultUris.joinToString(",") { it.toString() }
             
             // Use the actual output filename if possible
