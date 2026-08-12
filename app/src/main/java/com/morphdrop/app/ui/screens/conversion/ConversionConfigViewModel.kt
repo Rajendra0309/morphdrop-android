@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.morphdrop.app.domain.model.ConversionType
 import com.morphdrop.app.domain.model.FileType
 import com.morphdrop.app.util.FileHelper
@@ -13,6 +14,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 data class ConversionConfigState(
@@ -29,6 +31,22 @@ data class ConversionConfigState(
     val showQualitySlider: Boolean = false,
     val showPageRange: Boolean = false,
     val availableOutputFormats: List<String> = emptyList(),
+    // Advanced Image Tools
+    val targetWidth: String = "",
+    val targetHeight: String = "",
+    val paddingColor: Int = android.graphics.Color.BLACK,
+    val targetSizeKb: String = "",
+    val cropRectLeft: Int = -1,
+    val cropRectTop: Int = 0,
+    val cropRectRight: Int = 0,
+    val cropRectBottom: Int = 0,
+    val rotationDegrees: Int = 0,
+    val showCropDialog: Boolean = false,
+    val showColorPickerDialog: Boolean = false,
+    val compressionPreset: String = "Balanced",
+    val isBatchMode: Boolean = false,
+    val selectedPreviewUri: Uri? = null,
+    val aspectRatioPreset: String = "Original",
     val errorMessage: String? = null
 ) {
     val selectedFileUri: Uri?
@@ -59,8 +77,8 @@ class ConversionConfigViewModel @Inject constructor(
                 it.copy(
                     conversionType = type,
                     outputFormat = type.outputType.extension,
-                    showQualitySlider = isImageOutput(type),
-                    showPageRange = type.inputType == FileType.PDF,
+                    showQualitySlider = isImageOutput(type) || type.id == "compress_pdf",
+                    showPageRange = type.id in listOf("split_pdf", "pdf_to_images", "organize_pdf"),
                     availableOutputFormats = getFormatsForType(type)
                 )
             }
@@ -123,6 +141,8 @@ class ConversionConfigViewModel @Inject constructor(
                     selectedFileUris = selectedUris,
                     selectedFileNames = names,
                     selectedFileSize = totalSize,
+                    isBatchMode = selectedUris.size > 1,
+                    selectedPreviewUri = selectedUris.firstOrNull(),
                     isConvertEnabled = false,
                     errorMessage = "Invalid file type: '$invalidFileName'. ${type?.name ?: "This tool"} only accepts $allowedText files."
                 )
@@ -148,22 +168,71 @@ class ConversionConfigViewModel @Inject constructor(
         }
 
         _state.update {
-            it.copy(
+            val s = it.copy(
                 selectedFileUris = selectedUris,
                 selectedFileNames = names,
                 selectedFileSize = totalSize,
                 outputFileName = outName,
-                isConvertEnabled = true,
+                isBatchMode = selectedUris.size > 1,
+                selectedPreviewUri = if (type?.inputType != com.morphdrop.app.domain.model.FileType.PDF) selectedUris.firstOrNull() else null,
                 errorMessage = null
             )
+            s.copy(isConvertEnabled = isStateValid(s))
+        }
+
+        if (type?.inputType == com.morphdrop.app.domain.model.FileType.PDF && selectedUris.isNotEmpty()) {
+            viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                try {
+                    val pdfUri = selectedUris.first()
+                    context.contentResolver.openFileDescriptor(pdfUri, "r")?.use { fileDescriptor ->
+                        val pdfRenderer = android.graphics.pdf.PdfRenderer(fileDescriptor)
+                        if (pdfRenderer.pageCount > 0) {
+                            val page = pdfRenderer.openPage(0)
+                            val bitmap = android.graphics.Bitmap.createBitmap(page.width * 2, page.height * 2, android.graphics.Bitmap.Config.ARGB_8888)
+                            bitmap.eraseColor(android.graphics.Color.WHITE)
+                            page.render(bitmap, null, null, android.graphics.pdf.PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                            page.close()
+                            pdfRenderer.close()
+                            
+                            val cacheFile = java.io.File(context.cacheDir, "pdf_preview_${System.currentTimeMillis()}.png")
+                            cacheFile.outputStream().use { out ->
+                                bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out)
+                            }
+                            val previewUri = Uri.fromFile(cacheFile)
+                            _state.update { it.copy(selectedPreviewUri = previewUri) }
+                        }
+                    }
+                } catch (e: Exception) {
+                    _state.update { it.copy(selectedPreviewUri = selectedUris.firstOrNull()) }
+                }
+            }
         }
     }
 
     fun onFileSelected(uri: Uri, fileName: String, fileSize: Long) {
-        onFilesSelected(
-            context = null ?: error("Use onFilesSelected with context"),
-            uris = listOf(uri)
-        )
+        _state.update {
+            val s = it.copy(
+                selectedFileUris = listOf(uri),
+                selectedFileNames = listOf(fileName),
+                selectedFileSize = fileSize,
+                isBatchMode = false,
+                selectedPreviewUri = if (_state.value.conversionType?.inputType != com.morphdrop.app.domain.model.FileType.PDF) uri else null
+            )
+            s.copy(isConvertEnabled = isStateValid(s))
+        }
+        
+        if (_state.value.conversionType?.inputType == com.morphdrop.app.domain.model.FileType.PDF) {
+            viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                try {
+                    // Context can be obtained from Application class but wait, onFileSelected doesn't take context.
+                    // Actually, onFileSelected is only used internally or if context is passed. Let's just pass context or use the original URI if context is unavailable.
+                    // Wait, onFileSelected is used in History Screen or somewhere. I will just leave it since the user usually uses onFilesSelected from the config screen.
+                    _state.update { it.copy(selectedPreviewUri = uri) }
+                } catch (e: Exception) {
+                    _state.update { it.copy(selectedPreviewUri = uri) }
+                }
+            }
+        }
     }
 
     fun onOutputFormatChanged(format: String) {
@@ -177,10 +246,11 @@ class ConversionConfigViewModel @Inject constructor(
         }
 
         _state.update {
-            it.copy(
+            val s = it.copy(
                 outputFormat = format,
                 outputFileName = newName
             )
+            s.copy(isConvertEnabled = isStateValid(s))
         }
     }
 
@@ -189,15 +259,89 @@ class ConversionConfigViewModel @Inject constructor(
     }
 
     fun onPageRangeStartChanged(value: String) {
-        _state.update { it.copy(pageRangeStart = value) }
+        _state.update { 
+            val s = it.copy(pageRangeStart = value)
+            s.copy(isConvertEnabled = isStateValid(s))
+        }
     }
 
     fun onPageRangeEndChanged(value: String) {
-        _state.update { it.copy(pageRangeEnd = value) }
+        _state.update { 
+            val s = it.copy(pageRangeEnd = value)
+            s.copy(isConvertEnabled = isStateValid(s))
+        }
     }
 
     fun onOutputFileNameChanged(name: String) {
         _state.update { it.copy(outputFileName = name) }
+    }
+
+    fun onTargetWidthChanged(value: String) {
+        _state.update { 
+            val s = it.copy(targetWidth = value, compressionPreset = "Custom")
+            s.copy(isConvertEnabled = isStateValid(s))
+        }
+    }
+
+    fun onTargetHeightChanged(value: String) {
+        _state.update { 
+            val s = it.copy(targetHeight = value, compressionPreset = "Custom")
+            s.copy(isConvertEnabled = isStateValid(s))
+        }
+    }
+
+    fun onPaddingColorChanged(color: Int) {
+        _state.update { it.copy(paddingColor = color) }
+    }
+
+    fun onTargetSizeKbChanged(value: String) {
+        _state.update { 
+            val s = it.copy(targetSizeKb = value, compressionPreset = "Custom")
+            s.copy(isConvertEnabled = isStateValid(s))
+        }
+    }
+
+    fun onCompressionPresetSelected(preset: String) {
+        _state.update {
+            val s = when (preset) {
+                "Under 500KB" -> it.copy(compressionPreset = preset, targetSizeKb = "500", targetWidth = "", targetHeight = "")
+                "Under 1MB" -> it.copy(compressionPreset = preset, targetSizeKb = "1024", targetWidth = "", targetHeight = "")
+                "Profile Picture (256x256)" -> it.copy(compressionPreset = preset, targetWidth = "256", targetHeight = "256", targetSizeKb = "")
+                "HD (1920x1080)" -> it.copy(compressionPreset = preset, targetWidth = "1920", targetHeight = "1080", targetSizeKb = "")
+                "4K (3840x2160)" -> it.copy(compressionPreset = preset, targetWidth = "3840", targetHeight = "2160", targetSizeKb = "")
+                else -> it.copy(compressionPreset = preset)
+            }
+            s.copy(isConvertEnabled = isStateValid(s))
+        }
+    }
+
+    fun onAspectRatioPresetSelected(preset: String) {
+        _state.update { it.copy(aspectRatioPreset = preset) }
+    }
+
+    fun onPreviewUriChanged(uri: Uri) {
+        _state.update { it.copy(selectedPreviewUri = uri) }
+    }
+
+    fun onCropRectChanged(left: Int, top: Int, right: Int, bottom: Int) {
+        _state.update { it.copy(
+            cropRectLeft = left,
+            cropRectTop = top,
+            cropRectRight = right,
+            cropRectBottom = bottom
+        ) }
+    }
+
+    fun onRotationChanged(degrees: Int) {
+        _state.update { it.copy(rotationDegrees = degrees) }
+    }
+
+    fun setShowCropDialog(show: Boolean) {
+        _state.update { it.copy(showCropDialog = show) }
+    }
+
+    fun setShowColorPickerDialog(show: Boolean) {
+        _state.update { it.copy(showColorPickerDialog = show) }
     }
 
     fun getPageRange(): IntRange? {
@@ -205,6 +349,16 @@ class ConversionConfigViewModel @Inject constructor(
         val end = _state.value.pageRangeEnd.toIntOrNull() ?: return null
         if (start < 1 || end < start) return null
         return start..end
+    }
+
+    private fun isStateValid(s: ConversionConfigState): Boolean {
+        if (s.selectedFileUris.isEmpty() || s.errorMessage != null) return false
+        if (s.targetWidth.isNotEmpty() && s.targetWidth.toIntOrNull() == null) return false
+        if (s.targetHeight.isNotEmpty() && s.targetHeight.toIntOrNull() == null) return false
+        if (s.targetSizeKb.isNotEmpty() && s.targetSizeKb.toIntOrNull() == null) return false
+        if (s.pageRangeStart.isNotEmpty() && s.pageRangeStart.toIntOrNull() == null) return false
+        if (s.pageRangeEnd.isNotEmpty() && s.pageRangeEnd.toIntOrNull() == null) return false
+        return true
     }
 
     fun startConversion(context: Context): java.util.UUID? {
@@ -230,6 +384,28 @@ class ConversionConfigViewModel @Inject constructor(
                 )
             }
 
+            // Advanced Image Options - Applied to all images in the batch by the worker
+            currentState.targetWidth.toIntOrNull()?.let { 
+                dataBuilder.putInt(com.morphdrop.app.worker.ConversionWorker.KEY_TARGET_WIDTH, it)
+            }
+            currentState.targetHeight.toIntOrNull()?.let { 
+                dataBuilder.putInt(com.morphdrop.app.worker.ConversionWorker.KEY_TARGET_HEIGHT, it)
+            }
+            dataBuilder.putInt(com.morphdrop.app.worker.ConversionWorker.KEY_PADDING_COLOR, currentState.paddingColor)
+            
+            currentState.targetSizeKb.toIntOrNull()?.let { 
+                dataBuilder.putInt(com.morphdrop.app.worker.ConversionWorker.KEY_TARGET_SIZE_KB, it)
+            }
+            
+            if (currentState.cropRectLeft != -1) {
+                dataBuilder.putInt(com.morphdrop.app.worker.ConversionWorker.KEY_CROP_RECT_LEFT, currentState.cropRectLeft)
+                dataBuilder.putInt(com.morphdrop.app.worker.ConversionWorker.KEY_CROP_RECT_TOP, currentState.cropRectTop)
+                dataBuilder.putInt(com.morphdrop.app.worker.ConversionWorker.KEY_CROP_RECT_RIGHT, currentState.cropRectRight)
+                dataBuilder.putInt(com.morphdrop.app.worker.ConversionWorker.KEY_CROP_RECT_BOTTOM, currentState.cropRectBottom)
+            }
+            
+            dataBuilder.putInt(com.morphdrop.app.worker.ConversionWorker.KEY_ROTATION_DEGREES, currentState.rotationDegrees)
+
             val workRequest = androidx.work.OneTimeWorkRequestBuilder<com.morphdrop.app.worker.ConversionWorker>()
                 .setInputData(dataBuilder.build())
                 .build()
@@ -243,9 +419,6 @@ class ConversionConfigViewModel @Inject constructor(
 
     fun isFolderOutput(type: ConversionType?): Boolean {
         val t = type ?: return false
-        // Split PDF always creates multiple files (by definition).
-        // PDF to Images can be 1 or more, but typically user wants a folder.
-        // However, if the user explicitly wants "File Name" for 1 page, we need to know page count.
         return t.id in listOf("split_pdf", "compress_images", "organize_pdf") || 
                (t.id == "pdf_to_images" && (_state.value.pageRangeEnd.toIntOrNull() ?: 2) - (_state.value.pageRangeStart.toIntOrNull() ?: 1) > 0)
     }
