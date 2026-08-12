@@ -46,7 +46,7 @@ jobs:
           VERSION_NAME=$(grep "versionName =" app/build.gradle.kts | head -n 1 | awk -F '"' '{print $2}')
           echo "App Version: $VERSION_NAME"
           mkdir -p app/build/outputs/apk/release-artifacts
-          target_name="MorphDrop-${VERSION_NAME}.apk"
+          target_name="MorphDrop-v${VERSION_NAME}.apk"
           cp "${{steps.sign_app.outputs.signedReleaseFile}}" "app/build/outputs/apk/release-artifacts/$target_name"
           echo "Copied to app/build/outputs/apk/release-artifacts/$target_name"
 
