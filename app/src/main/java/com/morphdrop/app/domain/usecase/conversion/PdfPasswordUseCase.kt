@@ -31,6 +31,9 @@ class PdfPasswordUseCase @Inject constructor(
         action: Action,
         password: String,
         currentPassword: String? = null,
+        allowPrinting: Boolean = true,
+        allowCopying: Boolean = true,
+        allowEditing: Boolean = true,
         outputFileName: String = "secured_${System.currentTimeMillis()}.pdf"
     ): Uri = withContext(Dispatchers.IO) {
         if (password.isEmpty()) throw PasswordException.InvalidAction()
@@ -55,7 +58,16 @@ class PdfPasswordUseCase @Inject constructor(
             when (action) {
                 Action.ADD_PASSWORD -> {
                     val accessPermission = AccessPermission()
-                    val spp = StandardProtectionPolicy(password, password, accessPermission)
+                    accessPermission.setCanPrint(allowPrinting)
+                    accessPermission.setCanExtractContent(allowCopying)
+                    accessPermission.setCanModify(allowEditing)
+                    
+                    // CRITICAL FIX: If owner and user passwords are the same, PDF viewers 
+                    // authenticate the user as the "Owner", which bypasses ALL permission restrictions.
+                    // We generate a random UUID for the owner password so the user is forced 
+                    // to open it as a "User", thereby enforcing the restrictions securely.
+                    val ownerPassword = java.util.UUID.randomUUID().toString()
+                    val spp = StandardProtectionPolicy(ownerPassword, password, accessPermission)
                     spp.encryptionKeyLength = 128
                     spp.permissions = accessPermission
                     document.protect(spp)

@@ -19,7 +19,6 @@ import com.morphdrop.app.ui.screens.history.HistoryScreen
 import com.morphdrop.app.ui.screens.home.HomeScreen
 import com.morphdrop.app.ui.screens.pdf.MergePdfScreen
 import com.morphdrop.app.ui.screens.pdf.PdfPageEditorScreen
-import com.morphdrop.app.ui.screens.pdf.PdfPasswordScreen
 import com.morphdrop.app.ui.screens.pdf.SplitPdfScreen
 import com.morphdrop.app.ui.screens.processing.ProcessingScreen
 import com.morphdrop.app.ui.screens.result.ResultScreen
@@ -100,7 +99,6 @@ fun NavGraph(
                     val route = when (conversionTypeId) {
                         "merge_pdf" -> Screen.MergePdf.route
                         "split_pdf" -> Screen.SplitPdf.route
-                        "protect_pdf" -> Screen.PdfPassword.route
                         "page_editor" -> Screen.PdfPageEditor.route
                         else -> Screen.ConversionConfig.createRoute(conversionTypeId)
                     }
@@ -178,15 +176,6 @@ fun NavGraph(
 
         composable(Screen.SplitPdf.route) {
             SplitPdfScreen(
-                onNavigateBack = { navController.popBackStack() },
-                onNavigateToProcessing = { typeId, workId ->
-                    navController.navigate(Screen.Processing.createRoute(typeId, workId))
-                }
-            )
-        }
-
-        composable(Screen.PdfPassword.route) {
-            PdfPasswordScreen(
                 onNavigateBack = { navController.popBackStack() },
                 onNavigateToProcessing = { typeId, workId ->
                     navController.navigate(Screen.Processing.createRoute(typeId, workId))

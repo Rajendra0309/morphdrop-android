@@ -30,9 +30,17 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Crop
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Print
+import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.UploadFile
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -41,11 +49,13 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberTopAppBarState
@@ -64,6 +74,8 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.tooling.preview.Devices
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -161,6 +173,10 @@ fun ConversionConfigScreen(
         onCropRectChanged = viewModel::onCropRectChanged,
         onShowCropDialog = viewModel::setShowCropDialog,
         onShowColorPickerDialog = viewModel::setShowColorPickerDialog,
+        onPdfPasswordChanged = viewModel::onPdfPasswordChanged,
+        onAllowPrintingChanged = viewModel::onAllowPrintingChanged,
+        onAllowCopyingChanged = viewModel::onAllowCopyingChanged,
+        onAllowEditingChanged = viewModel::onAllowEditingChanged,
         onConvert = {
             val workId = viewModel.startConversion(context)
             if (workId != null && state.conversionType != null) {
@@ -220,6 +236,10 @@ fun ConversionConfigScreenContent(
     onCropRectChanged: (Int, Int, Int, Int) -> Unit,
     onShowCropDialog: (Boolean) -> Unit,
     onShowColorPickerDialog: (Boolean) -> Unit,
+    onPdfPasswordChanged: (String) -> Unit,
+    onAllowPrintingChanged: (Boolean) -> Unit,
+    onAllowCopyingChanged: (Boolean) -> Unit,
+    onAllowEditingChanged: (Boolean) -> Unit,
     onConvert: () -> Unit
 ) {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
@@ -714,6 +734,20 @@ fun ConversionConfigScreenContent(
                         singleLine = true
                     )
                 }
+
+                // Security Cockpit
+                if (state.conversionType?.id == "protect_pdf") {
+                    SecurityCockpit(
+                        password = state.pdfPassword,
+                        onPasswordChange = onPdfPasswordChanged,
+                        allowPrinting = state.allowPrinting,
+                        onAllowPrintingChange = onAllowPrintingChanged,
+                        allowCopying = state.allowCopying,
+                        onAllowCopyingChange = onAllowCopyingChanged,
+                        allowEditing = state.allowEditing,
+                        onAllowEditingChange = onAllowEditingChanged
+                    )
+                }
             }
 
             Box(
@@ -766,6 +800,128 @@ private fun ConfigSection(title: String, content: @Composable () -> Unit) {
     }
 }
 
+@Composable
+private fun SecurityCockpit(
+    password: String,
+    onPasswordChange: (String) -> Unit,
+    allowPrinting: Boolean,
+    onAllowPrintingChange: (Boolean) -> Unit,
+    allowCopying: Boolean,
+    onAllowCopyingChange: (Boolean) -> Unit,
+    allowEditing: Boolean,
+    onAllowEditingChange: (Boolean) -> Unit
+) {
+    ConfigSection(title = "Security Cockpit") {
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                // Password Field
+                var passwordVisible by remember { mutableStateOf(false) }
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = onPasswordChange,
+                    label = { Text("PDF Password") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    singleLine = true,
+                    leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
+                    visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        val image = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff
+                        IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                            Icon(imageVector = image, contentDescription = null)
+                        }
+                    }
+                )
+
+                // Strength Meter
+                val strength = calculatePasswordStrength(password)
+                val strengthColor = when {
+                    strength <= 0f -> MaterialTheme.colorScheme.outline
+                    strength <= 0.3f -> Color.Red
+                    strength <= 0.7f -> Color(0xFFFFC107) // Yellow/Amber
+                    else -> Color(0xFF4CAF50) // Green
+                }
+                val strengthLabel = when {
+                    strength <= 0f -> "No Password"
+                    strength <= 0.3f -> "Weak"
+                    strength <= 0.7f -> "Medium"
+                    else -> "Strong"
+                }
+
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Password Strength", style = MaterialTheme.typography.labelMedium)
+                        Text(strengthLabel, style = MaterialTheme.typography.labelMedium, color = strengthColor, fontWeight = FontWeight.Bold)
+                    }
+                    LinearProgressIndicator(
+                        progress = { strength },
+                        modifier = Modifier.fillMaxWidth().height(8.dp).clip(CircleShape),
+                        color = strengthColor,
+                        trackColor = MaterialTheme.colorScheme.outlineVariant
+                    )
+                }
+
+                // Permissions
+                Text("Permissions", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                
+                PermissionToggle(
+                    label = "Allow Printing",
+                    icon = Icons.Default.Print,
+                    checked = allowPrinting,
+                    onCheckedChange = onAllowPrintingChange
+                )
+                PermissionToggle(
+                    label = "Allow Copying",
+                    icon = Icons.Default.ContentCopy,
+                    checked = allowCopying,
+                    onCheckedChange = onAllowCopyingChange
+                )
+                PermissionToggle(
+                    label = "Allow Editing",
+                    icon = Icons.Default.Edit,
+                    checked = allowEditing,
+                    onCheckedChange = onAllowEditingChange
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PermissionToggle(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
+        Spacer(modifier = Modifier.width(12.dp))
+        Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
+    }
+}
+
+private fun calculatePasswordStrength(password: String): Float {
+    if (password.isEmpty()) return 0f
+    var score = 0f
+    if (password.length >= 8) score += 0.25f
+    if (password.any { it.isDigit() }) score += 0.25f
+    if (password.any { it.isUpperCase() }) score += 0.25f
+    if (password.any { !it.isLetterOrDigit() }) score += 0.25f
+    return score
+}
+
 @Preview(name = "Light Mode", showBackground = true, showSystemUi = true, device = Devices.PIXEL_7_PRO)
 @Composable
 fun ConversionConfigScreenLightPreview() {
@@ -804,6 +960,10 @@ fun ConversionConfigScreenLightPreview() {
             onCropRectChanged = { _, _, _, _ -> },
             onShowCropDialog = {},
             onShowColorPickerDialog = {},
+            onPdfPasswordChanged = {},
+            onAllowPrintingChanged = {},
+            onAllowCopyingChanged = {},
+            onAllowEditingChanged = {},
             onConvert = {}
         )
     }

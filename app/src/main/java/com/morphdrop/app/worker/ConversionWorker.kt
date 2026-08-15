@@ -62,6 +62,10 @@ class ConversionWorker @AssistedInject constructor(
         const val KEY_PASSWORD = "password"
         const val KEY_ACTION = "action"
         const val KEY_TARGET_FORMAT = "target_format"
+        
+        const val KEY_ALLOW_PRINTING = "allow_printing"
+        const val KEY_ALLOW_COPYING = "allow_copying"
+        const val KEY_ALLOW_EDITING = "allow_editing"
 
         const val KEY_OUTPUT_URI = "output_uri"
         const val KEY_OUTPUT_URIS = "output_uris"
@@ -380,7 +384,20 @@ class ConversionWorker @AssistedInject constructor(
                     } else {
                         PdfPasswordUseCase.Action.ADD_PASSWORD
                     }
-                    val result = listOf(pdfPasswordUseCase(uri, password = password, action = action, outputFileName = outputFileName))
+                    
+                    val allowPrinting = inputData.getBoolean(KEY_ALLOW_PRINTING, true)
+                    val allowCopying = inputData.getBoolean(KEY_ALLOW_COPYING, true)
+                    val allowEditing = inputData.getBoolean(KEY_ALLOW_EDITING, true)
+
+                    val result = listOf(pdfPasswordUseCase(
+                        uri, 
+                        password = password, 
+                        action = action, 
+                        allowPrinting = allowPrinting,
+                        allowCopying = allowCopying,
+                        allowEditing = allowEditing,
+                        outputFileName = outputFileName
+                    ))
                     notificationHelper.showProgressNotification(notificationId, conversionType, 85)
                     setProgress(workDataOf("progress" to 85))
                     result

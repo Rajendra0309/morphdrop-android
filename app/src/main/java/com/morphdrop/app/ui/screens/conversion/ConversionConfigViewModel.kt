@@ -48,6 +48,10 @@ data class ConversionConfigState(
     val isBatchMode: Boolean = false,
     val selectedPreviewUri: Uri? = null,
     val aspectRatioPreset: String = "Original",
+    val pdfPassword: String = "",
+    val allowPrinting: Boolean = true,
+    val allowCopying: Boolean = true,
+    val allowEditing: Boolean = true,
     val errorMessage: String? = null
 ) {
     val selectedFileUri: Uri?
@@ -332,6 +336,25 @@ class ConversionConfigViewModel @Inject constructor(
         _state.update { it.copy(rotationDegrees = degrees) }
     }
 
+    fun onPdfPasswordChanged(password: String) {
+        _state.update { 
+            val s = it.copy(pdfPassword = password)
+            s.copy(isConvertEnabled = isStateValid(s))
+        }
+    }
+
+    fun onAllowPrintingChanged(allow: Boolean) {
+        _state.update { it.copy(allowPrinting = allow) }
+    }
+
+    fun onAllowCopyingChanged(allow: Boolean) {
+        _state.update { it.copy(allowCopying = allow) }
+    }
+
+    fun onAllowEditingChanged(allow: Boolean) {
+        _state.update { it.copy(allowEditing = allow) }
+    }
+
     fun setShowCropDialog(show: Boolean) {
         _state.update { it.copy(showCropDialog = show) }
     }
@@ -354,6 +377,7 @@ class ConversionConfigViewModel @Inject constructor(
         if (s.targetSizeKb.isNotEmpty() && s.targetSizeKb.toIntOrNull() == null) return false
         if (s.pageRangeStart.isNotEmpty() && s.pageRangeStart.toIntOrNull() == null) return false
         if (s.pageRangeEnd.isNotEmpty() && s.pageRangeEnd.toIntOrNull() == null) return false
+        if (s.conversionType?.id == "protect_pdf" && s.pdfPassword.isEmpty()) return false
         return true
     }
 
@@ -401,6 +425,13 @@ class ConversionConfigViewModel @Inject constructor(
             }
             
             dataBuilder.putInt(com.morphdrop.app.worker.ConversionWorker.KEY_ROTATION_DEGREES, currentState.rotationDegrees)
+
+            if (type.id == "protect_pdf") {
+                dataBuilder.putString(com.morphdrop.app.worker.ConversionWorker.KEY_PASSWORD, currentState.pdfPassword)
+                dataBuilder.putBoolean(com.morphdrop.app.worker.ConversionWorker.KEY_ALLOW_PRINTING, currentState.allowPrinting)
+                dataBuilder.putBoolean(com.morphdrop.app.worker.ConversionWorker.KEY_ALLOW_COPYING, currentState.allowCopying)
+                dataBuilder.putBoolean(com.morphdrop.app.worker.ConversionWorker.KEY_ALLOW_EDITING, currentState.allowEditing)
+            }
 
             val workRequest = androidx.work.OneTimeWorkRequestBuilder<com.morphdrop.app.worker.ConversionWorker>()
                 .setInputData(dataBuilder.build())
