@@ -25,8 +25,12 @@ object PdfThumbnailHelper {
                     if (pageIndex >= renderer.pageCount) return@withContext null
                     
                     renderer.openPage(pageIndex).use { page ->
-                        // Render at 2x scale for better quality
-                        val bitmap = Bitmap.createBitmap(page.width * 2, page.height * 2, Bitmap.Config.ARGB_8888)
+                        // Render at a reasonable scale to prevent OOM
+                        val scale = 1.5f
+                        val width = (page.width * scale).toInt()
+                        val height = (page.height * scale).toInt()
+                        
+                        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
                         bitmap.eraseColor(Color.WHITE)
                         page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
                         

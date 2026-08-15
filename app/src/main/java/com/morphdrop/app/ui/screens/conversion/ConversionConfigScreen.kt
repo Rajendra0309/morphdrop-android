@@ -87,6 +87,7 @@ import com.morphdrop.app.domain.model.FileType
 import com.morphdrop.app.ui.components.FormatBadge
 import com.morphdrop.app.ui.components.InteractiveCropDialog
 import com.morphdrop.app.ui.components.MorphDropTopAppBar
+import com.morphdrop.app.ui.components.PdfPageOrganizerDialog
 import com.morphdrop.app.ui.theme.MorphDropTheme
 import com.morphdrop.app.util.FileHelper
 import kotlinx.coroutines.withContext
@@ -173,6 +174,7 @@ fun ConversionConfigScreen(
         onCropRectChanged = viewModel::onCropRectChanged,
         onShowCropDialog = viewModel::setShowCropDialog,
         onShowColorPickerDialog = viewModel::setShowColorPickerDialog,
+        onShowOrganizerDialog = viewModel::setShowOrganizerDialog,
         onPdfPasswordChanged = viewModel::onPdfPasswordChanged,
         onAllowPrintingChanged = viewModel::onAllowPrintingChanged,
         onAllowCopyingChanged = viewModel::onAllowCopyingChanged,
@@ -211,6 +213,27 @@ fun ConversionConfigScreen(
             }
         )
     }
+
+    if (state.showOrganizerDialog && state.selectedFileUri != null) {
+        PdfPageOrganizerDialog(
+            pdfUri = state.selectedFileUri!!,
+            pageOrder = state.pageOrder,
+            selectedPages = state.selectedPages,
+            pageRotations = state.pageRotations,
+            toolId = state.conversionType?.id ?: "",
+            splitMode = state.splitMode,
+            splitEveryN = state.splitEveryN,
+            isLoading = state.isPdfLoading,
+            onDismiss = { viewModel.setShowOrganizerDialog(false) },
+            onPageOrderChanged = viewModel::onPageOrderChanged,
+            onToggleSelection = viewModel::togglePageSelection,
+            onRotatePage = viewModel::rotatePage,
+            onMovePage = viewModel::movePage,
+            onSplitModeChanged = viewModel::onSplitModeChanged,
+            onSplitEveryNChanged = viewModel::onSplitEveryNChanged,
+            onConfirm = { viewModel.setShowOrganizerDialog(false) }
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -236,6 +259,7 @@ fun ConversionConfigScreenContent(
     onCropRectChanged: (Int, Int, Int, Int) -> Unit,
     onShowCropDialog: (Boolean) -> Unit,
     onShowColorPickerDialog: (Boolean) -> Unit,
+    onShowOrganizerDialog: (Boolean) -> Unit,
     onPdfPasswordChanged: (String) -> Unit,
     onAllowPrintingChanged: (Boolean) -> Unit,
     onAllowCopyingChanged: (Boolean) -> Unit,
@@ -700,25 +724,50 @@ fun ConversionConfigScreenContent(
                 }
 
                 // Page Range
-                AnimatedVisibility(visible = state.showPageRange) {
-                    ConfigSection(title = "Page Range") {
-                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            OutlinedTextField(
-                                value = state.pageRangeStart,
-                                onValueChange = onPageRangeStartChanged,
-                                label = { Text("From Page") },
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(12.dp),
-                                singleLine = true
+                AnimatedVisibility(visible = state.showPageRange || state.conversionType?.id in listOf("page_editor", "split_pdf")) {
+                    ConfigSection(title = if (state.conversionType?.id == "split_pdf") "Split Strategy" else "Page Organization") {
+                        if (state.conversionType?.id in listOf("page_editor", "split_pdf")) {
+                            OutlinedButton(
+                                onClick = { onShowOrganizerDialog(true) },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Icon(Icons.Default.AutoAwesome, contentDescription = null)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Open Visual Workbench")
+                            }
+                            
+                            val selectionText = if (state.selectedPages.size == state.pdfPageCount) {
+                                "All ${state.pdfPageCount} pages included"
+                            } else {
+                                "${state.selectedPages.size} of ${state.pdfPageCount} pages selected"
+                            }
+                            
+                            Text(
+                                text = selectionText,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(top = 4.dp)
                             )
-                            OutlinedTextField(
-                                value = state.pageRangeEnd,
-                                onValueChange = onPageRangeEndChanged,
-                                label = { Text("To Page") },
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(12.dp),
-                                singleLine = true
-                            )
+                        } else {
+                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                OutlinedTextField(
+                                    value = state.pageRangeStart,
+                                    onValueChange = onPageRangeStartChanged,
+                                    label = { Text("From Page") },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(12.dp),
+                                    singleLine = true
+                                )
+                                OutlinedTextField(
+                                    value = state.pageRangeEnd,
+                                    onValueChange = onPageRangeEndChanged,
+                                    label = { Text("To Page") },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(12.dp),
+                                    singleLine = true
+                                )
+                            }
                         }
                     }
                 }
@@ -960,6 +1009,7 @@ fun ConversionConfigScreenLightPreview() {
             onCropRectChanged = { _, _, _, _ -> },
             onShowCropDialog = {},
             onShowColorPickerDialog = {},
+            onShowOrganizerDialog = {},
             onPdfPasswordChanged = {},
             onAllowPrintingChanged = {},
             onAllowCopyingChanged = {},

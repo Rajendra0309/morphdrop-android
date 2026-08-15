@@ -52,6 +52,14 @@ data class ConversionConfigState(
     val allowPrinting: Boolean = true,
     val allowCopying: Boolean = true,
     val allowEditing: Boolean = true,
+    val pdfPageCount: Int = 0,
+    val pageOrder: List<Int> = emptyList(),
+    val selectedPages: Set<Int> = emptySet(),
+    val pageRotations: Map<Int, Int> = emptyMap(),
+    val showOrganizerDialog: Boolean = false,
+    val isPdfLoading: Boolean = false,
+    val splitMode: String = "selection", // "selection", "every_n", "all"
+    val splitEveryN: Int = 1,
     val errorMessage: String? = null
 ) {
     val selectedFileUri: Uri?
@@ -188,38 +196,87 @@ class ConversionConfigViewModel @Inject constructor(
         }
 
         if (type?.inputType == com.morphdrop.app.domain.model.FileType.PDF && selectedUris.isNotEmpty()) {
+            _state.update { it.copy(isPdfLoading = true) }
             viewModelScope.launch {
-                val previewUri = PdfThumbnailHelper.getThumbnailUri(context, selectedUris.first())
-                if (previewUri != null) {
-                    _state.update { it.copy(selectedPreviewUri = previewUri) }
+                val uri = selectedUris.first()
+                val pageCount = getPdfPageCount(context, uri)
+                val initialOrder = (0 until pageCount).toList()
+                val initialSelected = initialOrder.toSet()
+
+                _state.update { 
+                    it.copy(
+                        pdfPageCount = pageCount,
+                        pageOrder = initialOrder,
+                        selectedPages = initialSelected,
+                        pageRotations = emptyMap(),
+                        isPdfLoading = false,
+                        showOrganizerDialog = type.id in listOf("page_editor", "split_pdf")
+                    )
+                }
+
+                if (pageCount > 0) {
+                    val previewUri = PdfThumbnailHelper.getThumbnailUri(context, uri)
+                    if (previewUri != null) {
+                        _state.update { it.copy(selectedPreviewUri = previewUri) }
+                    } else {
+                        _state.update { it.copy(selectedPreviewUri = selectedUris.firstOrNull()) }
+                    }
                 } else {
-                    _state.update { it.copy(selectedPreviewUri = selectedUris.firstOrNull()) }
+                    _state.update { it.copy(errorMessage = "Could not read PDF pages. The file might be protected or corrupted.") }
                 }
             }
         }
     }
 
-    fun onFileSelected(uri: Uri, fileName: String, fileSize: Long) {
+    private suspend fun getPdfPageCount(context: Context, uri: Uri): Int = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        try {
+            context.contentResolver.openFileDescriptor(uri, "r")?.use { fd ->
+                android.graphics.pdf.PdfRenderer(fd).use { renderer ->
+                    renderer.pageCount
+                }
+            } ?: 0
+        } catch (e: Exception) {
+            0
+        }
+    }
+
+    fun onFileSelected(context: Context, uri: Uri, fileName: String, fileSize: Long) {
+        val type = _state.value.conversionType
         _state.update {
             val s = it.copy(
                 selectedFileUris = listOf(uri),
                 selectedFileNames = listOf(fileName),
                 selectedFileSize = fileSize,
                 isBatchMode = false,
-                selectedPreviewUri = if (_state.value.conversionType?.inputType != com.morphdrop.app.domain.model.FileType.PDF) uri else null
+                selectedPreviewUri = if (type?.inputType != com.morphdrop.app.domain.model.FileType.PDF) uri else null
             )
             s.copy(isConvertEnabled = isStateValid(s))
         }
         
-        if (_state.value.conversionType?.inputType == com.morphdrop.app.domain.model.FileType.PDF) {
-            viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                try {
-                    // Context can be obtained from Application class but wait, onFileSelected doesn't take context.
-                    // Actually, onFileSelected is only used internally or if context is passed. Let's just pass context or use the original URI if context is unavailable.
-                    // Wait, onFileSelected is used in History Screen or somewhere. I will just leave it since the user usually uses onFilesSelected from the config screen.
-                    _state.update { it.copy(selectedPreviewUri = uri) }
-                } catch (e: Exception) {
-                    _state.update { it.copy(selectedPreviewUri = uri) }
+        if (type?.inputType == com.morphdrop.app.domain.model.FileType.PDF) {
+            _state.update { it.copy(isPdfLoading = true) }
+            viewModelScope.launch {
+                val pageCount = getPdfPageCount(context, uri)
+                val initialOrder = (0 until pageCount).toList()
+                val initialSelected = initialOrder.toSet()
+
+                _state.update { 
+                    it.copy(
+                        pdfPageCount = pageCount,
+                        pageOrder = initialOrder,
+                        selectedPages = initialSelected,
+                        pageRotations = emptyMap(),
+                        isPdfLoading = false,
+                        showOrganizerDialog = type.id in listOf("page_editor", "split_pdf"),
+                        selectedPreviewUri = uri // Use original as fallback for now
+                    )
+                }
+
+                if (pageCount > 0) {
+                    val previewUri = PdfThumbnailHelper.getThumbnailUri(context, uri)
+                    if (previewUri != null) {
+                        _state.update { it.copy(selectedPreviewUri = previewUri) }
+                    }
                 }
             }
         }
@@ -363,6 +420,53 @@ class ConversionConfigViewModel @Inject constructor(
         _state.update { it.copy(showColorPickerDialog = show) }
     }
 
+    fun setShowOrganizerDialog(show: Boolean) {
+        _state.update { it.copy(showOrganizerDialog = show) }
+    }
+
+    fun onPageOrderChanged(newOrder: List<Int>) {
+        _state.update { it.copy(pageOrder = newOrder) }
+    }
+
+    fun togglePageSelection(pageIndex: Int) {
+        _state.update { 
+            val newSelected = it.selectedPages.toMutableSet()
+            if (newSelected.contains(pageIndex)) {
+                newSelected.remove(pageIndex)
+            } else {
+                newSelected.add(pageIndex)
+            }
+            it.copy(selectedPages = newSelected)
+        }
+    }
+
+    fun rotatePage(pageIndex: Int) {
+        _state.update { 
+            val newRotations = it.pageRotations.toMutableMap()
+            val currentRotation = newRotations[pageIndex] ?: 0
+            newRotations[pageIndex] = (currentRotation + 90) % 360
+            it.copy(pageRotations = newRotations)
+        }
+    }
+
+    fun movePage(fromIndex: Int, toIndex: Int) {
+        if (fromIndex !in _state.value.pageOrder.indices || toIndex !in _state.value.pageOrder.indices) return
+        _state.update { 
+            val newOrder = it.pageOrder.toMutableList()
+            val item = newOrder.removeAt(fromIndex)
+            newOrder.add(toIndex, item)
+            it.copy(pageOrder = newOrder)
+        }
+    }
+
+    fun onSplitModeChanged(mode: String) {
+        _state.update { it.copy(splitMode = mode) }
+    }
+
+    fun onSplitEveryNChanged(n: Int) {
+        _state.update { it.copy(splitEveryN = n.coerceAtLeast(1)) }
+    }
+
     fun getPageRange(): IntRange? {
         val start = _state.value.pageRangeStart.toIntOrNull() ?: return null
         val end = _state.value.pageRangeEnd.toIntOrNull() ?: return null
@@ -425,6 +529,41 @@ class ConversionConfigViewModel @Inject constructor(
             }
             
             dataBuilder.putInt(com.morphdrop.app.worker.ConversionWorker.KEY_ROTATION_DEGREES, currentState.rotationDegrees)
+
+            if (type.id == "page_editor") {
+                val selectedOrder = currentState.pageOrder.filter { currentState.selectedPages.contains(it) }
+                dataBuilder.putString(com.morphdrop.app.worker.ConversionWorker.KEY_PAGE_ORDER, selectedOrder.joinToString(","))
+                
+                val rotationsStr = currentState.pageRotations.entries.joinToString(",") { "${it.key}:${it.value}" }
+                dataBuilder.putString("page_rotations", rotationsStr)
+            }
+
+            if (type.id == "split_pdf") {
+                dataBuilder.putString(com.morphdrop.app.worker.ConversionWorker.KEY_SPLIT_MODE, currentState.splitMode)
+                dataBuilder.putString(com.morphdrop.app.worker.ConversionWorker.KEY_PAGE_ORDER, currentState.pageOrder.joinToString(","))
+                val rotationsStr = currentState.pageRotations.entries.joinToString(",") { "${it.key}:${it.value}" }
+                dataBuilder.putString("page_rotations", rotationsStr)
+
+                when (currentState.splitMode) {
+                    "selection" -> {
+                        val selectedIndices = currentState.pageOrder
+                            .filter { currentState.selectedPages.contains(it) }
+                        dataBuilder.putString("split_indices", selectedIndices.joinToString(","))
+                    }
+                    "every_n" -> {
+                        dataBuilder.putInt("split_every_n", currentState.splitEveryN)
+                        // Also pass selection in case they want to split only within selection
+                        val selectedIndices = currentState.pageOrder
+                            .filter { currentState.selectedPages.contains(it) }
+                        dataBuilder.putString("split_indices", selectedIndices.joinToString(","))
+                    }
+                    "all" -> {
+                        val selectedIndices = currentState.pageOrder
+                            .filter { currentState.selectedPages.contains(it) }
+                        dataBuilder.putString("split_indices", selectedIndices.joinToString(","))
+                    }
+                }
+            }
 
             if (type.id == "protect_pdf") {
                 dataBuilder.putString(com.morphdrop.app.worker.ConversionWorker.KEY_PASSWORD, currentState.pdfPassword)

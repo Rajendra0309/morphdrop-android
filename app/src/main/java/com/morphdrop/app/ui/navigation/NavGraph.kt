@@ -18,8 +18,6 @@ import com.morphdrop.app.ui.screens.history.HistoryDetailScreen
 import com.morphdrop.app.ui.screens.history.HistoryScreen
 import com.morphdrop.app.ui.screens.home.HomeScreen
 import com.morphdrop.app.ui.screens.pdf.MergePdfScreen
-import com.morphdrop.app.ui.screens.pdf.PdfPageEditorScreen
-import com.morphdrop.app.ui.screens.pdf.SplitPdfScreen
 import com.morphdrop.app.ui.screens.processing.ProcessingScreen
 import com.morphdrop.app.ui.screens.result.ResultScreen
 import com.morphdrop.app.ui.screens.settings.SettingsScreen
@@ -98,8 +96,6 @@ fun NavGraph(
                 onNavigateToConfig = { conversionTypeId ->
                     val route = when (conversionTypeId) {
                         "merge_pdf" -> Screen.MergePdf.route
-                        "split_pdf" -> Screen.SplitPdf.route
-                        "page_editor" -> Screen.PdfPageEditor.route
                         else -> Screen.ConversionConfig.createRoute(conversionTypeId)
                     }
                     navController.navigate(route)
@@ -174,23 +170,7 @@ fun NavGraph(
             )
         }
 
-        composable(Screen.SplitPdf.route) {
-            SplitPdfScreen(
-                onNavigateBack = { navController.popBackStack() },
-                onNavigateToProcessing = { typeId, workId ->
-                    navController.navigate(Screen.Processing.createRoute(typeId, workId))
-                }
-            )
-        }
 
-        composable(Screen.PdfPageEditor.route) {
-            PdfPageEditorScreen(
-                onNavigateBack = { navController.popBackStack() },
-                onNavigateToProcessing = { typeId, workId ->
-                    navController.navigate(Screen.Processing.createRoute(typeId, workId))
-                }
-            )
-        }
 
         composable(
             route = Screen.Processing.route,
