@@ -11,7 +11,6 @@ sealed class Screen(val route: String) {
     data object Result : Screen("result/{workId}") {
         fun createRoute(workId: String) = "result/$workId"
     }
-    data object MergePdf : Screen("merge_pdf")
     data object History : Screen("history")
     data object HistoryDetail : Screen("history_detail/{historyId}") {
         fun createRoute(historyId: Long) = "history_detail/$historyId"

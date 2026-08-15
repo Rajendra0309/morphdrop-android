@@ -15,6 +15,7 @@ import com.morphdrop.app.domain.usecase.conversion.ImageConverterUseCase
 import com.morphdrop.app.domain.usecase.conversion.ImagesToPdfUseCase
 import com.morphdrop.app.domain.usecase.conversion.MdToPdfUseCase
 import com.morphdrop.app.domain.usecase.conversion.MergePdfUseCase
+import com.morphdrop.app.domain.usecase.conversion.MergePdfItem
 import com.morphdrop.app.domain.usecase.conversion.PdfPageEditorUseCase
 import com.morphdrop.app.domain.usecase.conversion.PdfPasswordUseCase
 import com.morphdrop.app.domain.usecase.conversion.PdfToImagesUseCase
@@ -304,11 +305,27 @@ class ConversionWorker @AssistedInject constructor(
                 "merge_pdf", "merge_pdfs" -> {
                     notificationHelper.showProgressNotification(notificationId, conversionType, 30)
                     setProgress(workDataOf("progress" to 30))
-                    val uris = inputUrisArray?.map { Uri.parse(it) }
-                        ?: listOf(Uri.parse(requireNotNull(inputUriString)))
-                    val outName = inputData.getString(KEY_OUTPUT_FILE_NAME) ?: "merged_${System.currentTimeMillis()}.pdf"
-                    generatedFileNames.add(outName)
-                    val result = listOf(mergePdfUseCase(uris, outputFileName = outName))
+                    
+                    val payload = inputData.getString("merge_payload")
+                    val result = if (payload != null) {
+                        val type = object : com.google.gson.reflect.TypeToken<List<Map<String, String>>>() {}.type
+                        val mergeItems: List<Map<String, String>> = com.google.gson.Gson().fromJson(payload, type)
+                        
+                        val pdfItems = mergeItems.map { item ->
+                            MergePdfItem(
+                                uri = Uri.parse(item["uri"]),
+                                pageIndex = item["index"]?.toInt() ?: 0,
+                                rotation = item["rotation"]?.toInt() ?: 0
+                            )
+                        }
+                        
+                        listOf(mergePdfUseCase(pdfItems, outputFileName = outputFileName))
+                    } else {
+                        val uris = inputUrisArray?.map { Uri.parse(it) }
+                            ?: listOf(Uri.parse(requireNotNull(inputUriString)))
+                        listOf(mergePdfUseCase.legacy(uris, outputFileName = outputFileName))
+                    }
+                    
                     notificationHelper.showProgressNotification(notificationId, conversionType, 85)
                     setProgress(workDataOf("progress" to 85))
                     result
@@ -500,7 +517,7 @@ class ConversionWorker @AssistedInject constructor(
             val duration = System.currentTimeMillis() - startTime
             historyRepository.insertHistory(
                 ConversionHistoryEntity(
-                    conversionType = conversionType,
+                    conversionType = mapIdToDisplayName(conversionType),
                     inputFileName = inputFileName,
                     outputFileNames = "",
                     outputUris = "",
@@ -518,16 +535,6 @@ class ConversionWorker @AssistedInject constructor(
             )
 
             Result.failure(workDataOf(KEY_ERROR to (e.localizedMessage ?: "Unknown error")))
-        }
-    }
-
-    private fun parsePageRange(rangeStr: String?): IntRange? {
-        if (rangeStr.isNullOrBlank()) return null
-        val parts = rangeStr.split("-").mapNotNull { it.trim().toIntOrNull() }
-        return when {
-            parts.size >= 2 -> parts[0]..parts[1]
-            parts.size == 1 -> parts[0]..parts[0]
-            else -> null
         }
     }
 
@@ -549,6 +556,16 @@ class ConversionWorker @AssistedInject constructor(
         }
     }
 
+    private fun parsePageRange(rangeStr: String?): IntRange? {
+        if (rangeStr.isNullOrBlank()) return null
+        val parts = rangeStr.split("-").mapNotNull { it.trim().toIntOrNull() }
+        return when {
+            parts.size >= 2 -> parts[0]..parts[1]
+            parts.size == 1 -> parts[0]..parts[0]
+            else -> null
+        }
+    }
+
     private fun parseRotations(rotationsStr: String?): Map<Int, Int> {
         if (rotationsStr.isNullOrBlank()) return emptyMap()
         return try {
@@ -561,9 +578,5 @@ class ConversionWorker @AssistedInject constructor(
         } catch (e: Exception) {
             emptyMap()
         }
-    }
-
-    private fun groupIndicesIntoRanges(indices: List<Int>): List<IntRange> {
-        return emptyList()
     }
 }

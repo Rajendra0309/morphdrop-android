@@ -31,23 +31,23 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
+import com.morphdrop.app.ui.screens.conversion.WorkbenchPage
 import com.morphdrop.app.util.PdfThumbnailHelper
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PdfPageOrganizerDialog(
     pdfUri: Uri,
-    pageOrder: List<Int>,
-    selectedPages: Set<Int>,
-    pageRotations: Map<Int, Int>,
+    workbenchPages: List<WorkbenchPage>,
+    selectedPageIds: Set<String>,
+    pageRotations: Map<String, Int>,
     toolId: String,
     splitMode: String,
     splitEveryN: Int,
     isLoading: Boolean = false,
     onDismiss: () -> Unit,
-    onPageOrderChanged: (List<Int>) -> Unit,
-    onToggleSelection: (Int) -> Unit,
-    onRotatePage: (Int) -> Unit,
+    onToggleSelection: (String) -> Unit,
+    onRotatePage: (String) -> Unit,
     onMovePage: (Int, Int) -> Unit,
     onSplitModeChanged: (String) -> Unit,
     onSplitEveryNChanged: (Int) -> Unit,
@@ -62,21 +62,25 @@ fun PdfPageOrganizerDialog(
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text(if (toolId == "split_pdf") "Split PDF" else "Organize Pages") },
+                    title = { Text(when(toolId) {
+                        "split_pdf" -> "Split PDF"
+                        "merge_pdf" -> "Master Merge"
+                        else -> "Organize Pages"
+                    }) },
                     navigationIcon = {
                         IconButton(onClick = onDismiss) {
                             Icon(Icons.Default.Close, contentDescription = "Close")
                         }
                     },
                     actions = {
-                        TextButton(onClick = onConfirm, enabled = !isLoading && pageOrder.isNotEmpty()) {
+                        TextButton(onClick = onConfirm, enabled = !isLoading && workbenchPages.isNotEmpty()) {
                             Text("Done", fontWeight = FontWeight.Bold)
                         }
                     }
                 )
             },
             bottomBar = {
-                if (toolId == "split_pdf" && pageOrder.isNotEmpty()) {
+                if (toolId == "split_pdf" && workbenchPages.isNotEmpty()) {
                     Surface(
                         tonalElevation = 8.dp,
                         modifier = Modifier.fillMaxWidth()
@@ -128,7 +132,7 @@ fun PdfPageOrganizerDialog(
                         Spacer(modifier = Modifier.height(16.dp))
                         Text("Reading PDF Pages...", style = MaterialTheme.typography.bodyMedium)
                     }
-                } else if (pageOrder.isEmpty()) {
+                } else if (workbenchPages.isEmpty()) {
                     Column(
                         modifier = Modifier.fillMaxSize().padding(32.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
@@ -144,14 +148,12 @@ fun PdfPageOrganizerDialog(
                     }
                 } else {
                     Column(modifier = Modifier.fillMaxSize()) {
-                        if (toolId == "page_editor") {
-                            Text(
-                                "Tap to exclude pages. Drag arrows to reorder.",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                            )
-                        }
+                        Text(
+                            text = if (toolId == "merge_pdf") "Arrange pages from all files into your final document." else "Tap to exclude pages. Drag arrows to reorder.",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                        )
                         
                         LazyVerticalGrid(
                             columns = GridCells.Adaptive(150.dp),
@@ -160,26 +162,27 @@ fun PdfPageOrganizerDialog(
                             verticalArrangement = Arrangement.spacedBy(16.dp),
                             modifier = Modifier.fillMaxSize()
                         ) {
-                            itemsIndexed(pageOrder, key = { _, pageIndex -> pageIndex }) { index, originalPageIndex ->
+                            itemsIndexed(workbenchPages, key = { _, page -> page.id }) { index, page ->
                                 PageThumbnailCard(
-                                    pdfUri = pdfUri,
-                                    pageIndex = originalPageIndex,
+                                    pdfUri = page.uri,
+                                    pageIndex = page.originalIndex,
                                     displayIndex = index + 1,
-                                    isSelected = selectedPages.contains(originalPageIndex),
-                                    rotation = pageRotations[originalPageIndex] ?: 0,
+                                    sourceFileName = page.sourceFileName,
+                                    isSelected = selectedPageIds.contains(page.id),
+                                    rotation = pageRotations[page.id] ?: 0,
                                     onToggleSelection = { 
                                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                        onToggleSelection(originalPageIndex) 
+                                        onToggleSelection(page.id) 
                                     },
                                     onRotate = {
                                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                        onRotatePage(originalPageIndex)
+                                        onRotatePage(page.id)
                                     },
                                     onMoveLeft = if (index > 0) { {
                                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                         onMovePage(index, index - 1)
                                     } } else null,
-                                    onMoveRight = if (index < pageOrder.size - 1) { {
+                                    onMoveRight = if (index < workbenchPages.size - 1) { {
                                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                         onMovePage(index, index + 1)
                                     } } else null
@@ -198,6 +201,7 @@ private fun PageThumbnailCard(
     pdfUri: Uri,
     pageIndex: Int,
     displayIndex: Int,
+    sourceFileName: String,
     isSelected: Boolean,
     rotation: Int,
     onToggleSelection: () -> Unit,
@@ -254,6 +258,37 @@ private fun PageThumbnailCard(
                             fontWeight = FontWeight.Bold
                         )
                     }
+                }
+                
+                // Source File Badge
+                val fileColors = remember {
+                    listOf(
+                        Color(0xFF2196F3), // Blue
+                        Color(0xFF4CAF50), // Green
+                        Color(0xFFFF9800), // Orange
+                        Color(0xFFE91E63), // Pink
+                        Color(0xFF9C27B0), // Purple
+                        Color(0xFF00BCD4)  // Cyan
+                    )
+                }
+                // Deterministic color based on URI
+                val colorIndex = remember(pdfUri) { 
+                    (pdfUri.toString().hashCode().let { if (it < 0) -it else it }) % fileColors.size 
+                }
+                
+                Surface(
+                    color = fileColors[colorIndex].copy(alpha = 0.9f),
+                    shape = RoundedCornerShape(4.dp),
+                    modifier = Modifier
+                        .padding(8.dp)
+                        .align(Alignment.BottomStart)
+                ) {
+                    Text(
+                        text = sourceFileName.take(12) + if(sourceFileName.length > 12) "..." else "",
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelSmall
+                    )
                 }
 
                 if (!isSelected) {

@@ -17,7 +17,6 @@ import com.morphdrop.app.ui.screens.conversion.ConversionConfigScreen
 import com.morphdrop.app.ui.screens.history.HistoryDetailScreen
 import com.morphdrop.app.ui.screens.history.HistoryScreen
 import com.morphdrop.app.ui.screens.home.HomeScreen
-import com.morphdrop.app.ui.screens.pdf.MergePdfScreen
 import com.morphdrop.app.ui.screens.processing.ProcessingScreen
 import com.morphdrop.app.ui.screens.result.ResultScreen
 import com.morphdrop.app.ui.screens.settings.SettingsScreen
@@ -94,11 +93,7 @@ fun NavGraph(
         composable(Screen.Home.route) {
             HomeScreen(
                 onNavigateToConfig = { conversionTypeId ->
-                    val route = when (conversionTypeId) {
-                        "merge_pdf" -> Screen.MergePdf.route
-                        else -> Screen.ConversionConfig.createRoute(conversionTypeId)
-                    }
-                    navController.navigate(route)
+                    navController.navigate(Screen.ConversionConfig.createRoute(conversionTypeId))
                 },
                 onNavigate = { route ->
                     navController.navigate(route) {
@@ -160,17 +155,6 @@ fun NavGraph(
                 }
             )
         }
-
-        composable(Screen.MergePdf.route) {
-            MergePdfScreen(
-                onNavigateBack = { navController.popBackStack() },
-                onNavigateToProcessing = { typeId, workId ->
-                    navController.navigate(Screen.Processing.createRoute(typeId, workId))
-                }
-            )
-        }
-
-
 
         composable(
             route = Screen.Processing.route,

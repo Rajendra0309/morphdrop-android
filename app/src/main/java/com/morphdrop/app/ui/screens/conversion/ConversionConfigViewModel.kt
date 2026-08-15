@@ -18,9 +18,24 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+data class MergeItem(
+    val uri: Uri,
+    val name: String,
+    val pageRange: String = "",
+    val thumbnailUri: Uri? = null
+)
+
+data class WorkbenchPage(
+    val uri: Uri,
+    val originalIndex: Int,
+    val sourceFileName: String,
+    val id: String = java.util.UUID.randomUUID().toString()
+)
+
 data class ConversionConfigState(
     val conversionType: ConversionType? = null,
     val selectedFileUris: List<Uri> = emptyList(),
+    val mergeItems: List<MergeItem> = emptyList(),
     val selectedFileNames: List<String> = emptyList(),
     val selectedFileSize: Long = -1,
     val outputFormat: String = "",
@@ -53,9 +68,9 @@ data class ConversionConfigState(
     val allowCopying: Boolean = true,
     val allowEditing: Boolean = true,
     val pdfPageCount: Int = 0,
-    val pageOrder: List<Int> = emptyList(),
-    val selectedPages: Set<Int> = emptySet(),
-    val pageRotations: Map<Int, Int> = emptyMap(),
+    val workbenchPages: List<WorkbenchPage> = emptyList(),
+    val selectedWorkbenchPages: Set<String> = emptySet(), // Set of IDs
+    val pageRotations: Map<String, Int> = emptyMap(), // ID to degrees
     val showOrganizerDialog: Boolean = false,
     val isPdfLoading: Boolean = false,
     val splitMode: String = "selection", // "selection", "every_n", "all"
@@ -112,25 +127,30 @@ class ConversionConfigViewModel @Inject constructor(
         }
     }
 
-    fun onFilesSelected(context: Context, uris: List<Uri>) {
+    fun onFilesSelected(context: Context, uris: List<Uri>, append: Boolean = false) {
         if (uris.isEmpty()) return
 
         val type = _state.value.conversionType
         val allowedExts = getAllowedExtensions(type)
         val isMultiAllowed = type?.isMultiFileAllowed == true
 
-        val selectedUris = if (!isMultiAllowed && uris.size > 1) {
+        val incomingUris = if (!isMultiAllowed && uris.size > 1) {
             listOf(uris.first())
         } else {
             uris
         }
 
-        val names = mutableListOf<String>()
-        var totalSize = 0L
+        val currentUris = if (append) _state.value.selectedFileUris else emptyList()
+        val currentNames = if (append) _state.value.selectedFileNames else emptyList()
+        
+        val selectedUris = currentUris + incomingUris
+        val names = currentNames.toMutableList()
+        var totalSize = if (append) _state.value.selectedFileSize.coerceAtLeast(0L) else 0L
+
         var hasInvalidFile = false
         var invalidFileName = ""
 
-        for (uri in selectedUris) {
+        for (uri in incomingUris) {
             try {
                 val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
                 context.contentResolver.takePersistableUriPermission(uri, flags)
@@ -176,7 +196,8 @@ class ConversionConfigViewModel @Inject constructor(
             else "${baseName}_extracted"
         } else {
             if (selectedUris.size > 1) {
-                "converted_batch_${System.currentTimeMillis()}.$outputExt"
+                if (type?.id == "merge_pdf") "${baseName}_merged.$outputExt"
+                else "converted_batch_${System.currentTimeMillis()}.$outputExt"
             } else {
                 "${baseName}_converted.$outputExt"
             }
@@ -187,9 +208,12 @@ class ConversionConfigViewModel @Inject constructor(
                 selectedFileUris = selectedUris,
                 selectedFileNames = names,
                 selectedFileSize = totalSize,
-                outputFileName = outName,
+                mergeItems = selectedUris.mapIndexed { idx, uri ->
+                    MergeItem(uri, names.getOrElse(idx) { "File" })
+                },
+                outputFileName = if (it.outputFileName.isBlank() || !append) outName else it.outputFileName,
                 isBatchMode = selectedUris.size > 1,
-                selectedPreviewUri = if (type?.inputType != com.morphdrop.app.domain.model.FileType.PDF) selectedUris.firstOrNull() else null,
+                selectedPreviewUri = selectedUris.firstOrNull(), // Use raw URI as fallback for dimension calculation
                 errorMessage = null
             )
             s.copy(isConvertEnabled = isStateValid(s))
@@ -198,31 +222,52 @@ class ConversionConfigViewModel @Inject constructor(
         if (type?.inputType == com.morphdrop.app.domain.model.FileType.PDF && selectedUris.isNotEmpty()) {
             _state.update { it.copy(isPdfLoading = true) }
             viewModelScope.launch {
-                val uri = selectedUris.first()
-                val pageCount = getPdfPageCount(context, uri)
-                val initialOrder = (0 until pageCount).toList()
-                val initialSelected = initialOrder.toSet()
+                val allWorkbenchPages = mutableListOf<WorkbenchPage>()
+                var totalPagesCount = 0
+                
+                for ((idx, uri) in selectedUris.withIndex()) {
+                    val pageCount = getPdfPageCount(context, uri)
+                    totalPagesCount += pageCount
+                    val fileName = names.getOrElse(idx) { "File" }
+                    
+                    // Generate a thumbnail for the first page of this file
+                    val thumb = PdfThumbnailHelper.getThumbnailUri(context, uri, 0)
+                    
+                    // Update this specific merge item in the list immediately to show in carousel
+                    _state.update { s ->
+                        val updatedMergeItems = s.mergeItems.toMutableList()
+                        val itemIndex = updatedMergeItems.indexOfFirst { it.uri == uri }
+                        if (itemIndex != -1) {
+                            updatedMergeItems[itemIndex] = updatedMergeItems[itemIndex].copy(thumbnailUri = thumb)
+                        }
+                        
+                        // For the very first file, update the main preview immediately
+                        val newPreviewUri = if (idx == 0 && thumb != null) thumb else s.selectedPreviewUri
+                        
+                        s.copy(
+                            mergeItems = updatedMergeItems,
+                            selectedPreviewUri = newPreviewUri
+                        )
+                    }
+
+                    for (i in 0 until pageCount) {
+                        allWorkbenchPages.add(WorkbenchPage(uri, i, fileName))
+                    }
+                }
 
                 _state.update { 
                     it.copy(
-                        pdfPageCount = pageCount,
-                        pageOrder = initialOrder,
-                        selectedPages = initialSelected,
+                        pdfPageCount = totalPagesCount,
+                        workbenchPages = allWorkbenchPages,
+                        selectedWorkbenchPages = allWorkbenchPages.map { p -> p.id }.toSet(),
                         pageRotations = emptyMap(),
                         isPdfLoading = false,
-                        showOrganizerDialog = type.id in listOf("page_editor", "split_pdf")
+                        showOrganizerDialog = type.id in listOf("page_editor", "split_pdf", "merge_pdf")
                     )
                 }
-
-                if (pageCount > 0) {
-                    val previewUri = PdfThumbnailHelper.getThumbnailUri(context, uri)
-                    if (previewUri != null) {
-                        _state.update { it.copy(selectedPreviewUri = previewUri) }
-                    } else {
-                        _state.update { it.copy(selectedPreviewUri = selectedUris.firstOrNull()) }
-                    }
-                } else {
-                    _state.update { it.copy(errorMessage = "Could not read PDF pages. The file might be protected or corrupted.") }
+                
+                if (totalPagesCount == 0) {
+                    _state.update { it.copy(errorMessage = "Could not read PDF pages. The file(s) might be protected or corrupted.") }
                 }
             }
         }
@@ -247,6 +292,7 @@ class ConversionConfigViewModel @Inject constructor(
                 selectedFileUris = listOf(uri),
                 selectedFileNames = listOf(fileName),
                 selectedFileSize = fileSize,
+                mergeItems = if (type?.id == "merge_pdf") listOf(MergeItem(uri, fileName)) else emptyList(),
                 isBatchMode = false,
                 selectedPreviewUri = if (type?.inputType != com.morphdrop.app.domain.model.FileType.PDF) uri else null
             )
@@ -257,17 +303,17 @@ class ConversionConfigViewModel @Inject constructor(
             _state.update { it.copy(isPdfLoading = true) }
             viewModelScope.launch {
                 val pageCount = getPdfPageCount(context, uri)
-                val initialOrder = (0 until pageCount).toList()
-                val initialSelected = initialOrder.toSet()
+                val workbenchPages = (0 until pageCount).map { i -> WorkbenchPage(uri, i, fileName) }
+                val initialSelected = workbenchPages.map { it.id }.toSet()
 
                 _state.update { 
                     it.copy(
                         pdfPageCount = pageCount,
-                        pageOrder = initialOrder,
-                        selectedPages = initialSelected,
+                        workbenchPages = workbenchPages,
+                        selectedWorkbenchPages = initialSelected,
                         pageRotations = emptyMap(),
                         isPdfLoading = false,
-                        showOrganizerDialog = type.id in listOf("page_editor", "split_pdf"),
+                        showOrganizerDialog = type.id in listOf("page_editor", "split_pdf", "merge_pdf"),
                         selectedPreviewUri = uri // Use original as fallback for now
                     )
                 }
@@ -424,38 +470,34 @@ class ConversionConfigViewModel @Inject constructor(
         _state.update { it.copy(showOrganizerDialog = show) }
     }
 
-    fun onPageOrderChanged(newOrder: List<Int>) {
-        _state.update { it.copy(pageOrder = newOrder) }
-    }
-
-    fun togglePageSelection(pageIndex: Int) {
+    fun togglePageSelection(pageId: String) {
         _state.update { 
-            val newSelected = it.selectedPages.toMutableSet()
-            if (newSelected.contains(pageIndex)) {
-                newSelected.remove(pageIndex)
+            val newSelected = it.selectedWorkbenchPages.toMutableSet()
+            if (newSelected.contains(pageId)) {
+                newSelected.remove(pageId)
             } else {
-                newSelected.add(pageIndex)
+                newSelected.add(pageId)
             }
-            it.copy(selectedPages = newSelected)
+            it.copy(selectedWorkbenchPages = newSelected)
         }
     }
 
-    fun rotatePage(pageIndex: Int) {
+    fun rotatePage(pageId: String) {
         _state.update { 
             val newRotations = it.pageRotations.toMutableMap()
-            val currentRotation = newRotations[pageIndex] ?: 0
-            newRotations[pageIndex] = (currentRotation + 90) % 360
+            val currentRotation = newRotations[pageId] ?: 0
+            newRotations[pageId] = (currentRotation + 90) % 360
             it.copy(pageRotations = newRotations)
         }
     }
 
     fun movePage(fromIndex: Int, toIndex: Int) {
-        if (fromIndex !in _state.value.pageOrder.indices || toIndex !in _state.value.pageOrder.indices) return
+        if (fromIndex !in _state.value.workbenchPages.indices || toIndex !in _state.value.workbenchPages.indices) return
         _state.update { 
-            val newOrder = it.pageOrder.toMutableList()
-            val item = newOrder.removeAt(fromIndex)
-            newOrder.add(toIndex, item)
-            it.copy(pageOrder = newOrder)
+            val newList = it.workbenchPages.toMutableList()
+            val item = newList.removeAt(fromIndex)
+            newList.add(toIndex, item)
+            it.copy(workbenchPages = newList)
         }
     }
 
@@ -467,6 +509,25 @@ class ConversionConfigViewModel @Inject constructor(
         _state.update { it.copy(splitEveryN = n.coerceAtLeast(1)) }
     }
 
+    fun onMoveMergeItem(fromIndex: Int, toIndex: Int) {
+        if (fromIndex !in _state.value.mergeItems.indices || toIndex !in _state.value.mergeItems.indices) return
+        _state.update { 
+            val newList = it.mergeItems.toMutableList()
+            val item = newList.removeAt(fromIndex)
+            newList.add(toIndex, item)
+            it.copy(mergeItems = newList)
+        }
+    }
+
+    fun onMergeItemRangeChanged(index: Int, range: String) {
+        if (index !in _state.value.mergeItems.indices) return
+        _state.update { 
+            val newList = it.mergeItems.toMutableList()
+            newList[index] = newList[index].copy(pageRange = range)
+            it.copy(mergeItems = newList)
+        }
+    }
+
     fun getPageRange(): IntRange? {
         val start = _state.value.pageRangeStart.toIntOrNull() ?: return null
         val end = _state.value.pageRangeEnd.toIntOrNull() ?: return null
@@ -476,6 +537,9 @@ class ConversionConfigViewModel @Inject constructor(
 
     private fun isStateValid(s: ConversionConfigState): Boolean {
         if (s.selectedFileUris.isEmpty() || s.errorMessage != null) return false
+        if (s.conversionType?.id in listOf("merge_pdf", "merge_pdfs")) {
+            if (s.selectedFileUris.size < 2) return false
+        }
         if (s.targetWidth.isNotEmpty() && s.targetWidth.toIntOrNull() == null) return false
         if (s.targetHeight.isNotEmpty() && s.targetHeight.toIntOrNull() == null) return false
         if (s.targetSizeKb.isNotEmpty() && s.targetSizeKb.toIntOrNull() == null) return false
@@ -531,35 +595,42 @@ class ConversionConfigViewModel @Inject constructor(
             dataBuilder.putInt(com.morphdrop.app.worker.ConversionWorker.KEY_ROTATION_DEGREES, currentState.rotationDegrees)
 
             if (type.id == "page_editor") {
-                val selectedOrder = currentState.pageOrder.filter { currentState.selectedPages.contains(it) }
+                val activeWorkbenchPages = currentState.workbenchPages.filter { currentState.selectedWorkbenchPages.contains(it.id) }
+                
+                // Map to indices for the worker (which currently expects indices for ONE file)
+                val selectedOrder = activeWorkbenchPages.map { it.originalIndex }
                 dataBuilder.putString(com.morphdrop.app.worker.ConversionWorker.KEY_PAGE_ORDER, selectedOrder.joinToString(","))
                 
-                val rotationsStr = currentState.pageRotations.entries.joinToString(",") { "${it.key}:${it.value}" }
+                // Map rotations using original index
+                val rotationsStr = activeWorkbenchPages.associate { it.originalIndex to (currentState.pageRotations[it.id] ?: 0) }
+                    .entries.joinToString(",") { "${it.key}:${it.value}" }
                 dataBuilder.putString("page_rotations", rotationsStr)
             }
 
             if (type.id == "split_pdf") {
                 dataBuilder.putString(com.morphdrop.app.worker.ConversionWorker.KEY_SPLIT_MODE, currentState.splitMode)
-                dataBuilder.putString(com.morphdrop.app.worker.ConversionWorker.KEY_PAGE_ORDER, currentState.pageOrder.joinToString(","))
-                val rotationsStr = currentState.pageRotations.entries.joinToString(",") { "${it.key}:${it.value}" }
+                
+                // For Split, we use workbench pages too
+                val activeWorkbenchPages = currentState.workbenchPages.filter { currentState.selectedWorkbenchPages.contains(it.id) }
+                val pageOrder = activeWorkbenchPages.map { it.originalIndex }.joinToString(",")
+                val rotationsStr = activeWorkbenchPages.associate { it.originalIndex to (currentState.pageRotations[it.id] ?: 0) }
+                    .entries.joinToString(",") { "${it.key}:${it.value}" }
+                
+                dataBuilder.putString(com.morphdrop.app.worker.ConversionWorker.KEY_PAGE_ORDER, pageOrder)
                 dataBuilder.putString("page_rotations", rotationsStr)
 
                 when (currentState.splitMode) {
                     "selection" -> {
-                        val selectedIndices = currentState.pageOrder
-                            .filter { currentState.selectedPages.contains(it) }
+                        val selectedIndices = activeWorkbenchPages.map { it.originalIndex }
                         dataBuilder.putString("split_indices", selectedIndices.joinToString(","))
                     }
                     "every_n" -> {
                         dataBuilder.putInt("split_every_n", currentState.splitEveryN)
-                        // Also pass selection in case they want to split only within selection
-                        val selectedIndices = currentState.pageOrder
-                            .filter { currentState.selectedPages.contains(it) }
+                        val selectedIndices = activeWorkbenchPages.map { it.originalIndex }
                         dataBuilder.putString("split_indices", selectedIndices.joinToString(","))
                     }
                     "all" -> {
-                        val selectedIndices = currentState.pageOrder
-                            .filter { currentState.selectedPages.contains(it) }
+                        val selectedIndices = activeWorkbenchPages.map { it.originalIndex }
                         dataBuilder.putString("split_indices", selectedIndices.joinToString(","))
                     }
                 }
@@ -570,6 +641,19 @@ class ConversionConfigViewModel @Inject constructor(
                 dataBuilder.putBoolean(com.morphdrop.app.worker.ConversionWorker.KEY_ALLOW_PRINTING, currentState.allowPrinting)
                 dataBuilder.putBoolean(com.morphdrop.app.worker.ConversionWorker.KEY_ALLOW_COPYING, currentState.allowCopying)
                 dataBuilder.putBoolean(com.morphdrop.app.worker.ConversionWorker.KEY_ALLOW_EDITING, currentState.allowEditing)
+            }
+
+            if (type.id == "merge_pdf" || type.id == "merge_pdfs") {
+                val activeWorkbenchPages = currentState.workbenchPages.filter { currentState.selectedWorkbenchPages.contains(it.id) }
+                val mergeData = activeWorkbenchPages.map { p ->
+                    mapOf(
+                        "uri" to p.uri.toString(),
+                        "index" to p.originalIndex.toString(),
+                        "rotation" to (currentState.pageRotations[p.id] ?: 0).toString()
+                    )
+                }
+                val json = com.google.gson.Gson().toJson(mergeData)
+                dataBuilder.putString("merge_payload", json)
             }
 
             val workRequest = androidx.work.OneTimeWorkRequestBuilder<com.morphdrop.app.worker.ConversionWorker>()

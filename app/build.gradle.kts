@@ -89,6 +89,9 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.coroutines.android)
     
+    // JSON
+    implementation(libs.google.gson)
+    
     // PDF Processing
     implementation(libs.com.tomroush.pdfbox.android)
     

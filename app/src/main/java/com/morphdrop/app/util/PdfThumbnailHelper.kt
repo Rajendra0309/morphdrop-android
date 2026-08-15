@@ -49,7 +49,10 @@ object PdfThumbnailHelper {
         val bitmap = getThumbnail(context, uri, pageIndex) ?: return@withContext null
         
         try {
-            val cacheFile = File(context.cacheDir, "pdf_thumb_${uri.hashCode()}_$pageIndex.png")
+            // Use a more unique name based on the actual path if possible
+            val uniqueId = uri.toString().hashCode().let { if (it < 0) -it else it }
+            val cacheFile = File(context.cacheDir, "pdf_thumb_${uniqueId}_$pageIndex.png")
+            
             FileOutputStream(cacheFile).use { out ->
                 bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
             }
