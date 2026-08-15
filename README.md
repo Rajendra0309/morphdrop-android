@@ -73,6 +73,9 @@
 
 ### What's New
 
+> - **Interactive PDF Workbench** — A high-end visual grid interface for merging, splitting, and organizing PDFs.
+> - **Image & Document Workstation** — Complete redesign featuring interactive cropping, a precision color picker, and native pill-shaped inputs.
+> - **Advanced PDF Engine** — Improved compression algorithms and iron-clad password protection options.
 > - **Material You Aesthetic** — Beautiful modern UI with dynamic theming.
 > - **Cooperative Background Tasks** — Safe cancellations without orphaned or corrupted files.
 > - **Search FAB System** — Quick and intuitive search functionality integrated tightly into the navigation.
