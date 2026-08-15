@@ -44,6 +44,9 @@ poi = "5.2.5"
 # Kotlin Coroutines
 kotlinxCoroutinesCore = "1.11.0"
 
+# Gson
+gson = "2.11.0"
+
 [libraries]
 # Core Android
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -92,6 +95,9 @@ com-airbnb-android-lottie-compose = { group = "com.airbnb.android", name = "lott
 # Kotlin Coroutines
 kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "kotlinxCoroutinesCore" }
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "kotlinxCoroutinesCore" }
+
+# Gson
+google-gson = { group = "com.google.code.gson", name = "gson", version.ref = "gson" }
 
 # PDF Processing
 com-tomroush-pdfbox-android = { group = "com.tom-roush", name = "pdfbox-android", version.ref = "pdfboxAndroid" }

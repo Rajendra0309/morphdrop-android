@@ -141,6 +141,10 @@ class TextToPdfUseCase @Inject constructor(
     }
 
     private fun spToPx(sp: Float): Float {
-        return sp * context.resources.displayMetrics.scaledDensity
+        return android.util.TypedValue.applyDimension(
+            android.util.TypedValue.COMPLEX_UNIT_SP,
+            sp,
+            context.resources.displayMetrics
+        )
     }
 }

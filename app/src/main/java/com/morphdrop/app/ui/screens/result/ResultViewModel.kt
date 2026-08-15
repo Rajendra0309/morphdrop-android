@@ -30,7 +30,7 @@ data class ResultUiState(
 @HiltViewModel
 class ResultViewModel @Inject constructor(
     savedStateHandle: androidx.lifecycle.SavedStateHandle,
-    @dagger.hilt.android.qualifiers.ApplicationContext private val context: Context
+    @param:dagger.hilt.android.qualifiers.ApplicationContext private val context: Context
 ) : ViewModel() {
 
     private val workIdString: String? = savedStateHandle["workId"]

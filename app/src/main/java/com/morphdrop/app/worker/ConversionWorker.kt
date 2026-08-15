@@ -15,6 +15,7 @@ import com.morphdrop.app.domain.usecase.conversion.ImageConverterUseCase
 import com.morphdrop.app.domain.usecase.conversion.ImagesToPdfUseCase
 import com.morphdrop.app.domain.usecase.conversion.MdToPdfUseCase
 import com.morphdrop.app.domain.usecase.conversion.MergePdfUseCase
+import com.morphdrop.app.domain.usecase.conversion.MergePdfItem
 import com.morphdrop.app.domain.usecase.conversion.PdfPageEditorUseCase
 import com.morphdrop.app.domain.usecase.conversion.PdfPasswordUseCase
 import com.morphdrop.app.domain.usecase.conversion.PdfToImagesUseCase
@@ -62,6 +63,11 @@ class ConversionWorker @AssistedInject constructor(
         const val KEY_PASSWORD = "password"
         const val KEY_ACTION = "action"
         const val KEY_TARGET_FORMAT = "target_format"
+        const val KEY_SPLIT_MODE = "split_mode"
+
+        const val KEY_ALLOW_PRINTING = "allow_printing"
+        const val KEY_ALLOW_COPYING = "allow_copying"
+        const val KEY_ALLOW_EDITING = "allow_editing"
 
         const val KEY_OUTPUT_URI = "output_uri"
         const val KEY_OUTPUT_URIS = "output_uris"
@@ -299,11 +305,27 @@ class ConversionWorker @AssistedInject constructor(
                 "merge_pdf", "merge_pdfs" -> {
                     notificationHelper.showProgressNotification(notificationId, conversionType, 30)
                     setProgress(workDataOf("progress" to 30))
-                    val uris = inputUrisArray?.map { Uri.parse(it) }
-                        ?: listOf(Uri.parse(requireNotNull(inputUriString)))
-                    val outName = inputData.getString(KEY_OUTPUT_FILE_NAME) ?: "merged_${System.currentTimeMillis()}.pdf"
-                    generatedFileNames.add(outName)
-                    val result = listOf(mergePdfUseCase(uris, outputFileName = outName))
+                    
+                    val payload = inputData.getString("merge_payload")
+                    val result = if (payload != null) {
+                        val type = object : com.google.gson.reflect.TypeToken<List<Map<String, String>>>() {}.type
+                        val mergeItems: List<Map<String, String>> = com.google.gson.Gson().fromJson(payload, type)
+                        
+                        val pdfItems = mergeItems.map { item ->
+                            MergePdfItem(
+                                uri = Uri.parse(item["uri"]),
+                                pageIndex = item["index"]?.toInt() ?: 0,
+                                rotation = item["rotation"]?.toInt() ?: 0
+                            )
+                        }
+                        
+                        listOf(mergePdfUseCase(pdfItems, outputFileName = outputFileName))
+                    } else {
+                        val uris = inputUrisArray?.map { Uri.parse(it) }
+                            ?: listOf(Uri.parse(requireNotNull(inputUriString)))
+                        listOf(mergePdfUseCase.legacy(uris, outputFileName = outputFileName))
+                    }
+                    
                     notificationHelper.showProgressNotification(notificationId, conversionType, 85)
                     setProgress(workDataOf("progress" to 85))
                     result
@@ -313,11 +335,28 @@ class ConversionWorker @AssistedInject constructor(
                     notificationHelper.showProgressNotification(notificationId, conversionType, 30)
                     setProgress(workDataOf("progress" to 30))
                     val uri = Uri.parse(requireNotNull(inputUriString))
-                    val rangeStr = inputData.getString(KEY_PAGE_RANGE)
-                    val ranges = parsePageRanges(rangeStr)
+                    
+                    val pageOrder = inputData.getString(KEY_PAGE_ORDER)?.split(",")
+                        ?.mapNotNull { it.toIntOrNull() } ?: emptyList()
+                    val selectedIndices = inputData.getString("split_indices")?.split(",")
+                        ?.mapNotNull { it.toIntOrNull() }?.toSet() ?: emptySet()
+                    val rotationsMap = parseRotations(inputData.getString("page_rotations"))
+                    
+                    val splitMode = inputData.getString(KEY_SPLIT_MODE) ?: "selection"
+                    val everyN = inputData.getInt("split_every_n", 1)
+
                     val outName = inputData.getString(KEY_OUTPUT_FILE_NAME)
                     if (outName != null) generatedFileNames.add(outName)
-                    val result = splitPdfUseCase(pdfUri = uri, pageRanges = ranges, outputFolderName = outName)
+                    
+                    val result = splitPdfUseCase(
+                        pdfUri = uri,
+                        pageOrder = pageOrder,
+                        selectedPages = selectedIndices,
+                        rotations = rotationsMap,
+                        splitMode = splitMode,
+                        splitEveryN = everyN,
+                        outputFolderName = outName
+                    )
                     notificationHelper.showProgressNotification(notificationId, conversionType, 85)
                     setProgress(workDataOf("progress" to 85))
                     result
@@ -328,12 +367,19 @@ class ConversionWorker @AssistedInject constructor(
                     setProgress(workDataOf("progress" to 30))
                     val uri = Uri.parse(requireNotNull(inputUriString))
                     val quality = inputData.getInt(KEY_QUALITY, 50)
+                    val targetSizeKb = if (inputData.getInt(KEY_TARGET_SIZE_KB, -1) != -1) inputData.getInt(KEY_TARGET_SIZE_KB, -1) else null
+                    
                     val level = when {
                         quality <= 40 -> CompressionLevel.HIGH
                         quality <= 70 -> CompressionLevel.MEDIUM
                         else -> CompressionLevel.LOW
                     }
-                    val compressResult = compressPdfUseCase(pdfUri = uri, compressionLevel = level)
+                    val compressResult = compressPdfUseCase(
+                        pdfUri = uri, 
+                        compressionLevel = level,
+                        targetSizeKb = targetSizeKb,
+                        outputFileName = outputFileName
+                    )
                     notificationHelper.showProgressNotification(notificationId, conversionType, 85)
                     setProgress(workDataOf("progress" to 85))
                     listOf(compressResult.outputUri)
@@ -373,7 +419,20 @@ class ConversionWorker @AssistedInject constructor(
                     } else {
                         PdfPasswordUseCase.Action.ADD_PASSWORD
                     }
-                    val result = listOf(pdfPasswordUseCase(uri, password = password, action = action, outputFileName = outputFileName))
+                    
+                    val allowPrinting = inputData.getBoolean(KEY_ALLOW_PRINTING, true)
+                    val allowCopying = inputData.getBoolean(KEY_ALLOW_COPYING, true)
+                    val allowEditing = inputData.getBoolean(KEY_ALLOW_EDITING, true)
+
+                    val result = listOf(pdfPasswordUseCase(
+                        uri, 
+                        password = password, 
+                        action = action, 
+                        allowPrinting = allowPrinting,
+                        allowCopying = allowCopying,
+                        allowEditing = allowEditing,
+                        outputFileName = outputFileName
+                    ))
                     notificationHelper.showProgressNotification(notificationId, conversionType, 85)
                     setProgress(workDataOf("progress" to 85))
                     result
@@ -420,7 +479,7 @@ class ConversionWorker @AssistedInject constructor(
 
             historyRepository.insertHistory(
                 ConversionHistoryEntity(
-                    conversionType = conversionType,
+                    conversionType = mapIdToDisplayName(conversionType),
                     inputFileName = inputFileName,
                     outputFileNames = outputNames,
                     outputUris = outUrisString,
@@ -458,7 +517,7 @@ class ConversionWorker @AssistedInject constructor(
             val duration = System.currentTimeMillis() - startTime
             historyRepository.insertHistory(
                 ConversionHistoryEntity(
-                    conversionType = conversionType,
+                    conversionType = mapIdToDisplayName(conversionType),
                     inputFileName = inputFileName,
                     outputFileNames = "",
                     outputUris = "",
@@ -479,6 +538,24 @@ class ConversionWorker @AssistedInject constructor(
         }
     }
 
+    private fun mapIdToDisplayName(id: String): String {
+        return when (id) {
+            "page_editor" -> "Organize PDF"
+            "split_pdf" -> "Split PDF"
+            "protect_pdf" -> "Protect PDF"
+            "merge_pdf", "merge_pdfs" -> "Merge PDFs"
+            "compress_pdf" -> "Compress PDF"
+            "pdf_to_images" -> "PDF to Images"
+            "images_to_pdf", "image_to_pdf" -> "Images to PDF"
+            "excel_to_pdf" -> "Excel to PDF"
+            "text_to_pdf", "txt_to_pdf" -> "Text to PDF"
+            "md_to_pdf", "markdown_to_pdf" -> "Markdown to PDF"
+            "image_converter" -> "Image Converter"
+            "compress_images" -> "Compress Images"
+            else -> id.replace("_", " ").split(" ").joinToString(" ") { it.replaceFirstChar { c -> c.uppercase() } }
+        }
+    }
+
     private fun parsePageRange(rangeStr: String?): IntRange? {
         if (rangeStr.isNullOrBlank()) return null
         val parts = rangeStr.split("-").mapNotNull { it.trim().toIntOrNull() }
@@ -489,8 +566,17 @@ class ConversionWorker @AssistedInject constructor(
         }
     }
 
-    private fun parsePageRanges(rangesStr: String?): List<IntRange> {
-        if (rangesStr.isNullOrBlank()) return listOf(1..1)
-        return rangesStr.split(",").mapNotNull { parsePageRange(it.trim()) }
+    private fun parseRotations(rotationsStr: String?): Map<Int, Int> {
+        if (rotationsStr.isNullOrBlank()) return emptyMap()
+        return try {
+            rotationsStr.split(",")
+                .filter { it.isNotBlank() }
+                .associate { 
+                    val parts = it.split(":")
+                    parts[0].toInt() to parts[1].toInt()
+                }
+        } catch (e: Exception) {
+            emptyMap()
+        }
     }
 }

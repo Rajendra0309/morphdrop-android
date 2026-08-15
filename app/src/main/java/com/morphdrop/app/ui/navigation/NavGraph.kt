@@ -17,10 +17,6 @@ import com.morphdrop.app.ui.screens.conversion.ConversionConfigScreen
 import com.morphdrop.app.ui.screens.history.HistoryDetailScreen
 import com.morphdrop.app.ui.screens.history.HistoryScreen
 import com.morphdrop.app.ui.screens.home.HomeScreen
-import com.morphdrop.app.ui.screens.pdf.MergePdfScreen
-import com.morphdrop.app.ui.screens.pdf.PdfPageEditorScreen
-import com.morphdrop.app.ui.screens.pdf.PdfPasswordScreen
-import com.morphdrop.app.ui.screens.pdf.SplitPdfScreen
 import com.morphdrop.app.ui.screens.processing.ProcessingScreen
 import com.morphdrop.app.ui.screens.result.ResultScreen
 import com.morphdrop.app.ui.screens.settings.SettingsScreen
@@ -97,14 +93,7 @@ fun NavGraph(
         composable(Screen.Home.route) {
             HomeScreen(
                 onNavigateToConfig = { conversionTypeId ->
-                    val route = when (conversionTypeId) {
-                        "merge_pdf" -> Screen.MergePdf.route
-                        "split_pdf" -> Screen.SplitPdf.route
-                        "protect_pdf" -> Screen.PdfPassword.route
-                        "page_editor" -> Screen.PdfPageEditor.route
-                        else -> Screen.ConversionConfig.createRoute(conversionTypeId)
-                    }
-                    navController.navigate(route)
+                    navController.navigate(Screen.ConversionConfig.createRoute(conversionTypeId))
                 },
                 onNavigate = { route ->
                     navController.navigate(route) {
@@ -160,42 +149,6 @@ fun NavGraph(
             arguments = listOf(navArgument("conversionTypeId") { type = NavType.StringType })
         ) {
             ConversionConfigScreen(
-                onNavigateBack = { navController.popBackStack() },
-                onNavigateToProcessing = { typeId, workId ->
-                    navController.navigate(Screen.Processing.createRoute(typeId, workId))
-                }
-            )
-        }
-
-        composable(Screen.MergePdf.route) {
-            MergePdfScreen(
-                onNavigateBack = { navController.popBackStack() },
-                onNavigateToProcessing = { typeId, workId ->
-                    navController.navigate(Screen.Processing.createRoute(typeId, workId))
-                }
-            )
-        }
-
-        composable(Screen.SplitPdf.route) {
-            SplitPdfScreen(
-                onNavigateBack = { navController.popBackStack() },
-                onNavigateToProcessing = { typeId, workId ->
-                    navController.navigate(Screen.Processing.createRoute(typeId, workId))
-                }
-            )
-        }
-
-        composable(Screen.PdfPassword.route) {
-            PdfPasswordScreen(
-                onNavigateBack = { navController.popBackStack() },
-                onNavigateToProcessing = { typeId, workId ->
-                    navController.navigate(Screen.Processing.createRoute(typeId, workId))
-                }
-            )
-        }
-
-        composable(Screen.PdfPageEditor.route) {
-            PdfPageEditorScreen(
                 onNavigateBack = { navController.popBackStack() },
                 onNavigateToProcessing = { typeId, workId ->
                     navController.navigate(Screen.Processing.createRoute(typeId, workId))
