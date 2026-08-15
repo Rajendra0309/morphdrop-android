@@ -9,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import com.morphdrop.app.domain.model.ConversionType
 import com.morphdrop.app.domain.model.FileType
 import com.morphdrop.app.util.FileHelper
+import com.morphdrop.app.util.PdfThumbnailHelper
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -79,7 +80,9 @@ class ConversionConfigViewModel @Inject constructor(
                     outputFormat = type.outputType.extension,
                     showQualitySlider = isImageOutput(type) || type.id == "compress_pdf",
                     showPageRange = type.id in listOf("split_pdf", "pdf_to_images", "organize_pdf"),
-                    availableOutputFormats = getFormatsForType(type)
+                    availableOutputFormats = getFormatsForType(type),
+                    compressionPreset = if (type.id == "compress_pdf") "Recommended" else it.compressionPreset,
+                    quality = if (type.id == "compress_pdf") 60 else it.quality
                 )
             }
         }
@@ -181,28 +184,11 @@ class ConversionConfigViewModel @Inject constructor(
         }
 
         if (type?.inputType == com.morphdrop.app.domain.model.FileType.PDF && selectedUris.isNotEmpty()) {
-            viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                try {
-                    val pdfUri = selectedUris.first()
-                    context.contentResolver.openFileDescriptor(pdfUri, "r")?.use { fileDescriptor ->
-                        val pdfRenderer = android.graphics.pdf.PdfRenderer(fileDescriptor)
-                        if (pdfRenderer.pageCount > 0) {
-                            val page = pdfRenderer.openPage(0)
-                            val bitmap = android.graphics.Bitmap.createBitmap(page.width * 2, page.height * 2, android.graphics.Bitmap.Config.ARGB_8888)
-                            bitmap.eraseColor(android.graphics.Color.WHITE)
-                            page.render(bitmap, null, null, android.graphics.pdf.PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                            page.close()
-                            pdfRenderer.close()
-                            
-                            val cacheFile = java.io.File(context.cacheDir, "pdf_preview_${System.currentTimeMillis()}.png")
-                            cacheFile.outputStream().use { out ->
-                                bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out)
-                            }
-                            val previewUri = Uri.fromFile(cacheFile)
-                            _state.update { it.copy(selectedPreviewUri = previewUri) }
-                        }
-                    }
-                } catch (e: Exception) {
+            viewModelScope.launch {
+                val previewUri = PdfThumbnailHelper.getThumbnailUri(context, selectedUris.first())
+                if (previewUri != null) {
+                    _state.update { it.copy(selectedPreviewUri = previewUri) }
+                } else {
                     _state.update { it.copy(selectedPreviewUri = selectedUris.firstOrNull()) }
                 }
             }
@@ -313,6 +299,16 @@ class ConversionConfigViewModel @Inject constructor(
             }
             s.copy(isConvertEnabled = isStateValid(s))
         }
+    }
+
+    fun onPdfCompressionPresetSelected(preset: String) {
+        val quality = when (preset) {
+            "Extreme" -> 30
+            "Recommended" -> 60
+            "Low" -> 90
+            else -> 60
+        }
+        _state.update { it.copy(compressionPreset = preset, quality = quality, targetSizeKb = "", targetWidth = "", targetHeight = "") }
     }
 
     fun onAspectRatioPresetSelected(preset: String) {

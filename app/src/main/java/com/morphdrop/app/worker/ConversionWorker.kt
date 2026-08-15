@@ -328,12 +328,19 @@ class ConversionWorker @AssistedInject constructor(
                     setProgress(workDataOf("progress" to 30))
                     val uri = Uri.parse(requireNotNull(inputUriString))
                     val quality = inputData.getInt(KEY_QUALITY, 50)
+                    val targetSizeKb = if (inputData.getInt(KEY_TARGET_SIZE_KB, -1) != -1) inputData.getInt(KEY_TARGET_SIZE_KB, -1) else null
+                    
                     val level = when {
                         quality <= 40 -> CompressionLevel.HIGH
                         quality <= 70 -> CompressionLevel.MEDIUM
                         else -> CompressionLevel.LOW
                     }
-                    val compressResult = compressPdfUseCase(pdfUri = uri, compressionLevel = level)
+                    val compressResult = compressPdfUseCase(
+                        pdfUri = uri, 
+                        compressionLevel = level,
+                        targetSizeKb = targetSizeKb,
+                        outputFileName = outputFileName
+                    )
                     notificationHelper.showProgressNotification(notificationId, conversionType, 85)
                     setProgress(workDataOf("progress" to 85))
                     listOf(compressResult.outputUri)

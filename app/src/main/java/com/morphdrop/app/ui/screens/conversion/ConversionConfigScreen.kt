@@ -66,7 +66,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Devices
 import androidx.compose.ui.tooling.preview.Preview
-import kotlinx.coroutines.withContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -78,6 +77,7 @@ import com.morphdrop.app.ui.components.InteractiveCropDialog
 import com.morphdrop.app.ui.components.MorphDropTopAppBar
 import com.morphdrop.app.ui.theme.MorphDropTheme
 import com.morphdrop.app.util.FileHelper
+import kotlinx.coroutines.withContext
 
 @Composable
 fun ConversionConfigScreen(
@@ -155,6 +155,7 @@ fun ConversionConfigScreen(
         onPaddingColorChanged = viewModel::onPaddingColorChanged,
         onTargetSizeKbChanged = viewModel::onTargetSizeKbChanged,
         onCompressionPresetSelected = viewModel::onCompressionPresetSelected,
+        onPdfCompressionPresetSelected = viewModel::onPdfCompressionPresetSelected,
         onAspectRatioPresetSelected = viewModel::onAspectRatioPresetSelected,
         onPreviewUriChanged = viewModel::onPreviewUriChanged,
         onCropRectChanged = viewModel::onCropRectChanged,
@@ -213,6 +214,7 @@ fun ConversionConfigScreenContent(
     onPaddingColorChanged: (Int) -> Unit,
     onTargetSizeKbChanged: (String) -> Unit,
     onCompressionPresetSelected: (String) -> Unit,
+    onPdfCompressionPresetSelected: (String) -> Unit,
     onAspectRatioPresetSelected: (String) -> Unit,
     onPreviewUriChanged: (Uri) -> Unit,
     onCropRectChanged: (Int, Int, Int, Int) -> Unit,
@@ -263,11 +265,11 @@ fun ConversionConfigScreenContent(
             // File Information & Preview
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(24.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Box(modifier = Modifier.fillMaxWidth().height(200.dp)) {
+                Column {
+                    Box(modifier = Modifier.fillMaxWidth().height(260.dp)) {
                         if (state.selectedPreviewUri != null && state.conversionType?.inputType in listOf(FileType.PNG, FileType.JPG, FileType.WEBP, FileType.BMP, FileType.PDF)) {
                             var previewImageRequest by remember(state.selectedPreviewUri, state.cropRectLeft, state.cropRectTop, state.cropRectRight, state.cropRectBottom, state.rotationDegrees) { 
                                 mutableStateOf<coil.request.ImageRequest?>(null) 
@@ -286,10 +288,13 @@ fun ConversionConfigScreenContent(
                                             com.morphdrop.app.util.FileHelper.readFileFromUri(context, uri).use { 
                                                 android.graphics.BitmapFactory.decodeStream(it, null, options) 
                                             }
-                                            var exifOrientation = android.media.ExifInterface.ORIENTATION_NORMAL
-                                            com.morphdrop.app.util.FileHelper.readFileFromUri(context, uri).use {
-                                                exifOrientation = android.media.ExifInterface(it).getAttributeInt(android.media.ExifInterface.TAG_ORIENTATION, android.media.ExifInterface.ORIENTATION_NORMAL)
-                                            }
+                                            // Using standard ExifInterface
+                                            val exifOrientation = try {
+                                                com.morphdrop.app.util.FileHelper.readFileFromUri(context, uri).use {
+                                                    android.media.ExifInterface(it).getAttributeInt(android.media.ExifInterface.TAG_ORIENTATION, android.media.ExifInterface.ORIENTATION_NORMAL)
+                                                }
+                                            } catch (e: Exception) { android.media.ExifInterface.ORIENTATION_NORMAL }
+                                            
                                             val isSwappedByExif = (exifOrientation == android.media.ExifInterface.ORIENTATION_ROTATE_90 || exifOrientation == android.media.ExifInterface.ORIENTATION_ROTATE_270)
                                             val isSwappedByManual = (state.rotationDegrees % 180 != 0)
                                             val isSwappedTotal = isSwappedByExif xor isSwappedByManual
@@ -338,9 +343,9 @@ fun ConversionConfigScreenContent(
                                 contentDescription = "Preview",
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(MaterialTheme.colorScheme.surfaceVariant),
-                                contentScale = ContentScale.Fit
+                                    .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                                    .background(if (state.conversionType?.inputType == FileType.PDF) Color.White else MaterialTheme.colorScheme.surfaceVariant),
+                                contentScale = if (state.conversionType?.inputType == FileType.PDF) ContentScale.Crop else ContentScale.Fit
                             )
                             
                             // Crop Button Overlay
@@ -363,7 +368,7 @@ fun ConversionConfigScreenContent(
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .clip(RoundedCornerShape(12.dp))
+                                    .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                                     .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f)),
                                 contentAlignment = Alignment.Center
                             ) {
@@ -377,59 +382,59 @@ fun ConversionConfigScreenContent(
                         }
                     }
                     
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = state.selectedFileName,
-                                style = MaterialTheme.typography.bodyLarge,
-                                fontWeight = FontWeight.SemiBold,
-                                maxLines = 1
-                            )
-                            if (state.selectedFileUris.isNotEmpty()) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = FileHelper.formatFileSize(state.selectedFileSize),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    text = state.selectedFileName,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1
                                 )
+                                if (state.selectedFileUris.isNotEmpty()) {
+                                    Text(
+                                        text = FileHelper.formatFileSize(state.selectedFileSize),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                             }
+                            state.conversionType?.inputType?.let { FormatBadge(fileType = it) }
                         }
-                        state.conversionType?.inputType?.let { FormatBadge(fileType = it) }
-                    }
 
-                    if (state.selectedFileUris.size > 1) {
-                        Spacer(modifier = Modifier.height(12.dp))
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            items(state.selectedFileUris) { uri ->
-                                AsyncImage(
-                                    model = uri,
-                                    contentDescription = null,
-                                    modifier = Modifier
-                                        .size(48.dp)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .border(
-                                            width = if (state.selectedPreviewUri == uri) 2.dp else 0.dp,
-                                            color = MaterialTheme.colorScheme.primary,
-                                            shape = RoundedCornerShape(8.dp)
-                                        )
-                                        .clickable { onPreviewUriChanged(uri) },
-                                    contentScale = ContentScale.Crop
-                                )
+                        if (state.selectedFileUris.size > 1) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                items(state.selectedFileUris) { uri ->
+                                    AsyncImage(
+                                        model = uri,
+                                        contentDescription = null,
+                                        modifier = Modifier
+                                            .size(48.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .border(
+                                                width = if (state.selectedPreviewUri == uri) 2.dp else 0.dp,
+                                                color = MaterialTheme.colorScheme.primary,
+                                                shape = RoundedCornerShape(8.dp)
+                                            )
+                                            .clickable { onPreviewUriChanged(uri) },
+                                        contentScale = ContentScale.Crop
+                                    )
+                                }
                             }
                         }
-                    }
-                    
-                    Spacer(modifier = Modifier.height(16.dp))
-                    
-                    OutlinedButton(
-                        onClick = onPickFile,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Icon(imageVector = Icons.Default.UploadFile, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(text = if (state.selectedFileUris.isNotEmpty()) "Change Selection" else "Select Input File")
+                        
+                        Spacer(modifier = Modifier.height(16.dp))
+                        
+                        OutlinedButton(
+                            onClick = onPickFile,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(imageVector = Icons.Default.UploadFile, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(text = if (state.selectedFileUris.isNotEmpty()) "Change Selection" else "Select Input File")
+                        }
                     }
                 }
             }
@@ -475,17 +480,99 @@ fun ConversionConfigScreenContent(
 
                 // Quality Slider
                 AnimatedVisibility(visible = state.showQualitySlider) {
-                    ConfigSection(title = "Quality: ${state.quality}%") {
-                        Slider(
-                            value = state.quality.toFloat(),
-                            onValueChange = { onQualityChanged(it.toInt()) },
-                            valueRange = 1f..100f
-                        )
+                    if (state.conversionType?.id == "compress_pdf") {
+                        ConfigSection(title = "Compression Level") {
+                            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    val pdfPresets = listOf(
+                                        "Extreme" to "Extreme",
+                                        "Recommended" to "Rec.",
+                                        "Low" to "Low"
+                                    )
+                                    pdfPresets.forEach { (id, label) ->
+                                        FilterChip(
+                                            selected = state.compressionPreset == id,
+                                            onClick = { onPdfCompressionPresetSelected(id) },
+                                            label = { Text(label) },
+                                            modifier = Modifier.weight(1f),
+                                            shape = RoundedCornerShape(12.dp)
+                                        )
+                                    }
+                                }
+                                
+                                val presetDescription = when (state.compressionPreset) {
+                                    "Extreme" -> "High Compression, Lower Quality"
+                                    "Recommended" -> "Balanced Quality & Size"
+                                    "Low" -> "Best Quality, Minimal Compression"
+                                    else -> ""
+                                }
+                                
+                                Text(
+                                    text = presetDescription,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(horizontal = 4.dp)
+                                )
+                                
+                                val estimationRatio = when (state.compressionPreset) {
+                                    "Extreme" -> 0.3f
+                                    "Recommended" -> 0.6f
+                                    "Low" -> 0.9f
+                                    else -> 0.6f
+                                }
+                                val estimatedSize = (state.selectedFileSize * estimationRatio).toLong()
+                                
+                                Card(
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
+                                    ),
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.AutoAwesome,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Column {
+                                            Text(
+                                                text = "Estimated Output Size",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                                            )
+                                            Text(
+                                                text = FileHelper.formatFileSize(estimatedSize),
+                                                style = MaterialTheme.typography.titleMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        ConfigSection(title = "Quality: ${state.quality}%") {
+                            Slider(
+                                value = state.quality.toFloat(),
+                                onValueChange = { onQualityChanged(it.toInt()) },
+                                valueRange = 1f..100f
+                            )
+                        }
                     }
                 }
                 
                 // Advanced Image Settings
-                if (state.conversionType?.id in listOf("image_converter", "compress_images")) {
+                if (state.conversionType?.id in listOf("image_converter", "compress_images", "compress_pdf")) {
                     OutlinedButton(
                         onClick = { showAdvancedSettings = !showAdvancedSettings },
                         modifier = Modifier.fillMaxWidth(),
@@ -711,6 +798,7 @@ fun ConversionConfigScreenLightPreview() {
             onPaddingColorChanged = {},
             onTargetSizeKbChanged = {},
             onCompressionPresetSelected = {},
+            onPdfCompressionPresetSelected = {},
             onAspectRatioPresetSelected = {},
             onPreviewUriChanged = {},
             onCropRectChanged = { _, _, _, _ -> },
