@@ -1,8 +1,11 @@
 package com.morphdrop.app.ui.navigation
 
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.runtime.Composable
@@ -28,66 +31,66 @@ fun NavGraph(
     mainViewModel: MainViewModel,
     startDestination: String = Screen.Home.route
 ) {
-    val routeToOrder = mapOf(
-        Screen.Home.route to 0,
-        Screen.History.route to 1,
-        Screen.Settings.route to 2
-    )
+    val topLevelRoutes = listOf(Screen.Home.route, Screen.History.route, Screen.Settings.route)
 
     NavHost(
         navController = navController,
         startDestination = startDestination,
         enterTransition = {
-            val fromIndex = routeToOrder[initialState.destination.route] ?: -1
-            val toIndex = routeToOrder[targetState.destination.route] ?: -1
-
-            if (fromIndex != -1 && toIndex != -1) {
-                if (toIndex > fromIndex) {
-                    slideInHorizontally(
-                        initialOffsetX = { it },
-                        animationSpec = tween(400, easing = androidx.compose.animation.core.FastOutSlowInEasing)
-                    ) + fadeIn(animationSpec = tween(400))
-                } else {
-                    slideInHorizontally(
-                        initialOffsetX = { -it },
-                        animationSpec = tween(400, easing = androidx.compose.animation.core.FastOutSlowInEasing)
-                    ) + fadeIn(animationSpec = tween(400))
-                }
+            val targetRoute = targetState.destination.route
+            val initialRoute = initialState.destination.route
+            
+            if (targetRoute in topLevelRoutes && initialRoute in topLevelRoutes) {
+                // Seamless crossfade for navbar tab switching
+                fadeIn(animationSpec = tween(250))
             } else {
-                fadeIn(animationSpec = tween(400))
+                // Native-like sliding for deep navigation
+                slideInHorizontally(
+                    initialOffsetX = { it },
+                    animationSpec = tween(450, easing = FastOutSlowInEasing)
+                ) + fadeIn(animationSpec = tween(300))
             }
         },
         exitTransition = {
-            val fromIndex = routeToOrder[initialState.destination.route] ?: -1
-            val toIndex = routeToOrder[targetState.destination.route] ?: -1
-
-            if (fromIndex != -1 && toIndex != -1) {
-                if (toIndex > fromIndex) {
-                    slideOutHorizontally(
-                        targetOffsetX = { -it },
-                        animationSpec = tween(400, easing = androidx.compose.animation.core.FastOutSlowInEasing)
-                    ) + fadeOut(animationSpec = tween(400))
-                } else {
-                    slideOutHorizontally(
-                        targetOffsetX = { it },
-                        animationSpec = tween(400, easing = androidx.compose.animation.core.FastOutSlowInEasing)
-                    ) + fadeOut(animationSpec = tween(400))
-                }
+            val targetRoute = targetState.destination.route
+            val initialRoute = initialState.destination.route
+            
+            if (targetRoute in topLevelRoutes && initialRoute in topLevelRoutes) {
+                // Use a very short fade out to avoid "gap" flashes
+                fadeOut(animationSpec = tween(150))
             } else {
-                fadeOut(animationSpec = tween(400))
+                // Scale out + slide for native feel
+                slideOutHorizontally(
+                    targetOffsetX = { -it / 4 },
+                    animationSpec = tween(450, easing = FastOutSlowInEasing)
+                ) + scaleOut(targetScale = 0.9f, animationSpec = tween(450)) + fadeOut(animationSpec = tween(300))
             }
         },
         popEnterTransition = {
-            slideInHorizontally(
-                initialOffsetX = { -it },
-                animationSpec = tween(400, easing = androidx.compose.animation.core.FastOutSlowInEasing)
-            ) + fadeIn(animationSpec = tween(400))
+            val targetRoute = targetState.destination.route
+            val initialRoute = initialState.destination.route
+            
+            if (targetRoute in topLevelRoutes && initialRoute in topLevelRoutes) {
+                fadeIn(animationSpec = tween(250))
+            } else {
+                slideInHorizontally(
+                    initialOffsetX = { -it / 4 },
+                    animationSpec = tween(450, easing = FastOutSlowInEasing)
+                ) + scaleIn(initialScale = 0.9f, animationSpec = tween(450)) + fadeIn(animationSpec = tween(300))
+            }
         },
         popExitTransition = {
-            slideOutHorizontally(
-                targetOffsetX = { it },
-                animationSpec = tween(400, easing = androidx.compose.animation.core.FastOutSlowInEasing)
-            ) + fadeOut(animationSpec = tween(400))
+            val targetRoute = targetState.destination.route
+            val initialRoute = initialState.destination.route
+            
+            if (targetRoute in topLevelRoutes && initialRoute in topLevelRoutes) {
+                fadeOut(animationSpec = tween(150))
+            } else {
+                slideOutHorizontally(
+                    targetOffsetX = { it },
+                    animationSpec = tween(450, easing = FastOutSlowInEasing)
+                ) + fadeOut(animationSpec = tween(300))
+            }
         }
     ) {
         composable(Screen.Home.route) {
@@ -129,7 +132,8 @@ fun NavGraph(
 
         composable(Screen.Settings.route) {
             SettingsScreen(
-                onNavigateBack = { navController.popBackStack() }
+                onNavigateBack = { navController.popBackStack() },
+                onCheckForUpdates = { mainViewModel.checkForUpdates(force = true) }
             )
         }
 

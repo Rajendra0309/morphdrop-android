@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Policy
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Update
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -69,6 +70,7 @@ import com.morphdrop.app.domain.model.ThemeMode
 @Composable
 fun SettingsScreen(
     onNavigateBack: () -> Unit = {},
+    onCheckForUpdates: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -86,6 +88,7 @@ fun SettingsScreen(
             Toast.makeText(context, "Cache cleared successfully", Toast.LENGTH_SHORT).show()
         },
         onOutputFolderChange = viewModel::updateOutputFolderName,
+        onCheckForUpdates = onCheckForUpdates,
         onStarGithub = {
             val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Rajendra0309/morphdrop-android"))
             try {
@@ -112,6 +115,7 @@ fun SettingsScreenContent(
     onSetThemeMode: (ThemeMode) -> Unit,
     onClearCache: () -> Unit,
     onOutputFolderChange: (String) -> Unit,
+    onCheckForUpdates: () -> Unit,
     onStarGithub: () -> Unit,
     onReportBug: () -> Unit
 ) {
@@ -301,6 +305,18 @@ fun SettingsScreenContent(
                     icon = Icons.Default.Info,
                     onClick = { showAboutDialog = true }
                 )
+
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 4.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                )
+
+                SettingsItem(
+                    title = "Check for Updates",
+                    description = "Currently version ${state.appVersion}",
+                    icon = Icons.Default.Update,
+                    onClick = onCheckForUpdates
+                )
             }
             
             // Large bottom spacer to clear the floating bottom navigation bar
@@ -408,6 +424,7 @@ fun SettingsScreenLightPreview() {
             onSetThemeMode = {},
             onClearCache = {},
             onOutputFolderChange = {},
+            onCheckForUpdates = {},
             onStarGithub = {},
             onReportBug = {}
         )
@@ -428,6 +445,7 @@ fun SettingsScreenDarkPreview() {
             onSetThemeMode = {},
             onClearCache = {},
             onOutputFolderChange = {},
+            onCheckForUpdates = {},
             onStarGithub = {},
             onReportBug = {}
         )

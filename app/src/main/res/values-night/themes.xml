@@ -5,7 +5,7 @@
 
     <style name="Theme.App.Starting" parent="Theme.SplashScreen">
         <!-- Background of the splash screen -->
-        <item name="windowSplashScreenBackground">@color/premium_off_white</item>
+        <item name="windowSplashScreenBackground">@color/midnight_blue</item>
         <!-- Icon to be shown in the center of the splash screen -->
         <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher_foreground</item>
         <!-- The theme to use after the splash screen is done -->

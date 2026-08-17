@@ -87,7 +87,8 @@
 <summary><b>Core & Privacy</b></summary>
 <br>
 
-- **100% Offline** — Zero internet permissions required. Files never leave your device.
+- **100% Offline** — Zero internet permissions required for conversions. Files never leave your device.
+- **In-App Updater** — Seamlessly check and download the latest updates directly from GitHub without relying on an app store.
 - **Privacy-First** — No data collection and absolutely no analytics tracking.
 - **No Size Limits** — Convert large documents locally (subject to device hardware).
 

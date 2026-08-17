@@ -11,16 +11,24 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 import androidx.core.animation.doOnEnd
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -52,10 +60,33 @@ class MainActivity : ComponentActivity() {
         setContent {
             val themeMode by viewModel.themeMode.collectAsState()
             val isSystemDark = androidx.compose.foundation.isSystemInDarkTheme()
+            val snackbarHostState = remember { SnackbarHostState() }
 
             // Notify ViewModel of system theme changes to handle override resets
             LaunchedEffect(isSystemDark) {
                 viewModel.onSystemThemeChanged(isSystemDark)
+            }
+
+            // Check for updates on start
+            LaunchedEffect(Unit) {
+                viewModel.checkForUpdates()
+            }
+
+            // Handle update events
+            LaunchedEffect(Unit) {
+                viewModel.updateEvents.collect { event ->
+                    when (event) {
+                        is MainViewModel.UpdateEvent.Error -> {
+                            snackbarHostState.showSnackbar(event.message)
+                        }
+                        MainViewModel.UpdateEvent.UpToDate -> {
+                            snackbarHostState.showSnackbar("App is up to date")
+                        }
+                        MainViewModel.UpdateEvent.Checking -> {
+                            snackbarHostState.showSnackbar("Checking for updates...")
+                        }
+                    }
+                }
             }
 
             val isDarkMode = when (themeMode) {
@@ -91,6 +122,8 @@ class MainActivity : ComponentActivity() {
                     val navController = rememberNavController()
                     val navBackStackEntry by navController.currentBackStackEntryAsState()
                     val currentRoute = navBackStackEntry?.destination?.route ?: initialRoute
+                    
+                    val updateInfo by viewModel.updateInfo.collectAsState()
 
                     val showBottomNav = currentRoute in listOf(
                         Screen.Home.route,
@@ -108,33 +141,83 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    Box(modifier = Modifier.fillMaxSize()) {
-                        NavGraph(
-                            navController = navController, 
-                            mainViewModel = viewModel,
-                            startDestination = initialRoute
+                    if (updateInfo != null) {
+                        androidx.compose.material3.AlertDialog(
+                            onDismissRequest = { viewModel.dismissUpdateDialog() },
+                            title = { androidx.compose.material3.Text("Update Available") },
+                            text = { 
+                                androidx.compose.foundation.layout.Column {
+                                    androidx.compose.material3.Text("A new version (${updateInfo?.versionName}) is available.")
+                                    androidx.compose.foundation.layout.Spacer(modifier = Modifier.padding(8.dp))
+                                    androidx.compose.material3.Text(
+                                        text = updateInfo?.releaseNotes ?: "",
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                }
+                            },
+                            confirmButton = {
+                                androidx.compose.material3.TextButton(
+                                    onClick = { viewModel.downloadUpdate(updateInfo!!) }
+                                ) {
+                                    androidx.compose.material3.Text("Download")
+                                }
+                            },
+                            dismissButton = {
+                                androidx.compose.material3.TextButton(
+                                    onClick = { viewModel.dismissUpdateDialog() }
+                                ) {
+                                    androidx.compose.material3.Text("Later")
+                                }
+                            }
                         )
+                    }
 
-                        if (showBottomNav) {
-                            MorphDropBottomNavigation(
-                                currentRoute = currentRoute,
-                                onNavigate = { route ->
-                                    if (currentRoute != route) {
-                                        navController.navigate(route) {
-                                            popUpTo(Screen.Home.route) {
-                                                saveState = true
-                                            }
-                                            launchSingleTop = true
-                                            restoreState = true
-                                        }
-                                    }
-                                },
-                                showSearchIcon = isSearchable && showSearchFab,
-                                onSearchClick = {
-                                    onSearchFabClick?.invoke()
-                                },
-                                modifier = Modifier.align(Alignment.BottomCenter)
+                    Scaffold(
+                        snackbarHost = { 
+                            SnackbarHost(
+                                hostState = snackbarHostState,
+                                // Position snackbar just above the floating navigation pill (approx 80-100dp)
+                                modifier = Modifier.padding(bottom = if (showBottomNav) 96.dp else 16.dp)
+                            ) 
+                        },
+                        // We use empty insets here because NavGraph screens handle their own top/bottom padding
+                        // using their own Scaffolds or local insets.
+                        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+                        containerColor = MaterialTheme.colorScheme.background // Stable background to prevent flashes
+                    ) { innerPadding ->
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(MaterialTheme.colorScheme.background)
+                                .padding(innerPadding)
+                        ) {
+                            NavGraph(
+                                navController = navController, 
+                                mainViewModel = viewModel,
+                                startDestination = initialRoute
                             )
+
+                            if (showBottomNav) {
+                                MorphDropBottomNavigation(
+                                    currentRoute = currentRoute,
+                                    onNavigate = { route ->
+                                        if (currentRoute != route) {
+                                            navController.navigate(route) {
+                                                popUpTo(navController.graph.findStartDestination().id) {
+                                                    saveState = true
+                                                }
+                                                launchSingleTop = true
+                                                restoreState = true
+                                            }
+                                        }
+                                    },
+                                    showSearchIcon = isSearchable && showSearchFab,
+                                    onSearchClick = {
+                                        onSearchFabClick?.invoke()
+                                    },
+                                    modifier = Modifier.align(Alignment.BottomCenter)
+                                )
+                            }
                         }
                     }
                 }

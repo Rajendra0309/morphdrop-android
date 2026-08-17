@@ -17,26 +17,46 @@ import androidx.core.view.WindowCompat
 
 private val DarkColorScheme = darkColorScheme(
     primary = NeonEmerald,
+    onPrimary = MidnightBlue,
+    primaryContainer = Color(0xFF00513B),
+    onPrimaryContainer = Color(0xFF9CFBC1),
     secondary = CrimsonGlow,
+    onSecondary = Color.Black,
+    secondaryContainer = Color(0xFF91002A),
+    onSecondaryContainer = Color(0xFFFFD9DF),
     tertiary = AmberWarn,
-    background = Color(0xFF0F1115),
-    surface = Color(0xFF1A1C1E),
-    onPrimary = Color.Black,
-    onBackground = Color.White,
-    onSurface = Color.White,
-    onSurfaceVariant = Color(0xFFC4C7C5)
+    onTertiary = Color.Black,
+    tertiaryContainer = Color(0xFF574500),
+    onTertiaryContainer = Color(0xFFFFE18F),
+    background = MidnightBlue,
+    onBackground = Color(0xFFE2E2E6),
+    surface = SurfaceContainerLow,
+    onSurface = Color(0xFFE2E2E6),
+    surfaceVariant = SurfaceContainerHighest,
+    onSurfaceVariant = Color(0xFFC4C7C5),
+    outline = Color(0xFF8E918F)
 )
 
 private val LightColorScheme = lightColorScheme(
     primary = Color(0xFF006A60),
-    secondary = Color(0xFF984061),
-    tertiary = Color(0xFF705D00),
-    background = Color(0xFFFBFCFF),
-    surface = Color(0xFFFBFCFF),
     onPrimary = Color.White,
+    primaryContainer = Color(0xFF70F7E8),
+    onPrimaryContainer = Color(0xFF00201C),
+    secondary = Color(0xFF984061),
+    onSecondary = Color.White,
+    secondaryContainer = Color(0xFFFFD9DF),
+    onSecondaryContainer = Color(0xFF3E001D),
+    tertiary = Color(0xFF705D00),
+    onTertiary = Color.White,
+    tertiaryContainer = Color(0xFFFFE18F),
+    onTertiaryContainer = Color(0xFF221B00),
+    background = PremiumOffWhite,
     onBackground = Color(0xFF191C1E),
+    surface = Color.White,
     onSurface = Color(0xFF191C1E),
-    onSurfaceVariant = Color(0xFF40484B)
+    surfaceVariant = Color(0xFFDBE4E1),
+    onSurfaceVariant = Color(0xFF3F4947),
+    outline = Color(0xFF6F7977)
 )
 
 @Composable

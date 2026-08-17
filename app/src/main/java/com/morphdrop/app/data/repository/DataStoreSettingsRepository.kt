@@ -5,6 +5,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.morphdrop.app.domain.repository.SettingsRepository
@@ -26,6 +27,7 @@ class DataStoreSettingsRepository @Inject constructor(
         val THEME_MODE = stringPreferencesKey("theme_mode")
         val OUTPUT_FOLDER_NAME = stringPreferencesKey("output_folder_name")
         val HAS_SEEN_WELCOME = booleanPreferencesKey("has_seen_welcome")
+        val LAST_UPDATE_CHECK = longPreferencesKey("last_update_check")
     }
 
     override val themeMode: Flow<ThemeMode> = context.dataStore.data.map { preferences ->
@@ -45,6 +47,10 @@ class DataStoreSettingsRepository @Inject constructor(
         preferences[PreferencesKeys.HAS_SEEN_WELCOME] ?: false
     }
 
+    override val lastUpdateCheck: Flow<Long> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.LAST_UPDATE_CHECK] ?: 0L
+    }
+
     override suspend fun setThemeMode(mode: ThemeMode) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.THEME_MODE] = mode.name
@@ -60,6 +66,12 @@ class DataStoreSettingsRepository @Inject constructor(
     override suspend fun setHasSeenWelcome(hasSeen: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.HAS_SEEN_WELCOME] = hasSeen
+        }
+    }
+
+    override suspend fun setLastUpdateCheck(timestamp: Long) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.LAST_UPDATE_CHECK] = timestamp
         }
     }
 }
