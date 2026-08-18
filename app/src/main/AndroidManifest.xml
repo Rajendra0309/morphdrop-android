@@ -34,6 +34,18 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".PdfViewerActivity"
+            android:exported="true"
+            android:theme="@style/Theme.MorphDrop">
+            <intent-filter tools:ignore="AppLinkUrlError">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:mimeType="application/pdf" />
+            </intent-filter>
+        </activity>
+
         <service
             android:name="androidx.work.impl.foreground.SystemForegroundService"
             android:foregroundServiceType="dataSync"

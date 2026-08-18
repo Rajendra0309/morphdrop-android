@@ -10,7 +10,9 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,12 +20,11 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -60,7 +61,6 @@ class MainActivity : ComponentActivity() {
         setContent {
             val themeMode by viewModel.themeMode.collectAsState()
             val isSystemDark = androidx.compose.foundation.isSystemInDarkTheme()
-            val snackbarHostState = remember { SnackbarHostState() }
 
             // Notify ViewModel of system theme changes to handle override resets
             LaunchedEffect(isSystemDark) {
@@ -72,18 +72,23 @@ class MainActivity : ComponentActivity() {
                 viewModel.checkForUpdates()
             }
 
+            val context = androidx.compose.ui.platform.LocalContext.current
+
             // Handle update events
             LaunchedEffect(Unit) {
                 viewModel.updateEvents.collect { event ->
                     when (event) {
                         is MainViewModel.UpdateEvent.Error -> {
-                            snackbarHostState.showSnackbar(event.message)
+                            android.widget.Toast.makeText(context, event.message, android.widget.Toast.LENGTH_SHORT).show()
                         }
                         MainViewModel.UpdateEvent.UpToDate -> {
-                            snackbarHostState.showSnackbar("App is up to date")
+                            android.widget.Toast.makeText(context, "App is up to date", android.widget.Toast.LENGTH_SHORT).show()
                         }
                         MainViewModel.UpdateEvent.Checking -> {
-                            snackbarHostState.showSnackbar("Checking for updates...")
+                            android.widget.Toast.makeText(context, "Checking for updates...", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                        is MainViewModel.UpdateEvent.Generic -> {
+                            android.widget.Toast.makeText(context, event.message, android.widget.Toast.LENGTH_SHORT).show()
                         }
                     }
                 }
@@ -173,15 +178,6 @@ class MainActivity : ComponentActivity() {
                     }
 
                     Scaffold(
-                        snackbarHost = { 
-                            SnackbarHost(
-                                hostState = snackbarHostState,
-                                // Position snackbar just above the floating navigation pill (approx 80-100dp)
-                                modifier = Modifier.padding(bottom = if (showBottomNav) 96.dp else 16.dp)
-                            ) 
-                        },
-                        // We use empty insets here because NavGraph screens handle their own top/bottom padding
-                        // using their own Scaffolds or local insets.
                         contentWindowInsets = WindowInsets(0, 0, 0, 0),
                         containerColor = MaterialTheme.colorScheme.background // Stable background to prevent flashes
                     ) { innerPadding ->
@@ -196,6 +192,8 @@ class MainActivity : ComponentActivity() {
                                 mainViewModel = viewModel,
                                 startDestination = initialRoute
                             )
+
+                            // Removed custom toasts overlay
 
                             if (showBottomNav) {
                                 MorphDropBottomNavigation(

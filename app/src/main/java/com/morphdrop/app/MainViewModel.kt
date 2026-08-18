@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -81,13 +82,22 @@ class MainViewModel @Inject constructor(
         data class Error(val message: String) : UpdateEvent
         data object UpToDate : UpdateEvent
         data object Checking : UpdateEvent
+        data class Generic(val message: String) : UpdateEvent
     }
+
 
     fun checkForUpdates(force: Boolean = false) {
         viewModelScope.launch {
             if (force) _updateEvents.emit(UpdateEvent.Checking)
             
+            val startTime = System.currentTimeMillis()
             updateCheckUseCase(force).onSuccess { info ->
+                // Ensure "Checking" state is visible for at least 800ms for smoothness
+                if (force) {
+                    val elapsedTime = System.currentTimeMillis() - startTime
+                    if (elapsedTime < 800) kotlinx.coroutines.delay(800 - elapsedTime)
+                }
+
                 if (info.isUpdateAvailable) {
                     _updateInfo.value = info
                 } else if (force || info.versionName.isNotEmpty()) {
@@ -95,6 +105,8 @@ class MainViewModel @Inject constructor(
                 }
             }.onFailure {
                 if (force) {
+                    val elapsedTime = System.currentTimeMillis() - startTime
+                    if (elapsedTime < 800) kotlinx.coroutines.delay(800 - elapsedTime)
                     _updateEvents.emit(UpdateEvent.Error("Unable to check for updates"))
                 }
             }

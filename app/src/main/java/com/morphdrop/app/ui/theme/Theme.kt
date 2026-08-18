@@ -65,13 +65,50 @@ fun MorphDropTheme(
     dynamicColor: Boolean = true, // Enabled by default for native M3 feel
     content: @Composable () -> Unit
 ) {
-    val colorScheme = when {
+    val context = LocalContext.current
+    var colorScheme = when {
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            val context = LocalContext.current
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         }
         darkTheme -> DarkColorScheme
         else -> LightColorScheme
+    }
+
+    // HyperOS Bug Workaround: Extract colors natively if standard dynamic color is stale
+    if (dynamicColor && (Build.MANUFACTURER.lowercase() == "xiaomi" || Build.MANUFACTURER.lowercase() == "poco")) {
+        try {
+            val wallpaperManager = android.app.WallpaperManager.getInstance(context)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                val colors = wallpaperManager.getWallpaperColors(android.app.WallpaperManager.FLAG_SYSTEM)
+                colors?.primaryColor?.toArgb()?.let { argb ->
+                    val primaryColor = Color(argb)
+                    val secondaryColor = colors.secondaryColor?.toArgb()?.let { Color(it) } ?: primaryColor
+                    val tertiaryColor = colors.tertiaryColor?.toArgb()?.let { Color(it) } ?: primaryColor
+                    
+                    colorScheme = if (darkTheme) {
+                        colorScheme.copy(
+                            primary = primaryColor,
+                            primaryContainer = primaryColor.copy(alpha = 0.3f),
+                            secondary = secondaryColor,
+                            secondaryContainer = secondaryColor.copy(alpha = 0.3f),
+                            tertiary = tertiaryColor,
+                            tertiaryContainer = tertiaryColor.copy(alpha = 0.3f)
+                        )
+                    } else {
+                        colorScheme.copy(
+                            primary = primaryColor,
+                            primaryContainer = primaryColor.copy(alpha = 0.2f),
+                            secondary = secondaryColor,
+                            secondaryContainer = secondaryColor.copy(alpha = 0.2f),
+                            tertiary = tertiaryColor,
+                            tertiaryContainer = tertiaryColor.copy(alpha = 0.2f)
+                        )
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            // Fallback gracefully
+        }
     }
 
     val view = LocalView.current
