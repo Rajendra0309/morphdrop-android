@@ -2,17 +2,20 @@ package com.morphdrop.app.data.local
 
 import androidx.room.Database
 import androidx.room.RoomDatabase
+import com.morphdrop.app.data.local.dao.BookmarkDao
 import com.morphdrop.app.data.local.dao.FavoriteDao
 import com.morphdrop.app.data.local.dao.HistoryDao
+import com.morphdrop.app.data.local.entity.BookmarkEntity
 import com.morphdrop.app.data.local.entity.ConversionHistoryEntity
 import com.morphdrop.app.data.local.entity.FavoriteEntity
 
 @Database(
-    entities = [ConversionHistoryEntity::class, FavoriteEntity::class],
-    version = 2,
+    entities = [ConversionHistoryEntity::class, FavoriteEntity::class, BookmarkEntity::class],
+    version = 3,
     exportSchema = false
 )
 abstract class MorphDropDatabase : RoomDatabase() {
     abstract fun historyDao(): HistoryDao
     abstract fun favoriteDao(): FavoriteDao
+    abstract fun bookmarkDao(): BookmarkDao
 }

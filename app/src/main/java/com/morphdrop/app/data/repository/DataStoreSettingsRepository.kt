@@ -5,9 +5,11 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.morphdrop.app.domain.model.ReadingMode
 import com.morphdrop.app.domain.repository.SettingsRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
@@ -28,6 +30,8 @@ class DataStoreSettingsRepository @Inject constructor(
         val OUTPUT_FOLDER_NAME = stringPreferencesKey("output_folder_name")
         val HAS_SEEN_WELCOME = booleanPreferencesKey("has_seen_welcome")
         val LAST_UPDATE_CHECK = longPreferencesKey("last_update_check")
+        val READING_MODE = stringPreferencesKey("reading_mode")
+        val SEPIA_INTENSITY = floatPreferencesKey("sepia_intensity")
     }
 
     override val themeMode: Flow<ThemeMode> = context.dataStore.data.map { preferences ->
@@ -51,6 +55,19 @@ class DataStoreSettingsRepository @Inject constructor(
         preferences[PreferencesKeys.LAST_UPDATE_CHECK] ?: 0L
     }
 
+    override val readingMode: Flow<ReadingMode> = context.dataStore.data.map { preferences ->
+        val modeString = preferences[PreferencesKeys.READING_MODE] ?: ReadingMode.DEFAULT.name
+        try {
+            ReadingMode.valueOf(modeString)
+        } catch (e: Exception) {
+            ReadingMode.DEFAULT
+        }
+    }
+
+    override val sepiaIntensity: Flow<Float> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.SEPIA_INTENSITY] ?: 0.5f
+    }
+
     override suspend fun setThemeMode(mode: ThemeMode) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.THEME_MODE] = mode.name
@@ -72,6 +89,18 @@ class DataStoreSettingsRepository @Inject constructor(
     override suspend fun setLastUpdateCheck(timestamp: Long) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.LAST_UPDATE_CHECK] = timestamp
+        }
+    }
+
+    override suspend fun setReadingMode(mode: ReadingMode) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.READING_MODE] = mode.name
+        }
+    }
+
+    override suspend fun setSepiaIntensity(intensity: Float) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.SEPIA_INTENSITY] = intensity
         }
     }
 }

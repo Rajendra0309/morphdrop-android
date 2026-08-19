@@ -15,7 +15,10 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.morphdrop.app.data.pdf.PdfPrintAdapter
+import com.morphdrop.app.data.local.entity.BookmarkEntity
+import com.morphdrop.app.domain.model.ReadingMode
 import com.morphdrop.app.domain.model.SearchMatch
+import com.morphdrop.app.domain.repository.BookmarkRepository
 import com.morphdrop.app.domain.repository.SettingsRepository
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
@@ -23,12 +26,15 @@ import com.tom_roush.pdfbox.text.PDFTextStripper
 import com.tom_roush.pdfbox.text.TextPosition
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -46,7 +52,13 @@ data class PdfViewerUiState(
     val fileName: String = "",
     val searchResults: List<SearchMatch> = emptyList(),
     val currentSearchIndex: Int = -1,
-    val isSearching: Boolean = false
+    val isSearching: Boolean = false,
+    val readingMode: ReadingMode = ReadingMode.DEFAULT,
+    val sepiaIntensity: Float = 0.5f,
+    val textureIntensity: Float = 0.5f,
+    val isImmersiveMode: Boolean = false,
+    val bookmarks: List<BookmarkEntity> = emptyList(),
+    val isBookmarked: Boolean = false
 )
 
 sealed interface PdfViewerEvent {
@@ -57,11 +69,12 @@ sealed interface PdfViewerEvent {
 @HiltViewModel
 class PdfViewerViewModel @Inject constructor(
     private val application: Application,
-    private val settingsRepository: SettingsRepository
+    private val settingsRepository: SettingsRepository,
+    private val bookmarkRepository: BookmarkRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(PdfViewerUiState())
-    val uiState: StateFlow<PdfViewerUiState> = _uiState.asStateFlow()
+    val pdfUiState: StateFlow<PdfViewerUiState> = _uiState.asStateFlow()
 
     private val _events = MutableSharedFlow<PdfViewerEvent>()
     val events: SharedFlow<PdfViewerEvent> = _events.asSharedFlow()
@@ -77,14 +90,29 @@ class PdfViewerViewModel @Inject constructor(
     private var decryptedFile: File? = null
     private var currentUri: Uri? = null
 
+    private var bookmarkJob: Job? = null
+
     init {
         if (!PDFBoxResourceLoader.isReady()) {
             PDFBoxResourceLoader.init(application)
+        }
+        
+        viewModelScope.launch {
+            settingsRepository.readingMode.collect { mode ->
+                _uiState.update { it.copy(readingMode = mode) }
+            }
+        }
+        
+        viewModelScope.launch {
+            settingsRepository.sepiaIntensity.collect { intensity ->
+                _uiState.update { it.copy(sepiaIntensity = intensity) }
+            }
         }
     }
 
     fun loadPdf(uri: Uri, password: String? = null) {
         currentUri = uri
+        loadBookmarks(uri)
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null, isPasswordProtected = false) }
             try {
@@ -376,8 +404,120 @@ class PdfViewerViewModel @Inject constructor(
         }
     }
 
+    fun toggleImmersiveMode() {
+        _uiState.update { it.copy(isImmersiveMode = !it.isImmersiveMode) }
+    }
+
+    fun setReadingMode(mode: ReadingMode) {
+        viewModelScope.launch {
+            settingsRepository.setReadingMode(mode)
+        }
+    }
+
+    private var intensityJob: Job? = null
+    fun setSepiaIntensity(intensity: Float) {
+        _uiState.update { it.copy(sepiaIntensity = intensity) }
+        intensityJob?.cancel()
+        intensityJob = viewModelScope.launch {
+            delay(100) // Debounce
+            settingsRepository.setSepiaIntensity(intensity)
+        }
+    }
+
+    fun setTextureIntensity(intensity: Float) {
+        _uiState.update { it.copy(textureIntensity = intensity) }
+    }
+
+    private fun loadBookmarks(uri: Uri) {
+        bookmarkJob?.cancel()
+        bookmarkJob = viewModelScope.launch {
+            bookmarkRepository.getBookmarksForFile(uri.toString()).collectLatest { bookmarks ->
+                _uiState.update { state ->
+                    state.copy(
+                        bookmarks = bookmarks,
+                        isBookmarked = bookmarks.any { it.pageNumber == state.currentPage }
+                    )
+                }
+            }
+        }
+    }
+
+    fun toggleBookmark() {
+        toggleBookmarkForPage(_uiState.value.currentPage)
+    }
+
+    fun toggleBookmarkForPage(pageNumber: Int) {
+        val uri = currentUri ?: return
+        viewModelScope.launch {
+            val isBookmarked = _uiState.value.bookmarks.any { it.pageNumber == pageNumber }
+            if (isBookmarked) {
+                bookmarkRepository.removeBookmark(uri.toString(), pageNumber)
+            } else {
+                bookmarkRepository.addBookmark(uri.toString(), pageNumber)
+            }
+        }
+    }
+
+    fun sharePdf(context: android.content.Context) {
+        val uri = currentUri ?: return
+        val shareUri = if (uri.scheme == "file") {
+            try {
+                val file = File(uri.path ?: "")
+                androidx.core.content.FileProvider.getUriForFile(
+                    context,
+                    "com.morphdrop.app.fileprovider",
+                    file
+                )
+            } catch (e: Exception) {
+                uri
+            }
+        } else {
+            uri
+        }
+
+        val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+            type = "application/pdf"
+            putExtra(android.content.Intent.EXTRA_STREAM, shareUri)
+            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        try {
+            context.startActivity(android.content.Intent.createChooser(intent, "Share PDF"))
+        } catch (e: Exception) {
+            showToast("No apps can handle this file")
+        }
+    }
+
     fun updateCurrentPage(page: Int) {
-        _uiState.update { it.copy(currentPage = page + 1) }
+        val pageNum = page + 1
+        _uiState.update { it.copy(
+            currentPage = pageNum,
+            isBookmarked = it.bookmarks.any { bookmark -> bookmark.pageNumber == pageNum }
+        ) }
+    }
+
+    fun scrollToPage(pageIndex: Int) {
+        viewModelScope.launch {
+            _events.emit(PdfViewerEvent.ScrollToPage(pageIndex))
+        }
+    }
+
+    fun renderThumbnail(pageIndex: Int): Bitmap? {
+        val renderer = pdfRenderer ?: return null
+        if (pageIndex < 0 || pageIndex >= renderer.pageCount) return null
+
+        return try {
+            val page = renderer.openPage(pageIndex)
+            // Low resolution for thumbnails
+            val width = 300
+            val height = (width * (page.height.toFloat() / page.width)).toInt()
+            
+            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+            page.close()
+            bitmap
+        } catch (e: Exception) {
+            null
+        }
     }
 
     override fun onCleared() {

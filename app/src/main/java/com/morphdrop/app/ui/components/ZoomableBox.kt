@@ -5,6 +5,7 @@ import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -19,10 +20,16 @@ fun ZoomableBox(
     modifier: Modifier = Modifier,
     maxScale: Float = 5f,
     minScale: Float = 1f,
+    onTap: (() -> Unit)? = null,
+    onScaleChange: ((Float) -> Unit)? = null,
     content: @Composable () -> Unit
 ) {
     var scale by remember { mutableStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
+
+    LaunchedEffect(scale) {
+        onScaleChange?.invoke(scale)
+    }
 
     Box(
         modifier = modifier
@@ -30,8 +37,27 @@ fun ZoomableBox(
             .pointerInput(Unit) {
                 detectTapGestures(
                     onDoubleTap = { tapOffset ->
-                        scale = if (scale > 1.1f) 1f else 2f
-                        offset = if (scale == 1f) Offset.Zero else Offset.Zero // Centered zoom for simplicity
+                        if (scale > 1f) {
+                            scale = 1f
+                            offset = Offset.Zero
+                        } else {
+                            scale = 2f
+                            val extraWidth = (2f - 1) * size.width
+                            val extraHeight = (2f - 1) * size.height
+                            val maxX = extraWidth / 2
+                            val maxY = extraHeight / 2
+                            
+                            val targetX = (size.width / 2 - tapOffset.x) * 2f
+                            val targetY = (size.height / 2 - tapOffset.y) * 2f
+                            
+                            offset = Offset(
+                                targetX.coerceIn(-maxX, maxX),
+                                targetY.coerceIn(-maxY, maxY)
+                            )
+                        }
+                    },
+                    onTap = {
+                        onTap?.invoke()
                     }
                 )
             }
@@ -67,3 +93,4 @@ fun ZoomableBox(
         content()
     }
 }
+

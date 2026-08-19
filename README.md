@@ -73,7 +73,8 @@
 
 ### What's New
 
-> - **Interactive PDF Workbench** — A high-end visual grid interface for merging, splitting, and organizing PDFs.
+> - **Professional PDF Viewer** - A high-performance, Google Drive-style PDF viewer with advanced zooming, immersive mode, dynamic page indicators, and integrated bookmarking.
+> - **Interactive PDF Workbench** - A high-end visual grid interface for merging, splitting, and organizing PDFs.
 > - **Image & Document Workstation** — Complete redesign featuring interactive cropping, a precision color picker, and native pill-shaped inputs.
 > - **Advanced PDF Engine** — Improved compression algorithms and iron-clad password protection options.
 > - **Material You Aesthetic** — Beautiful modern UI with dynamic theming.

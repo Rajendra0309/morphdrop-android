@@ -2,6 +2,8 @@ package com.morphdrop.app.di
 
 import com.morphdrop.app.data.repository.FavoriteRepositoryImpl
 import com.morphdrop.app.data.repository.HistoryRepositoryImpl
+import com.morphdrop.app.data.repository.RoomBookmarkRepository
+import com.morphdrop.app.domain.repository.BookmarkRepository
 import com.morphdrop.app.domain.repository.FavoriteRepository
 import com.morphdrop.app.domain.repository.HistoryRepository
 import dagger.Binds
@@ -25,4 +27,10 @@ abstract class RepositoryModule {
     abstract fun bindFavoriteRepository(
         impl: FavoriteRepositoryImpl
     ): FavoriteRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindBookmarkRepository(
+        impl: RoomBookmarkRepository
+    ): BookmarkRepository
 }

@@ -7,7 +7,13 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.BookmarkBorder
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -15,17 +21,22 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import com.morphdrop.app.data.local.entity.BookmarkEntity
 
 @Composable
 fun PdfFastScroller(
     listState: LazyListState,
     totalPages: Int,
+    bookmarks: List<BookmarkEntity> = emptyList(),
+    currentScale: Float = 1f,
+    onBookmarkToggle: ((Int) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     if (totalPages <= 1) return
@@ -38,25 +49,31 @@ fun PdfFastScroller(
     // Exact progress calculation including item offset
     val progress by remember {
         derivedStateOf {
-            val layoutInfo = listState.layoutInfo
-            val visibleItems = layoutInfo.visibleItemsInfo
-            if (visibleItems.isEmpty()) 0f
-            else {
-                val firstItem = visibleItems.first()
-                val totalItems = totalPages
-                val itemProgress = -firstItem.offset.toFloat() / firstItem.size.toFloat()
-                ((firstItem.index + itemProgress) / (totalItems - 1)).coerceIn(0f, 1f)
-            }
+            if (listState.layoutInfo.totalItemsCount == 0) return@derivedStateOf 0f
+            val firstVisibleItem = listState.layoutInfo.visibleItemsInfo.firstOrNull() ?: return@derivedStateOf 0f
+            val itemSize = firstVisibleItem.size.toFloat()
+            val viewportSize = listState.layoutInfo.viewportSize.height.toFloat()
+            
+            // Total height of all items (approximate)
+            val totalContentHeight = totalPages * itemSize
+            if (totalContentHeight <= viewportSize) return@derivedStateOf 0f
+            
+            // Current scroll position
+            val currentScrollY = (firstVisibleItem.index * itemSize) - firstVisibleItem.offset
+            
+            // Progress is currentScroll / (totalContentHeight - viewportSize)
+            (currentScrollY / (totalContentHeight - viewportSize)).coerceIn(0f, 1f)
         }
     }
     
     var localDragY by remember { mutableStateOf(0f) }
 
+    // Auto-hide logic
     LaunchedEffect(listState.isScrollInProgress, isDragging) {
         if (listState.isScrollInProgress || isDragging) {
             isVisible = true
         } else {
-            delay(2000)
+            delay(1500)
             isVisible = false
         }
     }
@@ -64,16 +81,13 @@ fun PdfFastScroller(
     BoxWithConstraints(
         modifier = modifier
             .fillMaxHeight()
-            .width(64.dp)
+            .fillMaxWidth()
             .statusBarsPadding()
             .navigationBarsPadding()
     ) {
-        val maxHeightDp = maxHeight.value
-        val scrollbarHeightDp = maxHeightDp * 0.8f
-        val topOffsetDp = (maxHeightDp - scrollbarHeightDp) / 2
+        val trackHeightDp = maxHeight.value - 56f // 56dp is thumb height
+        val trackHeightPx = with(LocalDensity.current) { trackHeightDp.dp.toPx() }
         
-        val thumbY = if (isDragging) localDragY else progress * scrollbarHeightDp
-
         AnimatedVisibility(
             visible = isVisible,
             enter = fadeIn(),
@@ -81,6 +95,88 @@ fun PdfFastScroller(
             modifier = Modifier.fillMaxSize()
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
+                val thumbY = if (isDragging) localDragY else (progress * trackHeightDp).coerceIn(0f, trackHeightDp)
+                val topOffsetDp = 28f // Half thumb height
+
+                val activePageIndex = remember(listState.layoutInfo) {
+                    listState.layoutInfo.visibleItemsInfo.minByOrNull { 
+                        kotlin.math.abs(it.offset + (it.size / 2) - (listState.layoutInfo.viewportSize.height / 2))
+                    }?.index ?: listState.firstVisibleItemIndex
+                }
+                val currentPageNumber = activePageIndex + 1
+
+                val visibleRangeText = remember(listState.layoutInfo, totalPages, currentScale) {
+                    if (currentScale > 1.2f) {
+                        "${currentPageNumber} / $totalPages"
+                    } else {
+                        val items = listState.layoutInfo.visibleItemsInfo
+                        val viewportStart = listState.layoutInfo.viewportStartOffset
+                        val viewportEnd = listState.layoutInfo.viewportEndOffset
+                        val viewportSize = viewportEnd - viewportStart
+                        
+                        val significantItems = items.filter { item ->
+                            val itemStart = maxOf(viewportStart, item.offset)
+                            val itemEnd = minOf(viewportEnd, item.offset + item.size)
+                            val visibleSize = itemEnd - itemStart
+                            (visibleSize.toFloat() / viewportSize.toFloat()) > 0.40f // Covers more than 40% of viewport
+                        }
+                        
+                        if (significantItems.isNotEmpty()) {
+                            val first = significantItems.first().index + 1
+                            val last = significantItems.last().index + 1
+                            if (first == last) "$first / $totalPages" else "$first-$last / $totalPages"
+                        } else {
+                            "${currentPageNumber} / $totalPages"
+                        }
+                    }
+                }
+
+                // Page Number Pill (Separate)
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .offset(x = (-48).dp, y = (topOffsetDp + thumbY - 20).dp)
+                        .shadow(8.dp, RoundedCornerShape(12.dp)),
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
+                ) {
+                    Text(
+                        text = visibleRangeText,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                }
+
+                // Bookmark Button (Separate)
+                if (onBookmarkToggle != null) {
+                    val isBookmarked = bookmarks.any { it.pageNumber == currentPageNumber }
+                    Surface(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .offset(x = (-135).dp, y = (topOffsetDp + thumbY - 20).dp)
+                            .size(40.dp)
+                            .shadow(8.dp, CircleShape),
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.95f),
+                        shadowElevation = 4.dp
+                    ) {
+                        IconButton(
+                            onClick = { onBookmarkToggle(currentPageNumber) },
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            Icon(
+                                imageVector = if (isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                                contentDescription = "Bookmark",
+                                tint = if (isBookmarked) Color(0xFF008080) else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+
                 // Handle
                 Box(
                     modifier = Modifier
@@ -88,20 +184,19 @@ fun PdfFastScroller(
                         .align(Alignment.TopEnd)
                         .padding(end = 8.dp)
                         .size(width = 32.dp, height = 56.dp)
-                        .pointerInput(Unit) {
+                        .pointerInput(totalPages) {
                             detectDragGestures(
                                 onDragStart = { 
                                     isDragging = true 
-                                    localDragY = progress * scrollbarHeightDp
+                                    localDragY = progress * trackHeightDp
                                 },
                                 onDragEnd = { isDragging = false },
                                 onDragCancel = { isDragging = false },
                                 onDrag = { change, dragAmount ->
                                     change.consume()
-                                    // Use local density to convert pixel drag distance to dp
                                     val dragAmountDp = dragAmount.y / density
-                                    localDragY = (localDragY + dragAmountDp).coerceIn(0f, scrollbarHeightDp)
-                                    val newProgress = localDragY / scrollbarHeightDp
+                                    localDragY = (localDragY + dragAmountDp).coerceIn(0f, trackHeightDp)
+                                    val newProgress = localDragY / trackHeightDp
                                     val exactIndex = newProgress * (totalPages - 1)
                                     val targetIndex = exactIndex.toInt().coerceIn(0, totalPages - 1)
                                     val fractionalProgress = exactIndex - targetIndex
@@ -133,27 +228,9 @@ fun PdfFastScroller(
                             }
                         }
                     }
-
-                    if (isDragging) {
-                        Surface(
-                            modifier = Modifier
-                                .align(Alignment.CenterEnd)
-                                .padding(end = 48.dp)
-                                .shadow(8.dp, RoundedCornerShape(12.dp)),
-                            shape = RoundedCornerShape(12.dp),
-                            color = MaterialTheme.colorScheme.primary,
-                            contentColor = MaterialTheme.colorScheme.onPrimary
-                        ) {
-                            Text(
-                                text = "${listState.firstVisibleItemIndex + 1}",
-                                style = MaterialTheme.typography.headlineMedium,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                            )
-                        }
-                    }
                 }
             }
         }
     }
 }
+
