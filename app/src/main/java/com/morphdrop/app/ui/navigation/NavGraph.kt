@@ -35,63 +35,7 @@ fun NavGraph(
 
     NavHost(
         navController = navController,
-        startDestination = startDestination,
-        enterTransition = {
-            val targetRoute = targetState.destination.route
-            val initialRoute = initialState.destination.route
-            
-            if (targetRoute in topLevelRoutes && initialRoute in topLevelRoutes) {
-                // Seamless crossfade for navbar tab switching
-                fadeIn(animationSpec = tween(250))
-            } else {
-                // Native-like sliding for deep navigation
-                slideInHorizontally(
-                    initialOffsetX = { it },
-                    animationSpec = tween(450, easing = FastOutSlowInEasing)
-                ) + fadeIn(animationSpec = tween(300))
-            }
-        },
-        exitTransition = {
-            val targetRoute = targetState.destination.route
-            val initialRoute = initialState.destination.route
-            
-            if (targetRoute in topLevelRoutes && initialRoute in topLevelRoutes) {
-                // Use a very short fade out to avoid "gap" flashes
-                fadeOut(animationSpec = tween(150))
-            } else {
-                // Scale out + slide for native feel
-                slideOutHorizontally(
-                    targetOffsetX = { -it / 4 },
-                    animationSpec = tween(450, easing = FastOutSlowInEasing)
-                ) + scaleOut(targetScale = 0.9f, animationSpec = tween(450)) + fadeOut(animationSpec = tween(300))
-            }
-        },
-        popEnterTransition = {
-            val targetRoute = targetState.destination.route
-            val initialRoute = initialState.destination.route
-            
-            if (targetRoute in topLevelRoutes && initialRoute in topLevelRoutes) {
-                fadeIn(animationSpec = tween(250))
-            } else {
-                slideInHorizontally(
-                    initialOffsetX = { -it / 4 },
-                    animationSpec = tween(450, easing = FastOutSlowInEasing)
-                ) + scaleIn(initialScale = 0.9f, animationSpec = tween(450)) + fadeIn(animationSpec = tween(300))
-            }
-        },
-        popExitTransition = {
-            val targetRoute = targetState.destination.route
-            val initialRoute = initialState.destination.route
-            
-            if (targetRoute in topLevelRoutes && initialRoute in topLevelRoutes) {
-                fadeOut(animationSpec = tween(150))
-            } else {
-                slideOutHorizontally(
-                    targetOffsetX = { it },
-                    animationSpec = tween(450, easing = FastOutSlowInEasing)
-                ) + fadeOut(animationSpec = tween(300))
-            }
-        }
+        startDestination = startDestination
     ) {
         composable(Screen.Home.route) {
             HomeScreen(

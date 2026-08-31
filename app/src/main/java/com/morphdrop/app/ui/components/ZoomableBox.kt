@@ -22,6 +22,7 @@ fun ZoomableBox(
     minScale: Float = 1f,
     onTap: (() -> Unit)? = null,
     onScaleChange: ((Float) -> Unit)? = null,
+    onOffsetChange: ((Offset) -> Unit)? = null,
     content: @Composable () -> Unit
 ) {
     var scale by remember { mutableStateOf(1f) }
@@ -29,6 +30,10 @@ fun ZoomableBox(
 
     LaunchedEffect(scale) {
         onScaleChange?.invoke(scale)
+    }
+
+    LaunchedEffect(offset) {
+        onOffsetChange?.invoke(offset)
     }
 
     Box(
@@ -62,9 +67,11 @@ fun ZoomableBox(
                 )
             }
             .pointerInput(Unit) {
-                detectTransformGestures { _, pan, zoom, _ ->
+                detectTransformGestures { centroid, pan, zoom, _ ->
                     val zoomIntensity = if (zoom > 1f) (zoom - 1f) * 1.8f + 1f else zoom
                     val newScale = (scale * zoomIntensity).coerceIn(minScale, maxScale)
+                    
+                    val actualZoom = newScale / scale
                     
                     val extraWidth = (newScale - 1) * size.width
                     val extraHeight = (newScale - 1) * size.height
@@ -73,9 +80,12 @@ fun ZoomableBox(
                     val maxY = extraHeight / 2
                     
                     if (newScale > 1f) {
+                        val focalX = (size.width / 2 - centroid.x) * (actualZoom - 1)
+                        val focalY = (size.height / 2 - centroid.y) * (actualZoom - 1)
+                        
                         offset = Offset(
-                            x = (offset.x + pan.x * newScale).coerceIn(-maxX, maxX),
-                            y = (offset.y + pan.y * newScale).coerceIn(-maxY, maxY)
+                            x = (offset.x * actualZoom + focalX + pan.x * newScale).coerceIn(-maxX, maxX),
+                            y = (offset.y * actualZoom + focalY + pan.y * newScale).coerceIn(-maxY, maxY)
                         )
                     } else {
                         offset = Offset.Zero

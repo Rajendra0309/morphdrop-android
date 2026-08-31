@@ -122,15 +122,4 @@ class MainViewModel @Inject constructor(
         _updateInfo.value = null
     }
 
-    private var lastKnownSystemDark: Boolean? = null
-
-    fun onSystemThemeChanged(isSystemDark: Boolean) {
-        if (lastKnownSystemDark != null && lastKnownSystemDark != isSystemDark) {
-            // System theme changed! Reset manual override so app follows system again.
-            viewModelScope.launch {
-                settingsRepository.setThemeMode(com.morphdrop.app.domain.model.ThemeMode.SYSTEM)
-            }
-        }
-        lastKnownSystemDark = isSystemDark
-    }
 }

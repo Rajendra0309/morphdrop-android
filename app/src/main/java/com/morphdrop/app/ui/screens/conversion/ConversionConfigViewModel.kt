@@ -121,7 +121,7 @@ class ConversionConfigViewModel @Inject constructor(
             "excel_to_pdf" -> listOf("xls", "xlsx", "csv")
             "text_to_pdf" -> listOf("txt")
             "md_to_pdf" -> listOf("md", "markdown")
-            "pdf_to_images", "split_pdf", "compress_pdf", "protect_pdf", "organize_pdf", "merge_pdf" -> listOf("pdf")
+            "pdf_to_images", "split_pdf", "compress_pdf", "protect_pdf", "unlock_pdf", "organize_pdf", "merge_pdf" -> listOf("pdf")
             "images_to_pdf", "compress_images", "image_converter" -> listOf("png", "jpg", "jpeg", "webp", "bmp")
             else -> listOf(t.inputType.extension)
         }
@@ -266,7 +266,7 @@ class ConversionConfigViewModel @Inject constructor(
                     )
                 }
                 
-                if (totalPagesCount == 0) {
+                if (totalPagesCount == 0 && type?.id != "unlock_pdf") {
                     _state.update { it.copy(errorMessage = "Could not read PDF pages. The file(s) might be protected or corrupted.") }
                 }
             }
@@ -545,7 +545,7 @@ class ConversionConfigViewModel @Inject constructor(
         if (s.targetSizeKb.isNotEmpty() && s.targetSizeKb.toIntOrNull() == null) return false
         if (s.pageRangeStart.isNotEmpty() && s.pageRangeStart.toIntOrNull() == null) return false
         if (s.pageRangeEnd.isNotEmpty() && s.pageRangeEnd.toIntOrNull() == null) return false
-        if (s.conversionType?.id == "protect_pdf" && s.pdfPassword.isEmpty()) return false
+        if ((s.conversionType?.id == "protect_pdf" || s.conversionType?.id == "unlock_pdf") && s.pdfPassword.isEmpty()) return false
         return true
     }
 
@@ -636,11 +636,13 @@ class ConversionConfigViewModel @Inject constructor(
                 }
             }
 
-            if (type.id == "protect_pdf") {
+            if (type.id == "protect_pdf" || type.id == "unlock_pdf") {
                 dataBuilder.putString(com.morphdrop.app.worker.ConversionWorker.KEY_PASSWORD, currentState.pdfPassword)
-                dataBuilder.putBoolean(com.morphdrop.app.worker.ConversionWorker.KEY_ALLOW_PRINTING, currentState.allowPrinting)
-                dataBuilder.putBoolean(com.morphdrop.app.worker.ConversionWorker.KEY_ALLOW_COPYING, currentState.allowCopying)
-                dataBuilder.putBoolean(com.morphdrop.app.worker.ConversionWorker.KEY_ALLOW_EDITING, currentState.allowEditing)
+                if (type.id == "protect_pdf") {
+                    dataBuilder.putBoolean(com.morphdrop.app.worker.ConversionWorker.KEY_ALLOW_PRINTING, currentState.allowPrinting)
+                    dataBuilder.putBoolean(com.morphdrop.app.worker.ConversionWorker.KEY_ALLOW_COPYING, currentState.allowCopying)
+                    dataBuilder.putBoolean(com.morphdrop.app.worker.ConversionWorker.KEY_ALLOW_EDITING, currentState.allowEditing)
+                }
             }
 
             if (type.id == "merge_pdf" || type.id == "merge_pdfs") {

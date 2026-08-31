@@ -50,6 +50,17 @@ class MainActivity : ComponentActivity() {
         val splashScreen = installSplashScreen()
         super.onCreate(savedInstanceState)
         
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+            val display = windowManager.defaultDisplay
+            val maxMode = display.supportedModes.maxByOrNull { it.refreshRate }
+            if (maxMode != null) {
+                val params = window.attributes
+                params.preferredDisplayModeId = maxMode.modeId
+                window.attributes = params
+            }
+        }
+
+        
         val isLowEnd = (getSystemService(android.content.Context.ACTIVITY_SERVICE) as android.app.ActivityManager).isLowRamDevice
 
 
@@ -62,10 +73,6 @@ class MainActivity : ComponentActivity() {
             val themeMode by viewModel.themeMode.collectAsState()
             val isSystemDark = androidx.compose.foundation.isSystemInDarkTheme()
 
-            // Notify ViewModel of system theme changes to handle override resets
-            LaunchedEffect(isSystemDark) {
-                viewModel.onSystemThemeChanged(isSystemDark)
-            }
 
             // Check for updates on start
             LaunchedEffect(Unit) {
@@ -100,17 +107,20 @@ class MainActivity : ComponentActivity() {
                 com.morphdrop.app.domain.model.ThemeMode.SYSTEM -> isSystemDark
             }
 
+            androidx.compose.runtime.LaunchedEffect(themeMode) {
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                    val uiModeManager = context.getSystemService(android.content.Context.UI_MODE_SERVICE) as android.app.UiModeManager
+                    val mode = when (themeMode) {
+                        com.morphdrop.app.domain.model.ThemeMode.DARK -> android.app.UiModeManager.MODE_NIGHT_YES
+                        com.morphdrop.app.domain.model.ThemeMode.LIGHT -> android.app.UiModeManager.MODE_NIGHT_NO
+                        com.morphdrop.app.domain.model.ThemeMode.SYSTEM -> android.app.UiModeManager.MODE_NIGHT_AUTO
+                    }
+                    uiModeManager.setApplicationNightMode(mode)
+                }
+            }
+
             androidx.compose.runtime.DisposableEffect(isDarkMode) {
-                enableEdgeToEdge(
-                    statusBarStyle = androidx.activity.SystemBarStyle.auto(
-                        android.graphics.Color.TRANSPARENT,
-                        android.graphics.Color.TRANSPARENT
-                    ) { isDarkMode },
-                    navigationBarStyle = androidx.activity.SystemBarStyle.auto(
-                        android.graphics.Color.TRANSPARENT,
-                        android.graphics.Color.TRANSPARENT
-                    ) { isDarkMode }
-                )
+                enableEdgeToEdge()
                 onDispose {}
             }
             val hasSeenWelcome by viewModel.hasSeenWelcome.collectAsState()

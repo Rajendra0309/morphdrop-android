@@ -9,11 +9,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Bookmark
-import androidx.compose.material.icons.filled.BookmarkBorder
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -21,22 +16,19 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import com.morphdrop.app.data.local.entity.BookmarkEntity
 
 @Composable
 fun PdfFastScroller(
     listState: LazyListState,
     totalPages: Int,
-    bookmarks: List<BookmarkEntity> = emptyList(),
     currentScale: Float = 1f,
-    onBookmarkToggle: ((Int) -> Unit)? = null,
+    viewModel: com.morphdrop.app.ui.screens.pdf.PdfViewerViewModel,
     modifier: Modifier = Modifier
 ) {
     if (totalPages <= 1) return
@@ -68,9 +60,12 @@ fun PdfFastScroller(
     
     var localDragY by remember { mutableStateOf(0f) }
 
+    val pdfUiState by viewModel.pdfUiState.collectAsState()
+    val isAnnotationMode = pdfUiState.isAnnotationMode
+
     // Auto-hide logic
-    LaunchedEffect(listState.isScrollInProgress, isDragging) {
-        if (listState.isScrollInProgress || isDragging) {
+    LaunchedEffect(listState.isScrollInProgress, isDragging, isAnnotationMode) {
+        if (listState.isScrollInProgress || isDragging || isAnnotationMode) {
             isVisible = true
         } else {
             delay(1500)
@@ -86,7 +81,6 @@ fun PdfFastScroller(
             .navigationBarsPadding()
     ) {
         val trackHeightDp = maxHeight.value - 56f // 56dp is thumb height
-        val trackHeightPx = with(LocalDensity.current) { trackHeightDp.dp.toPx() }
         
         AnimatedVisibility(
             visible = isVisible,
@@ -131,47 +125,30 @@ fun PdfFastScroller(
                     }
                 }
 
-                // Page Number Pill (Separate)
-                Surface(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .offset(x = (-48).dp, y = (topOffsetDp + thumbY - 20).dp)
-                        .shadow(8.dp, RoundedCornerShape(12.dp)),
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary
+                AnimatedVisibility(
+                    visible = !isAnnotationMode || listState.isScrollInProgress || isDragging,
+                    modifier = Modifier.align(Alignment.TopEnd),
+                    enter = fadeIn(),
+                    exit = fadeOut()
                 ) {
-                    Text(
-                        text = visibleRangeText,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                        maxLines = 1,
-                        softWrap = false
-                    )
-                }
-
-                // Bookmark Button (Separate)
-                if (onBookmarkToggle != null) {
-                    val isBookmarked = bookmarks.any { it.pageNumber == currentPageNumber }
-                    Surface(
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .offset(x = (-135).dp, y = (topOffsetDp + thumbY - 20).dp)
-                            .size(40.dp)
-                            .shadow(8.dp, CircleShape),
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.95f),
-                        shadowElevation = 4.dp
-                    ) {
-                        IconButton(
-                            onClick = { onBookmarkToggle(currentPageNumber) },
-                            modifier = Modifier.fillMaxSize()
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        // Page Number Pill
+                        Surface(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .offset(x = (-48).dp, y = (topOffsetDp + thumbY - 20).dp)
+                                .shadow(8.dp, RoundedCornerShape(12.dp)),
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary
                         ) {
-                            Icon(
-                                imageVector = if (isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
-                                contentDescription = "Bookmark",
-                                tint = if (isBookmarked) Color(0xFF008080) else MaterialTheme.colorScheme.onSurfaceVariant
+                            Text(
+                                text = visibleRangeText,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                                maxLines = 1,
+                                softWrap = false
                             )
                         }
                     }
@@ -233,4 +210,3 @@ fun PdfFastScroller(
         }
     }
 }
-

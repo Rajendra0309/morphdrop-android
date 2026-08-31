@@ -135,6 +135,16 @@ data class ConversionType(
                 category = CATEGORY_PDF_TOOLS,
                 isMultiFileAllowed = false
             ),
+            ConversionType(
+                id = "unlock_pdf",
+                name = "Unlock PDF",
+                description = "Remove password protection from PDF document",
+                inputType = FileType.PDF,
+                outputType = FileType.PDF,
+                icon = Icons.Outlined.Lock,
+                category = CATEGORY_PDF_TOOLS,
+                isMultiFileAllowed = false
+            ),
 
             // Image Tools
             ConversionType(

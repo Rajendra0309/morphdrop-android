@@ -11,6 +11,7 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
@@ -74,44 +75,38 @@ fun MorphDropTheme(
         else -> LightColorScheme
     }
 
-    // HyperOS Bug Workaround: Extract colors natively if standard dynamic color is stale
-    if (dynamicColor && (Build.MANUFACTURER.lowercase() == "xiaomi" || Build.MANUFACTURER.lowercase() == "poco")) {
-        try {
-            val wallpaperManager = android.app.WallpaperManager.getInstance(context)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-                val colors = wallpaperManager.getWallpaperColors(android.app.WallpaperManager.FLAG_SYSTEM)
-                colors?.primaryColor?.toArgb()?.let { argb ->
-                    val primaryColor = Color(argb)
-                    val secondaryColor = colors.secondaryColor?.toArgb()?.let { Color(it) } ?: primaryColor
-                    val tertiaryColor = colors.tertiaryColor?.toArgb()?.let { Color(it) } ?: primaryColor
-                    
-                    colorScheme = if (darkTheme) {
-                        colorScheme.copy(
-                            primary = primaryColor,
-                            primaryContainer = primaryColor.copy(alpha = 0.3f),
-                            secondary = secondaryColor,
-                            secondaryContainer = secondaryColor.copy(alpha = 0.3f),
-                            tertiary = tertiaryColor,
-                            tertiaryContainer = tertiaryColor.copy(alpha = 0.3f)
-                        )
-                    } else {
-                        colorScheme.copy(
-                            primary = primaryColor,
-                            primaryContainer = primaryColor.copy(alpha = 0.2f),
-                            secondary = secondaryColor,
-                            secondaryContainer = secondaryColor.copy(alpha = 0.2f),
-                            tertiary = tertiaryColor,
-                            tertiaryContainer = tertiaryColor.copy(alpha = 0.2f)
-                        )
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            // Fallback gracefully
-        }
+    // Universal Dynamic Theming Fix for Non-Pixel OS
+    if (dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && Build.MANUFACTURER.lowercase() != "google") {
+        // Some OEMs fail to populate rich secondary/tertiary colors in their dynamic scheme.
+        // We will mathematically generate rich secondary and tertiary tones from the provided primary color.
+        val primaryArgb = colorScheme.primary.toArgb()
+        val hsl = FloatArray(3)
+        androidx.core.graphics.ColorUtils.colorToHSL(primaryArgb, hsl)
+        
+        // Secondary: Same hue, lower saturation
+        val secondaryHsl = floatArrayOf(hsl[0], hsl[1] * 0.5f, hsl[2])
+        val secondaryColor = Color(androidx.core.graphics.ColorUtils.HSLToColor(secondaryHsl))
+        
+        // Tertiary: Shift hue by 60 degrees, lower saturation
+        val tertiaryHsl = floatArrayOf((hsl[0] + 60f) % 360f, hsl[1] * 0.6f, hsl[2])
+        val tertiaryColor = Color(androidx.core.graphics.ColorUtils.HSLToColor(tertiaryHsl))
+        
+        colorScheme = colorScheme.copy(
+            secondary = secondaryColor,
+            secondaryContainer = secondaryColor.copy(alpha = if (darkTheme) 0.3f else 0.2f),
+            tertiary = tertiaryColor,
+            tertiaryContainer = tertiaryColor.copy(alpha = if (darkTheme) 0.3f else 0.2f)
+        )
     }
 
     val view = LocalView.current
+    if (!view.isInEditMode) {
+        SideEffect {
+            val window = (view.context as Activity).window
+            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
+            WindowCompat.getInsetsController(window, view).isAppearanceLightNavigationBars = !darkTheme
+        }
+    }
 
     MaterialTheme(
         colorScheme = colorScheme,

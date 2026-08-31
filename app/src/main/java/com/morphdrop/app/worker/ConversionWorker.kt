@@ -408,16 +408,17 @@ class ConversionWorker @AssistedInject constructor(
                     result
                 }
 
-                "protect_pdf" -> {
+                "protect_pdf", "unlock_pdf" -> {
                     notificationHelper.showProgressNotification(notificationId, conversionType, 30)
                     setProgress(workDataOf("progress" to 30))
                     val uri = Uri.parse(requireNotNull(inputUriString))
                     val password = requireNotNull(inputData.getString(KEY_PASSWORD))
-                    val actionStr = inputData.getString(KEY_ACTION) ?: "ADD_PASSWORD"
-                    val action = if (actionStr == "REMOVE_PASSWORD") {
+                    
+                    val action = if (conversionType == "unlock_pdf") {
                         PdfPasswordUseCase.Action.REMOVE_PASSWORD
                     } else {
-                        PdfPasswordUseCase.Action.ADD_PASSWORD
+                        val actionStr = inputData.getString(KEY_ACTION) ?: "ADD_PASSWORD"
+                        if (actionStr == "REMOVE_PASSWORD") PdfPasswordUseCase.Action.REMOVE_PASSWORD else PdfPasswordUseCase.Action.ADD_PASSWORD
                     }
                     
                     val allowPrinting = inputData.getBoolean(KEY_ALLOW_PRINTING, true)

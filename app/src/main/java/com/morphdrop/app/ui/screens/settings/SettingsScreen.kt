@@ -90,12 +90,65 @@ fun SettingsScreenContent(
     var showPrivacyDialog by remember { mutableStateOf(false) }
     var showAboutDialog by remember { mutableStateOf(false) }
     var tempFolderName by remember { mutableStateOf(state.defaultOutputDirectory) }
+    var showThemeDialog by remember { mutableStateOf(false) }
     
     val isSystemDark = androidx.compose.foundation.isSystemInDarkTheme()
     val isDarkMode = when (state.themeMode) {
         ThemeMode.DARK -> true
         ThemeMode.LIGHT -> false
         ThemeMode.SYSTEM -> isSystemDark
+    }
+    
+    val themeOptions = listOf("System Default", "Light", "Dark")
+    val selectedIndex = when(state.themeMode) {
+        ThemeMode.SYSTEM -> 0
+        ThemeMode.LIGHT -> 1
+        ThemeMode.DARK -> 2
+    }
+
+    if (showThemeDialog) {
+        AlertDialog(
+            onDismissRequest = { showThemeDialog = false },
+            title = { Text("Choose App Theme") },
+            text = {
+                Column {
+                    themeOptions.forEachIndexed { index, option ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    val newMode = when(index) {
+                                        0 -> ThemeMode.SYSTEM
+                                        1 -> ThemeMode.LIGHT
+                                        else -> ThemeMode.DARK
+                                    }
+                                    onSetThemeMode(newMode)
+                                    showThemeDialog = false
+                                }
+                                .padding(vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = index == selectedIndex,
+                                onClick = null, // handled by Row
+                                colors = RadioButtonDefaults.colors(selectedColor = MaterialTheme.colorScheme.primary)
+                            )
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Text(
+                                text = option,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showThemeDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 
     if (showPrivacyDialog) {
@@ -195,14 +248,11 @@ fun SettingsScreenContent(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             SettingsSection(title = "Appearance") {
-                SettingsToggleItem(
-                    title = "Dark Mode",
-                    description = if (state.themeMode == ThemeMode.SYSTEM) "Following system default" else "Manually set",
-                    icon = Icons.Default.DarkMode,
-                    checked = isDarkMode,
-                    onCheckedChange = { isDark ->
-                        onSetThemeMode(if (isDark) ThemeMode.DARK else ThemeMode.LIGHT)
-                    }
+                SettingsItem(
+                    title = "App Theme",
+                    description = themeOptions[selectedIndex],
+                    icon = if (state.themeMode == ThemeMode.DARK) Icons.Default.DarkMode else if (state.themeMode == ThemeMode.LIGHT) Icons.Default.LightMode else Icons.Default.SettingsSystemDaydream,
+                    onClick = { showThemeDialog = true }
                 )
             }
 
@@ -341,41 +391,7 @@ private fun SettingsItem(
     }
 }
 
-@Composable
-private fun SettingsToggleItem(
-    title: String,
-    description: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(16.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(24.dp)
-        )
-        Spacer(modifier = Modifier.width(16.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(text = title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
-            Text(text = description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        Switch(
-            checked = checked,
-            onCheckedChange = onCheckedChange,
-            modifier = Modifier.onGloballyPositioned { coordinates ->
-                val bounds = coordinates.boundsInWindow()
-                ThemeAnimationManager.revealCenter = bounds.center
-            }
-        )
-    }
-}
+
 
 @Preview(name = "Light Mode", showBackground = true, showSystemUi = true, device = Devices.PIXEL_7_PRO)
 @Composable

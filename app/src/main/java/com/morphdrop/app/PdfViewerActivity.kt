@@ -24,6 +24,16 @@ class PdfViewerActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+            val display = windowManager.defaultDisplay
+            val maxMode = display.supportedModes.maxByOrNull { it.refreshRate }
+            if (maxMode != null) {
+                val params = window.attributes
+                params.preferredDisplayModeId = maxMode.modeId
+                window.attributes = params
+            }
+        }
+        
         // Remove window background to prevent splash screen overlap
         window.setBackgroundDrawable(null)
         

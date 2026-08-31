@@ -111,7 +111,7 @@ fun ConversionConfigScreen(
         "excel_to_pdf" -> arrayOf("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.ms-excel", "text/csv")
         "text_to_pdf" -> arrayOf("text/plain")
         "md_to_pdf" -> arrayOf("text/markdown", "text/x-markdown", "text/plain")
-        "pdf_to_images", "split_pdf", "compress_pdf", "protect_pdf", "organize_pdf", "merge_pdf" -> arrayOf("application/pdf")
+        "pdf_to_images", "split_pdf", "compress_pdf", "protect_pdf", "unlock_pdf", "organize_pdf", "merge_pdf" -> arrayOf("application/pdf")
         "images_to_pdf", "compress_images", "image_converter" -> arrayOf("image/*")
         else -> arrayOf("*/*")
     }
@@ -861,6 +861,11 @@ fun ConversionConfigScreenContent(
                         allowEditing = state.allowEditing,
                         onAllowEditingChange = onAllowEditingChanged
                     )
+                } else if (state.conversionType?.id == "unlock_pdf") {
+                    UnlockCockpit(
+                        password = state.pdfPassword,
+                        onPasswordChange = onPdfPasswordChanged
+                    )
                 }
 
                 // Output Name
@@ -1014,6 +1019,44 @@ private fun SecurityCockpit(
                     icon = Icons.Default.Edit,
                     checked = allowEditing,
                     onCheckedChange = onAllowEditingChange
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun UnlockCockpit(
+    password: String,
+    onPasswordChange: (String) -> Unit
+) {
+    ConfigSection(title = "Unlock Settings") {
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                var passwordVisible by remember { mutableStateOf(false) }
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = onPasswordChange,
+                    label = { Text("PDF Password") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    singleLine = true,
+                    leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
+                    visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        val image = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff
+                        IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                            Icon(imageVector = image, contentDescription = null)
+                        }
+                    }
+                )
+                Text(
+                    text = "Please provide the current password to permanently unlock this PDF.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
