@@ -63,6 +63,8 @@ class MainActivity : ComponentActivity() {
         
         val isLowEnd = (getSystemService(android.content.Context.ACTIVITY_SERVICE) as android.app.ActivityManager).isLowRamDevice
 
+        // Clean app cache on startup if > 100MB
+        cleanCacheIfOverLimit()
 
         // Immediate exit for all devices to reduce splash screen delay to zero.
         splashScreen.setOnExitAnimationListener { splashScreenView ->
@@ -238,6 +240,30 @@ class MainActivity : ComponentActivity() {
                     ) {}
                 }
             }
+        }
+    }
+
+    private fun cleanCacheIfOverLimit() {
+        try {
+            val cache = cacheDir ?: return
+            fun getFolderSize(dir: java.io.File): Long {
+                var size = 0L
+                dir.listFiles()?.forEach { file ->
+                    size += if (file.isDirectory) getFolderSize(file) else file.length()
+                }
+                return size
+            }
+
+            var totalSize = getFolderSize(cache)
+            externalCacheDir?.let { totalSize += getFolderSize(it) }
+
+            val limitBytes = 100 * 1024 * 1024L // 100 MB
+            if (totalSize > limitBytes) {
+                cache.listFiles()?.forEach { file -> file.deleteRecursively() }
+                externalCacheDir?.listFiles()?.forEach { file -> file.deleteRecursively() }
+            }
+        } catch (_: Exception) {
+            // Ignore cache cleanup failure
         }
     }
 }

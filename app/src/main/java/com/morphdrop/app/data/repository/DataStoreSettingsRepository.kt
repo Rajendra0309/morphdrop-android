@@ -32,6 +32,10 @@ class DataStoreSettingsRepository @Inject constructor(
         val LAST_UPDATE_CHECK = longPreferencesKey("last_update_check")
         val READING_MODE = stringPreferencesKey("reading_mode")
         val SEPIA_INTENSITY = floatPreferencesKey("sepia_intensity")
+        val LAST_IMAGE_FORMAT = stringPreferencesKey("last_image_format")
+        val LAST_IMAGE_QUALITY = androidx.datastore.preferences.core.intPreferencesKey("last_image_quality")
+        val LAST_IMAGE_RESIZE_OPTION = stringPreferencesKey("last_image_resize_option")
+        val LAST_STRIP_METADATA = booleanPreferencesKey("last_strip_metadata")
     }
 
     override val themeMode: Flow<ThemeMode> = context.dataStore.data.map { preferences ->
@@ -68,6 +72,22 @@ class DataStoreSettingsRepository @Inject constructor(
         preferences[PreferencesKeys.SEPIA_INTENSITY] ?: 0.5f
     }
 
+    override val lastImageFormat: Flow<String> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.LAST_IMAGE_FORMAT] ?: "jpg"
+    }
+
+    override val lastImageQuality: Flow<Int> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.LAST_IMAGE_QUALITY] ?: 90
+    }
+
+    override val lastImageResizeOption: Flow<String> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.LAST_IMAGE_RESIZE_OPTION] ?: "Original"
+    }
+
+    override val lastStripMetadata: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.LAST_STRIP_METADATA] ?: false
+    }
+
     override suspend fun setThemeMode(mode: ThemeMode) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.THEME_MODE] = mode.name
@@ -101,6 +121,30 @@ class DataStoreSettingsRepository @Inject constructor(
     override suspend fun setSepiaIntensity(intensity: Float) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.SEPIA_INTENSITY] = intensity
+        }
+    }
+
+    override suspend fun setLastImageFormat(format: String) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.LAST_IMAGE_FORMAT] = format
+        }
+    }
+
+    override suspend fun setLastImageQuality(quality: Int) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.LAST_IMAGE_QUALITY] = quality
+        }
+    }
+
+    override suspend fun setLastImageResizeOption(option: String) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.LAST_IMAGE_RESIZE_OPTION] = option
+        }
+    }
+
+    override suspend fun setLastStripMetadata(strip: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.LAST_STRIP_METADATA] = strip
         }
     }
 }

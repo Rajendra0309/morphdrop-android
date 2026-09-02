@@ -142,7 +142,6 @@ fun InteractiveCropDialog(
                     }
                     
                     sourceBitmap = finalBitmap
-                    // Force re-initialization of bounds when rotation changes
                     isInitialized = false
                 }
             } catch (e: Exception) {
@@ -162,7 +161,8 @@ fun InteractiveCropDialog(
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text("Edit Crop", style = MaterialTheme.typography.titleMedium) },
+                    title = { Text("Edit Crop", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) },
+                    modifier = Modifier.statusBarsPadding(),
                     navigationIcon = {
                         IconButton(onClick = onDismiss) {
                             Icon(Icons.Default.Close, contentDescription = "Cancel")
@@ -175,8 +175,8 @@ fun InteractiveCropDialog(
                         TextButton(
                             onClick = {
                                 if (sourceBitmap != null) {
-                                    val scaleX = originalSize.width.toFloat() / imageBounds.width
-                                    val scaleY = originalSize.height.toFloat() / imageBounds.height
+                                    val scaleX = originalSize.width.toFloat() / imageBounds.width.coerceAtLeast(1f)
+                                    val scaleY = originalSize.height.toFloat() / imageBounds.height.coerceAtLeast(1f)
                                     
                                     val left = ((cropRect.left - imageBounds.left) * scaleX).toInt()
                                         .coerceIn(0, originalSize.width)
@@ -199,7 +199,10 @@ fun InteractiveCropDialog(
             bottomBar = {
                 Surface(
                     tonalElevation = 3.dp,
-                    modifier = Modifier.fillMaxWidth()
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
                 ) {
                     Row(
                         modifier = Modifier
@@ -228,12 +231,15 @@ fun InteractiveCropDialog(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding)
-                    .background(Color.Black)
+                    .background(MaterialTheme.colorScheme.background)
             ) {
                 if (sourceBitmap != null) {
                     val imageBitmap = sourceBitmap!!.asImageBitmap()
                     val primaryColor = MaterialTheme.colorScheme.primary
-                    
+                    val surfaceColor = MaterialTheme.colorScheme.surface
+                    val scrimColor = MaterialTheme.colorScheme.scrim.copy(alpha = 0.6f)
+                    val outlineColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+
                     Canvas(
                         modifier = Modifier
                             .fillMaxSize()
@@ -300,12 +306,12 @@ fun InteractiveCropDialog(
                             addRect(cropRect)
                             fillType = PathFillType.EvenOdd
                         }
-                        drawPath(overlayPath, color = Color.Black.copy(alpha = 0.6f))
+                        drawPath(overlayPath, color = scrimColor)
 
                         // Draw 3x3 Grid
                         if (isDragging) {
                             val gridStroke = 1.dp.toPx()
-                            val gridColor = Color.White.copy(alpha = 0.5f)
+                            val gridColor = outlineColor.copy(alpha = 0.5f)
                             for (i in 1..2) {
                                 val x = cropRect.left + (cropRect.width * i / 3f)
                                 drawLine(gridColor, Offset(x, cropRect.top), Offset(x, cropRect.bottom), gridStroke)
@@ -316,14 +322,14 @@ fun InteractiveCropDialog(
 
                         // Draw Border
                         drawRect(
-                            color = Color.White,
+                            color = primaryColor,
                             topLeft = cropRect.topLeft,
                             size = cropRect.size,
                             style = Stroke(width = 2.dp.toPx())
                         )
 
                         // Draw 8 Handles
-                        val handleRadius = 5.dp.toPx()
+                        val handleRadius = 6.dp.toPx()
                         val handlePoints = listOf(
                             cropRect.topLeft to HandleType.TOP_LEFT,
                             Offset(cropRect.center.x, cropRect.top) to HandleType.TOP_CENTER,
@@ -336,8 +342,8 @@ fun InteractiveCropDialog(
                         )
 
                         handlePoints.forEach { (point, type) ->
-                            val color = if (activeHandle == type) primaryColor else Color.White
-                            drawCircle(Color.Black.copy(alpha = 0.2f), radius = handleRadius + 2f, center = point)
+                            val color = if (activeHandle == type) primaryColor else primaryColor.copy(alpha = 0.8f)
+                            drawCircle(surfaceColor, radius = handleRadius + 2f, center = point)
                             drawCircle(color, radius = handleRadius, center = point)
                         }
                     }
@@ -362,7 +368,7 @@ private fun RatioItem(
         Surface(
             onClick = onClick,
             shape = RoundedCornerShape(12.dp),
-            color = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f) else Color.Transparent,
+            color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer,
             border = BorderStroke(
                 width = if (isSelected) 2.dp else 1.dp,
                 color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
@@ -412,13 +418,11 @@ private fun getHandleAt(offset: Offset, rect: Rect, threshold: Float): HandleTyp
     val x = offset.x
     val y = offset.y
     
-    // Corners
     if (abs(x - rect.left) < threshold && abs(y - rect.top) < threshold) return HandleType.TOP_LEFT
     if (abs(x - rect.right) < threshold && abs(y - rect.top) < threshold) return HandleType.TOP_RIGHT
     if (abs(x - rect.left) < threshold && abs(y - rect.bottom) < threshold) return HandleType.BOTTOM_LEFT
     if (abs(x - rect.right) < threshold && abs(y - rect.bottom) < threshold) return HandleType.BOTTOM_RIGHT
     
-    // Edges
     if (abs(x - rect.center.x) < threshold && abs(y - rect.top) < threshold) return HandleType.TOP_CENTER
     if (abs(x - rect.center.x) < threshold && abs(y - rect.bottom) < threshold) return HandleType.BOTTOM_CENTER
     if (abs(x - rect.left) < threshold && abs(y - rect.center.y) < threshold) return HandleType.LEFT_CENTER
@@ -519,7 +523,6 @@ private fun updateCropRect(
         HandleType.NONE -> {}
     }
 
-    // Constraints
     if (right - left < minSize) {
         if (handle == HandleType.TOP_LEFT || handle == HandleType.BOTTOM_LEFT || handle == HandleType.LEFT_CENTER) left = right - minSize else right = left + minSize
     }
@@ -527,7 +530,6 @@ private fun updateCropRect(
         if (handle == HandleType.TOP_LEFT || handle == HandleType.TOP_RIGHT || handle == HandleType.TOP_CENTER) top = bottom - minSize else bottom = top + minSize
     }
 
-    // Boundary check
     left = left.coerceAtLeast(bounds.left)
     top = top.coerceAtLeast(bounds.top)
     right = right.coerceAtMost(bounds.right)

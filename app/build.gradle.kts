@@ -84,6 +84,9 @@ dependencies {
     // Coil
     implementation(libs.io.coil.kt.coil.compose)
     
+    // AppCompat
+    implementation(libs.androidx.appcompat)
+    
     // Lottie
     implementation(libs.com.airbnb.android.lottie.compose)
     

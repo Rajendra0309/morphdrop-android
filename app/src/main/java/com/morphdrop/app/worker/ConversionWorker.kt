@@ -29,6 +29,9 @@ import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @HiltWorker
 class ConversionWorker @AssistedInject constructor(
@@ -76,8 +79,10 @@ class ConversionWorker @AssistedInject constructor(
         // Advanced Image Tool Keys
         const val KEY_TARGET_WIDTH = "target_width"
         const val KEY_TARGET_HEIGHT = "target_height"
+        const val KEY_RESIZE_SCALE = "resize_scale"
         const val KEY_PADDING_COLOR = "padding_color"
         const val KEY_TARGET_SIZE_KB = "target_size_kb"
+        const val KEY_STRIP_METADATA = "strip_metadata"
         const val KEY_CROP_RECT_LEFT = "crop_rect_left"
         const val KEY_CROP_RECT_TOP = "crop_rect_top"
         const val KEY_CROP_RECT_RIGHT = "crop_rect_right"
@@ -88,6 +93,11 @@ class ConversionWorker @AssistedInject constructor(
         val conversionType = inputData.getString(KEY_CONVERSION_TYPE) ?: "File Conversion"
         val startTime = System.currentTimeMillis()
         val notificationId = id.hashCode()
+        val cancelPendingIntent = androidx.work.WorkManager.getInstance(appContext).createCancelPendingIntent(id)
+
+        var convertedCount = 0
+        var totalImageCount = 0
+        var isBatchImageConversion = false
 
         fun checkCancellation() {
             if (isStopped) throw kotlinx.coroutines.CancellationException("Worker stopped by user")
@@ -115,30 +125,35 @@ class ConversionWorker @AssistedInject constructor(
         } else outputFileNameInput
 
         val generatedFileNames = mutableListOf<String>()
-        generatedFileNames.add(outputFileName)
 
         try {
-
             try {
                 val foregroundInfo = notificationHelper.createForegroundInfo(
                     notificationId,
-                    conversionType,
-                    0
+                    mapIdToDisplayName(conversionType),
+                    0,
+                    cancelPendingIntent
                 )
                 setForeground(foregroundInfo)
             } catch (_: Throwable) {
-                // Foreground service may be constrained by OS policy or missing permission
+                // Foreground service may be constrained by OS policy
             }
-            notificationHelper.showProgressNotification(notificationId, conversionType, 10)
+
+            notificationHelper.showProgressNotification(
+                notificationId,
+                mapIdToDisplayName(conversionType),
+                5,
+                cancelPendingIntent
+            )
             setProgress(workDataOf(
-                "progress" to 15,
+                "progress" to 5,
                 "output_name" to outputFileName
             ))
 
             val resultUris: List<Uri> = when (conversionType) {
                 "pdf_to_images" -> {
                     checkCancellation()
-                    notificationHelper.showProgressNotification(notificationId, conversionType, 30)
+                    notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 30, cancelPendingIntent)
                     setProgress(workDataOf("progress" to 30))
                     val uri = Uri.parse(requireNotNull(inputUriString))
                     val quality = inputData.getInt(KEY_QUALITY, 80)
@@ -153,20 +168,20 @@ class ConversionWorker @AssistedInject constructor(
                         outputFolderName = outputFileName
                     )
                     checkCancellation()
-                    notificationHelper.showProgressNotification(notificationId, conversionType, 80)
+                    notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 80, cancelPendingIntent)
                     setProgress(workDataOf("progress" to 80))
                     result
                 }
 
                 "images_to_pdf", "image_to_pdf" -> {
                     checkCancellation()
-                    notificationHelper.showProgressNotification(notificationId, conversionType, 30)
+                    notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 30, cancelPendingIntent)
                     setProgress(workDataOf("progress" to 30))
                     val uris = inputUrisArray?.map { Uri.parse(it) }
                         ?: listOf(Uri.parse(requireNotNull(inputUriString)))
                     val result = listOf(imagesToPdfUseCase(uris, outputFileName = outputFileName))
                     checkCancellation()
-                    notificationHelper.showProgressNotification(notificationId, conversionType, 80)
+                    notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 80, cancelPendingIntent)
                     setProgress(workDataOf("progress" to 80))
                     result
                 }
@@ -180,7 +195,7 @@ class ConversionWorker @AssistedInject constructor(
                         onProgress = { p ->
                             checkCancellation()
                             val mappedProgress = 20 + (p * 0.7).toInt()
-                            notificationHelper.showProgressNotification(notificationId, conversionType, mappedProgress)
+                            notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), mappedProgress, cancelPendingIntent)
                             kotlinx.coroutines.runBlocking { setProgress(workDataOf("progress" to mappedProgress)) }
                         }
                     ))
@@ -196,7 +211,7 @@ class ConversionWorker @AssistedInject constructor(
                         onProgress = { p ->
                             if (isStopped) return@textToPdfUseCase
                             val mappedProgress = 20 + (p * 0.7).toInt()
-                            notificationHelper.showProgressNotification(notificationId, conversionType, mappedProgress)
+                            notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), mappedProgress, cancelPendingIntent)
                             kotlinx.coroutines.runBlocking { setProgress(workDataOf("progress" to mappedProgress)) }
                         }
                     ))
@@ -204,66 +219,29 @@ class ConversionWorker @AssistedInject constructor(
                 }
 
                 "md_to_pdf", "markdown_to_pdf" -> {
-                    notificationHelper.showProgressNotification(notificationId, conversionType, 30)
+                    notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 30, cancelPendingIntent)
                     setProgress(workDataOf("progress" to 30))
                     val uri = Uri.parse(requireNotNull(inputUriString))
                     val result = listOf(mdToPdfUseCase(uri, outputFileName = outputFileName))
-                    notificationHelper.showProgressNotification(notificationId, conversionType, 80)
+                    notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 80, cancelPendingIntent)
                     setProgress(workDataOf("progress" to 80))
                     result
                 }
 
-                "image_converter" -> {
-                    notificationHelper.showProgressNotification(notificationId, conversionType, 30)
-                    setProgress(workDataOf("progress" to 30))
-                    val uri = Uri.parse(requireNotNull(inputUriString))
-                    val targetFormat = inputData.getString(KEY_TARGET_FORMAT) ?: "jpg"
-                    val quality = inputData.getInt(KEY_QUALITY, 90)
-                    
-                    val targetWidth = if (inputData.getInt(KEY_TARGET_WIDTH, -1) != -1) inputData.getInt(KEY_TARGET_WIDTH, -1) else null
-                    val targetHeight = if (inputData.getInt(KEY_TARGET_HEIGHT, -1) != -1) inputData.getInt(KEY_TARGET_HEIGHT, -1) else null
-                    val paddingColor = if (inputData.getInt(KEY_PADDING_COLOR, Int.MIN_VALUE) != Int.MIN_VALUE) inputData.getInt(KEY_PADDING_COLOR, 0) else null
-                    val targetSizeKb = if (inputData.getInt(KEY_TARGET_SIZE_KB, -1) != -1) inputData.getInt(KEY_TARGET_SIZE_KB, -1) else null
-                    
-                    val cropLeft = inputData.getInt(KEY_CROP_RECT_LEFT, -1)
-                    val cropRect = if (cropLeft != -1) {
-                        android.graphics.Rect(
-                            cropLeft,
-                            inputData.getInt(KEY_CROP_RECT_TOP, 0),
-                            inputData.getInt(KEY_CROP_RECT_RIGHT, 0),
-                            inputData.getInt(KEY_CROP_RECT_BOTTOM, 0)
-                        )
-                    } else null
-                    
-                    val rotationDegrees = inputData.getInt(KEY_ROTATION_DEGREES, 0)
-
-                    val result = listOf(imageConverterUseCase(
-                        inputUri = uri, 
-                        outputFormat = targetFormat, 
-                        quality = quality, 
-                        targetWidth = targetWidth,
-                        targetHeight = targetHeight,
-                        paddingColor = paddingColor,
-                        cropRect = cropRect,
-                        rotationDegrees = rotationDegrees,
-                        targetSizeKb = targetSizeKb,
-                        outputFileName = outputFileName
-                    ))
-                    notificationHelper.showProgressNotification(notificationId, conversionType, 85)
-                    setProgress(workDataOf("progress" to 85))
-                    result
-                }
-
-                "compress_images" -> {
-                    notificationHelper.showProgressNotification(notificationId, conversionType, 20)
-                    setProgress(workDataOf("progress" to 20))
+                "image_converter", "compress_images" -> {
                     val uris = inputUrisArray?.map { Uri.parse(it) }
                         ?: listOf(Uri.parse(requireNotNull(inputUriString)))
+                    
+                    totalImageCount = uris.size
+                    isBatchImageConversion = totalImageCount > 1
+
                     val targetFormat = inputData.getString(KEY_TARGET_FORMAT) ?: "jpg"
-                    val quality = inputData.getInt(KEY_QUALITY, 60)
+                    val quality = inputData.getInt(KEY_QUALITY, 90)
+                    val stripMetadata = inputData.getBoolean(KEY_STRIP_METADATA, false)
                     
                     val targetWidth = if (inputData.getInt(KEY_TARGET_WIDTH, -1) != -1) inputData.getInt(KEY_TARGET_WIDTH, -1) else null
                     val targetHeight = if (inputData.getInt(KEY_TARGET_HEIGHT, -1) != -1) inputData.getInt(KEY_TARGET_HEIGHT, -1) else null
+                    val resizeScaleFloat = if (inputData.getFloat(KEY_RESIZE_SCALE, -1f) > 0f) inputData.getFloat(KEY_RESIZE_SCALE, -1f) else null
                     val paddingColor = if (inputData.getInt(KEY_PADDING_COLOR, Int.MIN_VALUE) != Int.MIN_VALUE) inputData.getInt(KEY_PADDING_COLOR, 0) else null
                     val targetSizeKb = if (inputData.getInt(KEY_TARGET_SIZE_KB, -1) != -1) inputData.getInt(KEY_TARGET_SIZE_KB, -1) else null
                     
@@ -279,31 +257,74 @@ class ConversionWorker @AssistedInject constructor(
                     
                     val rotationDegrees = inputData.getInt(KEY_ROTATION_DEGREES, 0)
 
-                    val result = uris.mapIndexed { idx, u ->
-                        val genName = "compressed_${idx}_${System.currentTimeMillis()}.$targetFormat"
+                    // Create folder name: MorphDrop/ directly for 1 file, or Batch_YYYY-MM-DD_HH-mm subfolder for multiple
+                    val batchSubFolder = if (isBatchImageConversion) {
+                        val timestamp = SimpleDateFormat("yyyy-MM-dd_HH-mm", Locale.US).format(Date())
+                        "MorphDrop/Batch_[$timestamp]"
+                    } else null
+
+                    val convertedUris = mutableListOf<Uri>()
+
+                    for ((idx, u) in uris.withIndex()) {
+                        checkCancellation()
+
+                        val currentStatusText = if (isBatchImageConversion) {
+                            "Converting ${idx + 1} of $totalImageCount..."
+                        } else {
+                            "Converting Image..."
+                        }
+
+                        val progressPercent = ((idx.toFloat() / totalImageCount) * 90).toInt().coerceAtLeast(10)
+                        notificationHelper.showProgressNotification(
+                            notificationId,
+                            currentStatusText,
+                            progressPercent,
+                            cancelPendingIntent
+                        )
+                        setProgress(workDataOf(
+                            "progress" to progressPercent,
+                            "stage_text" to currentStatusText,
+                            "converted_count" to convertedCount,
+                            "total_count" to totalImageCount
+                        ))
+
+                        val originalName = FileHelper.getFileName(appContext, u).substringBeforeLast('.')
+                        val genName = if (isBatchImageConversion) {
+                            "$originalName.$targetFormat"
+                        } else {
+                            outputFileName
+                        }
+
                         generatedFileNames.add(genName)
-                        val res = imageConverterUseCase(
+
+                        val convertedUri = imageConverterUseCase(
                             inputUri = u,
                             outputFormat = targetFormat,
                             quality = quality,
                             targetWidth = targetWidth,
                             targetHeight = targetHeight,
+                            resizeScale = resizeScaleFloat,
                             paddingColor = paddingColor,
-                            targetSizeKb = targetSizeKb,
                             cropRect = cropRect,
                             rotationDegrees = rotationDegrees,
+                            targetSizeKb = targetSizeKb,
+                            stripMetadata = stripMetadata,
+                            outputFolderName = batchSubFolder,
                             outputFileName = genName
                         )
-                        val p = 20 + ((idx + 1).toFloat() / uris.size * 60).toInt()
-                        notificationHelper.showProgressNotification(notificationId, conversionType, p)
-                        setProgress(workDataOf("progress" to p))
-                        res
+
+                        convertedUris.add(convertedUri)
+                        convertedCount++
                     }
-                    result
+
+                    checkCancellation()
+                    notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 100, cancelPendingIntent)
+                    setProgress(workDataOf("progress" to 100))
+                    convertedUris
                 }
 
                 "merge_pdf", "merge_pdfs" -> {
-                    notificationHelper.showProgressNotification(notificationId, conversionType, 30)
+                    notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 30, cancelPendingIntent)
                     setProgress(workDataOf("progress" to 30))
                     
                     val payload = inputData.getString("merge_payload")
@@ -326,13 +347,13 @@ class ConversionWorker @AssistedInject constructor(
                         listOf(mergePdfUseCase.legacy(uris, outputFileName = outputFileName))
                     }
                     
-                    notificationHelper.showProgressNotification(notificationId, conversionType, 85)
+                    notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 85, cancelPendingIntent)
                     setProgress(workDataOf("progress" to 85))
                     result
                 }
 
                 "split_pdf" -> {
-                    notificationHelper.showProgressNotification(notificationId, conversionType, 30)
+                    notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 30, cancelPendingIntent)
                     setProgress(workDataOf("progress" to 30))
                     val uri = Uri.parse(requireNotNull(inputUriString))
                     
@@ -357,13 +378,13 @@ class ConversionWorker @AssistedInject constructor(
                         splitEveryN = everyN,
                         outputFolderName = outName
                     )
-                    notificationHelper.showProgressNotification(notificationId, conversionType, 85)
+                    notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 85, cancelPendingIntent)
                     setProgress(workDataOf("progress" to 85))
                     result
                 }
 
                 "compress_pdf" -> {
-                    notificationHelper.showProgressNotification(notificationId, conversionType, 30)
+                    notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 30, cancelPendingIntent)
                     setProgress(workDataOf("progress" to 30))
                     val uri = Uri.parse(requireNotNull(inputUriString))
                     val quality = inputData.getInt(KEY_QUALITY, 50)
@@ -380,36 +401,36 @@ class ConversionWorker @AssistedInject constructor(
                         targetSizeKb = targetSizeKb,
                         outputFileName = outputFileName
                     )
-                    notificationHelper.showProgressNotification(notificationId, conversionType, 85)
+                    notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 85, cancelPendingIntent)
                     setProgress(workDataOf("progress" to 85))
                     listOf(compressResult.outputUri)
                 }
 
                 "rotate_pdf" -> {
-                    notificationHelper.showProgressNotification(notificationId, conversionType, 30)
+                    notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 30, cancelPendingIntent)
                     setProgress(workDataOf("progress" to 30))
                     val uri = Uri.parse(requireNotNull(inputUriString))
                     val degrees = inputData.getInt(KEY_ROTATION_DEGREES, 90)
                     val result = listOf(rotatePdfPagesUseCase(uri, rotationDegrees = degrees, outputFileName = outputFileName))
-                    notificationHelper.showProgressNotification(notificationId, conversionType, 85)
+                    notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 85, cancelPendingIntent)
                     setProgress(workDataOf("progress" to 85))
                     result
                 }
 
                 "reorder_pdf" -> {
-                    notificationHelper.showProgressNotification(notificationId, conversionType, 30)
+                    notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 30, cancelPendingIntent)
                     setProgress(workDataOf("progress" to 30))
                     val uri = Uri.parse(requireNotNull(inputUriString))
                     val pageOrderStr = requireNotNull(inputData.getString(KEY_PAGE_ORDER))
                     val orderList = pageOrderStr.split(",").map { it.trim().toInt() }
                     val result = listOf(reorderPdfPagesUseCase(uri, newOrder = orderList, outputFileName = outputFileName))
-                    notificationHelper.showProgressNotification(notificationId, conversionType, 85)
+                    notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 85, cancelPendingIntent)
                     setProgress(workDataOf("progress" to 85))
                     result
                 }
 
                 "protect_pdf", "unlock_pdf" -> {
-                    notificationHelper.showProgressNotification(notificationId, conversionType, 30)
+                    notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 30, cancelPendingIntent)
                     setProgress(workDataOf("progress" to 30))
                     val uri = Uri.parse(requireNotNull(inputUriString))
                     val password = requireNotNull(inputData.getString(KEY_PASSWORD))
@@ -434,13 +455,13 @@ class ConversionWorker @AssistedInject constructor(
                         allowEditing = allowEditing,
                         outputFileName = outputFileName
                     ))
-                    notificationHelper.showProgressNotification(notificationId, conversionType, 85)
+                    notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 85, cancelPendingIntent)
                     setProgress(workDataOf("progress" to 85))
                     result
                 }
 
                 "page_editor" -> {
-                    notificationHelper.showProgressNotification(notificationId, conversionType, 30)
+                    notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 30, cancelPendingIntent)
                     setProgress(workDataOf("progress" to 30))
                     val uri = Uri.parse(requireNotNull(inputUriString))
                     val pageOrderStr = requireNotNull(inputData.getString(KEY_PAGE_ORDER))
@@ -453,7 +474,7 @@ class ConversionWorker @AssistedInject constructor(
                             parts[0].toInt() to parts[1].toInt()
                         }
                     val result = listOf(pdfPageEditorUseCase(uri, newOrder = orderList, rotations = rotationsMap, outputFileName = outputFileName))
-                    notificationHelper.showProgressNotification(notificationId, conversionType, 85)
+                    notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 85, cancelPendingIntent)
                     setProgress(workDataOf("progress" to 85))
                     result
                 }
@@ -461,17 +482,16 @@ class ConversionWorker @AssistedInject constructor(
                 else -> throw IllegalArgumentException("Unsupported conversion type: $conversionType")
             }
 
-            notificationHelper.showProgressNotification(notificationId, conversionType, 100)
+            notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 100, cancelPendingIntent)
             setProgress(workDataOf("progress" to 100))
 
             val duration = System.currentTimeMillis() - startTime
             val outputNames = resultUris.joinToString(", ") { uri ->
-                val name = FileHelper.getFileName(appContext, uri as Uri)
+                val name = FileHelper.getFileName(appContext, uri)
                 if (name == "unknown" || name.isBlank()) uri.lastPathSegment ?: "converted_file" else name
             }
             val outUrisString = resultUris.joinToString(",") { it.toString() }
             
-            // Use the actual output filename if possible
             val finalOutputName = if (resultUris.size == 1) {
                 FileHelper.getFileName(appContext, resultUris.first())
             } else {
@@ -494,7 +514,7 @@ class ConversionWorker @AssistedInject constructor(
             val primaryOutputUri = resultUris.firstOrNull()
             notificationHelper.showCompletionNotification(
                 notificationId,
-                conversionType,
+                mapIdToDisplayName(conversionType),
                 primaryOutputUri
             )
 
@@ -507,12 +527,39 @@ class ConversionWorker @AssistedInject constructor(
         } catch (e: Exception) {
             // Handle cancellation gracefully
             if (e is kotlinx.coroutines.CancellationException || isStopped) {
-                // If the user cancelled, do not log to history and do not show completion notifications
-                // Clean up any incomplete files/folders generated during this execution
+                if (isBatchImageConversion && convertedCount > 0) {
+                    val cancelMessage = "Conversion cancelled. $convertedCount of $totalImageCount images converted."
+                    notificationHelper.showCancelledNotification(
+                        notificationId,
+                        mapIdToDisplayName(conversionType),
+                        cancelMessage
+                    )
+                    return@withContext Result.failure(
+                        workDataOf(
+                            "is_cancelled" to true,
+                            "cancel_message" to cancelMessage,
+                            "converted_count" to convertedCount,
+                            "total_count" to totalImageCount
+                        )
+                    )
+                }
+
+                // If single file cancelled, clean up generated incomplete files
                 generatedFileNames.forEach { name ->
                     FileHelper.deleteFileByName(appContext, "MorphDrop", name)
                 }
-                return@withContext Result.failure()
+                
+                notificationHelper.showCancelledNotification(
+                    notificationId,
+                    mapIdToDisplayName(conversionType),
+                    "Conversion cancelled."
+                )
+                return@withContext Result.failure(
+                    workDataOf(
+                        "is_cancelled" to true,
+                        "cancel_message" to "Conversion cancelled."
+                    )
+                )
             }
 
             val duration = System.currentTimeMillis() - startTime
@@ -531,7 +578,7 @@ class ConversionWorker @AssistedInject constructor(
 
             notificationHelper.showErrorNotification(
                 notificationId,
-                conversionType,
+                mapIdToDisplayName(conversionType),
                 e.localizedMessage ?: "Conversion failed"
             )
 

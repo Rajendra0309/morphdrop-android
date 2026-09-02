@@ -47,6 +47,10 @@ kotlinxCoroutinesCore = "1.11.0"
 # Gson
 gson = "2.11.0"
 
+# uCrop & AppCompat
+ucrop = "2.2.8"
+appcompat = "1.7.0"
+
 [libraries]
 # Core Android
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -101,6 +105,9 @@ google-gson = { group = "com.google.code.gson", name = "gson", version.ref = "gs
 
 # PDF Processing
 com-tomroush-pdfbox-android = { group = "com.tom-roush", name = "pdfbox-android", version.ref = "pdfboxAndroid" }
+
+# AppCompat
+androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
 
 # Office Documents
 org-apache-poi-poi-ooxml = { group = "org.apache.poi", name = "poi-ooxml", version.ref = "poi" }
