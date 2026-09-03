@@ -54,49 +54,6 @@ class OcrUseCase @Inject constructor(
         TextRecognition.getClient(KoreanTextRecognizerOptions.Builder().build())
     }
 
-    /**
-     * Automatic Multi-Script Text Extraction.
-     * Runs recognition engines across supported scripts in parallel and combines/picks the best text detected.
-     */
-    suspend fun processBitmapAuto(bitmap: Bitmap): Result<String> = withContext(Dispatchers.Default) {
-        try {
-            val inputImage = InputImage.fromBitmap(bitmap, 0)
-
-            coroutineScope {
-                val latinDeferred = async { runCatching { latinRecognizer.process(inputImage).await().text.trim() }.getOrDefault("") }
-                val devanagariDeferred = async { runCatching { devanagariRecognizer.process(inputImage).await().text.trim() }.getOrDefault("") }
-                val chineseDeferred = async { runCatching { chineseRecognizer.process(inputImage).await().text.trim() }.getOrDefault("") }
-                val japaneseDeferred = async { runCatching { japaneseRecognizer.process(inputImage).await().text.trim() }.getOrDefault("") }
-                val koreanDeferred = async { runCatching { koreanRecognizer.process(inputImage).await().text.trim() }.getOrDefault("") }
-
-                val latinText = latinDeferred.await()
-                val devanagariText = devanagariDeferred.await()
-                val chineseText = chineseDeferred.await()
-                val japaneseText = japaneseDeferred.await()
-                val koreanText = koreanDeferred.await()
-
-                val results = listOf(latinText, devanagariText, chineseText, japaneseText, koreanText)
-                    .filter { it.isNotBlank() }
-
-                if (results.isEmpty()) {
-                    Result.failure(OcrException.NoTextFoundException())
-                } else {
-                    // Combine non-duplicate text results or pick the richest extraction
-                    val bestText = selectBestText(results)
-                    Result.success(bestText)
-                }
-            }
-        } catch (_: OutOfMemoryError) {
-            Result.failure(OcrException.MemoryException())
-        } catch (e: Exception) {
-            val message = e.localizedMessage ?: ""
-            if (message.contains("download", ignoreCase = true) || message.contains("network", ignoreCase = true)) {
-                Result.failure(OcrException.ModelDownloadException(e.message))
-            } else {
-                Result.failure(OcrException.ExtractionFailedException(e.message))
-            }
-        }
-    }
 
     suspend fun processBitmapForScript(bitmap: Bitmap, script: OcrScript): Result<String> = withContext(Dispatchers.Default) {
         val recognizer = when (script) {
@@ -122,11 +79,11 @@ class OcrUseCase @Inject constructor(
         }
     }
 
-    suspend fun extractFromImageUri(uri: Uri): Result<String> = withContext(Dispatchers.IO) {
+    suspend fun extractFromImageUri(uri: Uri, script: OcrScript): Result<String> = withContext(Dispatchers.IO) {
         var bitmap: Bitmap? = null
         try {
             bitmap = loadUniversalScaledBitmap(context, uri)
-            processBitmapAuto(bitmap)
+            processBitmapForScript(bitmap, script)
         } catch (_: OutOfMemoryError) {
             Result.failure(OcrException.MemoryException())
         } catch (e: Exception) {
@@ -151,11 +108,11 @@ class OcrUseCase @Inject constructor(
         }
     }
 
-    suspend fun extractFromPdfPage(uri: Uri, pageIndex: Int): Result<String> = withContext(Dispatchers.IO) {
+    suspend fun extractFromPdfPage(uri: Uri, pageIndex: Int, script: OcrScript): Result<String> = withContext(Dispatchers.IO) {
         var bitmap: Bitmap? = null
         try {
             bitmap = renderPdfPage(context, uri, pageIndex)
-            processBitmapAuto(bitmap)
+            processBitmapForScript(bitmap, script)
         } catch (_: OutOfMemoryError) {
             Result.failure(OcrException.MemoryException())
         } catch (e: Exception) {
@@ -167,6 +124,7 @@ class OcrUseCase @Inject constructor(
 
     suspend fun extractFromPdfAllPages(
         uri: Uri,
+        script: OcrScript,
         onProgress: (currentPage: Int, totalPages: Int) -> Unit
     ): Result<String> = withContext(Dispatchers.IO) {
         val totalPages = getPdfPageCount(uri)
@@ -182,7 +140,7 @@ class OcrUseCase @Inject constructor(
             var pageBitmap: Bitmap? = null
             try {
                 pageBitmap = renderPdfPage(context, uri, pageIndex)
-                val pageResult = processBitmapAuto(pageBitmap)
+                val pageResult = processBitmapForScript(pageBitmap, script)
                 if (pageResult.isSuccess) {
                     val text = pageResult.getOrNull()
                     if (!text.isNullOrBlank()) {
@@ -339,28 +297,7 @@ class OcrUseCase @Inject constructor(
         }
         return ParcelFileDescriptor.open(tempFile, ParcelFileDescriptor.MODE_READ_ONLY)
     }
-
-    private fun selectBestText(results: List<String>): String {
-        if (results.isEmpty()) return ""
-        if (results.size == 1) return results.first()
-
-        val sorted = results.sortedByDescending { it.length }
-        val primary = sorted.first()
-
-        val lines = primary.split("\n").toMutableList()
-        for (i in 1 until sorted.size) {
-            val otherLines = sorted[i].split("\n")
-            for (line in otherLines) {
-                val trimmed = line.trim()
-                if (trimmed.length > 3 && lines.none { it.contains(trimmed, ignoreCase = true) }) {
-                    lines.add(trimmed)
-                }
-            }
-        }
-        return lines.joinToString("\n").trim()
-    }
 }
-
 sealed class OcrException(message: String) : Exception(message) {
     class NoTextFoundException : OcrException("No readable text detected. Try a clearer, well-lit image or a different page.")
     class MemoryException : OcrException("Image is too large for text extraction. Try a smaller image.")

@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.morphdrop.app.domain.model.OcrScript
 import javax.inject.Inject
 
 data class OcrUiState(
@@ -33,6 +34,7 @@ data class OcrUiState(
     val pdfPageCount: Int = 1,
     val selectedPage: Int = 1,
     val extractAllPages: Boolean = false,
+    val selectedScript: OcrScript = OcrScript.LATIN,
     val isExtracting: Boolean = false,
     val progressText: String = "",
     val progressFraction: Float = 0f,
@@ -130,6 +132,10 @@ class OcrViewModel @Inject constructor(
         _state.update { it.copy(extractAllPages = extractAll) }
     }
 
+    fun onScriptSelected(script: OcrScript) {
+        _state.update { it.copy(selectedScript = script) }
+    }
+
     private suspend fun loadThumbnail(context: Context, uri: Uri, isPdf: Boolean, pageIndex: Int) {
         _state.update { it.copy(isThumbnailLoading = true) }
         val bitmap: Bitmap? = withContext(Dispatchers.IO) {
@@ -156,6 +162,7 @@ class OcrViewModel @Inject constructor(
         val isPdf = _state.value.isPdf
         val extractAll = _state.value.extractAllPages
         val targetPage = _state.value.selectedPage
+        val targetScript = _state.value.selectedScript
 
         viewModelScope.launch {
             _state.update {
@@ -170,14 +177,14 @@ class OcrViewModel @Inject constructor(
 
             val result: Result<String> = if (!isPdf) {
                 _state.update { it.copy(progressText = "Extracting text from image...") }
-                ocrUseCase.extractFromImageUri(currentUri)
+                ocrUseCase.extractFromImageUri(currentUri, targetScript)
             } else if (!extractAll) {
                 val cachedText = _state.value.pageTextCache[targetPage]
                 if (cachedText != null) {
                     Result.success(cachedText)
                 } else {
                     _state.update { it.copy(progressText = "Extracting text from page $targetPage of ${_state.value.pdfPageCount}...") }
-                    val res = ocrUseCase.extractFromPdfPage(currentUri, targetPage - 1)
+                    val res = ocrUseCase.extractFromPdfPage(currentUri, targetPage - 1, targetScript)
                     if (res.isSuccess) {
                         val text = res.getOrDefault("")
                         _state.update { state ->
@@ -187,7 +194,7 @@ class OcrViewModel @Inject constructor(
                     res
                 }
             } else {
-                ocrUseCase.extractFromPdfAllPages(currentUri) { current, total ->
+                ocrUseCase.extractFromPdfAllPages(currentUri, targetScript) { current, total ->
                     val fraction = current.toFloat() / total.toFloat()
                     _state.update { state ->
                         state.copy(

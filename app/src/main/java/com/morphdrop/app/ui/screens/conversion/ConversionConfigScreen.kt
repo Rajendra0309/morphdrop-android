@@ -1,6 +1,7 @@
 package com.morphdrop.app.ui.screens.conversion
 
 import android.content.Context
+import android.content.res.Configuration
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -83,6 +84,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.morphdrop.app.domain.model.ConversionType
+import com.morphdrop.app.domain.model.FileMetadata
 import com.morphdrop.app.domain.model.FileType
 import com.morphdrop.app.domain.model.MetadataEditParams
 import com.morphdrop.app.ui.components.FormatBadge
@@ -1029,7 +1031,7 @@ private fun calculatePasswordStrength(password: String): Float {
     return score
 }
 
-@Preview(name = "Light Mode", showBackground = true, showSystemUi = true, device = Devices.PIXEL_7_PRO)
+@Preview(name = "Light Mode - Image Conversion", showBackground = true, showSystemUi = true, device = Devices.PIXEL_7_PRO)
 @Composable
 fun ConversionConfigScreenLightPreview() {
     MorphDropTheme(darkTheme = false) {
@@ -1050,6 +1052,210 @@ fun ConversionConfigScreenLightPreview() {
             ),
             isFolderOutput = false,
             isImageConversion = true,
+            onNavigateBack = {},
+            onPickFile = {},
+            onOutputFormatChanged = {},
+            onQualityChanged = {},
+            onResizeOptionSelected = {},
+            onStripMetadataChanged = {},
+            onWorkbenchItemClick = {},
+            onWorkbenchItemLongClick = {},
+            onSelectAllWorkbenchImages = {},
+            onDeselectAllWorkbenchImages = {},
+            onCropWorkbenchImage = {},
+            onRotateWorkbenchImage = {},
+            onResetWorkbenchImage = {},
+            onApplyWorkbenchEdit = {},
+            onCancelWorkbenchEdit = {},
+            onPageRangeStartChanged = {},
+            onPageRangeEndChanged = {},
+            onOutputFileNameChanged = {},
+            onTargetWidthChanged = {},
+            onTargetHeightChanged = {},
+            onPaddingColorChanged = {},
+            onTargetSizeKbChanged = {},
+            onCompressionPresetSelected = {},
+            onPdfCompressionPresetSelected = {},
+            onAspectRatioPresetSelected = {},
+            onPreviewUriChanged = {},
+            onCropRectChanged = { _, _, _, _ -> },
+            onShowCropDialog = {},
+            onShowColorPickerDialog = {},
+            onShowOrganizerDialog = {},
+            onPdfPasswordChanged = {},
+            onAllowPrintingChanged = {},
+            onAllowCopyingChanged = {},
+            onAllowEditingChanged = {},
+            onConvert = {}
+        )
+    }
+}
+
+@Preview(name = "Dark Mode - Image Conversion", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true, showSystemUi = true, device = Devices.PIXEL_7_PRO)
+@Composable
+fun ConversionConfigScreenDarkPreview() {
+    MorphDropTheme(darkTheme = true) {
+        ConversionConfigScreenContent(
+            state = ConversionConfigState(
+                conversionType = ConversionType.defaultList.first(),
+                selectedFileUris = listOf(Uri.parse("content://mock")),
+                selectedFileNames = listOf("Sample_Image.jpg"),
+                selectedFileSize = 1024L * 1024L * 2,
+                availableOutputFormats = listOf("png", "jpg", "webp"),
+                outputFormat = "png",
+                showQualitySlider = true,
+                quality = 85,
+                showPageRange = false,
+                outputFileName = "Sample_Image_Converted",
+                isConvertEnabled = true,
+                selectedPreviewUri = Uri.parse("content://mock")
+            ),
+            isFolderOutput = false,
+            isImageConversion = true,
+            onNavigateBack = {},
+            onPickFile = {},
+            onOutputFormatChanged = {},
+            onQualityChanged = {},
+            onResizeOptionSelected = {},
+            onStripMetadataChanged = {},
+            onWorkbenchItemClick = {},
+            onWorkbenchItemLongClick = {},
+            onSelectAllWorkbenchImages = {},
+            onDeselectAllWorkbenchImages = {},
+            onCropWorkbenchImage = {},
+            onRotateWorkbenchImage = {},
+            onResetWorkbenchImage = {},
+            onApplyWorkbenchEdit = {},
+            onCancelWorkbenchEdit = {},
+            onPageRangeStartChanged = {},
+            onPageRangeEndChanged = {},
+            onOutputFileNameChanged = {},
+            onTargetWidthChanged = {},
+            onTargetHeightChanged = {},
+            onPaddingColorChanged = {},
+            onTargetSizeKbChanged = {},
+            onCompressionPresetSelected = {},
+            onPdfCompressionPresetSelected = {},
+            onAspectRatioPresetSelected = {},
+            onPreviewUriChanged = {},
+            onCropRectChanged = { _, _, _, _ -> },
+            onShowCropDialog = {},
+            onShowColorPickerDialog = {},
+            onShowOrganizerDialog = {},
+            onPdfPasswordChanged = {},
+            onAllowPrintingChanged = {},
+            onAllowCopyingChanged = {},
+            onAllowEditingChanged = {},
+            onConvert = {}
+        )
+    }
+}
+
+@Preview(name = "Light Mode - Metadata Editor", showBackground = true, showSystemUi = true, device = Devices.PIXEL_7_PRO)
+@Composable
+fun ConversionConfigScreen_MetadataEditor_LightPreview() {
+    val metaType = ConversionType.defaultList.firstOrNull { it.id == "metadata_editor" } ?: ConversionType.defaultList.first()
+    MorphDropTheme(darkTheme = false) {
+        ConversionConfigScreenContent(
+            state = ConversionConfigState(
+                conversionType = metaType,
+                selectedFileUris = listOf(Uri.parse("content://mock")),
+                selectedFileNames = listOf("IMG_20240512_143000.jpg"),
+                selectedFileSize = 3450000L,
+                fileMetadata = FileMetadata(
+                    fileName = "IMG_20240512_143000.jpg",
+                    fileSize = 3450000L,
+                    fileSizeFormatted = "3.4 MB",
+                    mimeType = "image/jpeg",
+                    fileExtension = "jpg",
+                    fileType = FileType.JPG,
+                    cameraMake = "Google",
+                    cameraModel = "Pixel 7 Pro",
+                    author = "MorphDrop User",
+                    title = "Golden Gate Bridge",
+                    hasMetadata = true,
+                    isScrubbable = true,
+                    isEditable = true
+                ),
+                editAuthor = "MorphDrop User",
+                editTitle = "Golden Gate Bridge",
+                outputFileName = "IMG_20240512_143000_edited",
+                isConvertEnabled = true
+            ),
+            isFolderOutput = false,
+            isImageConversion = false,
+            onNavigateBack = {},
+            onPickFile = {},
+            onOutputFormatChanged = {},
+            onQualityChanged = {},
+            onResizeOptionSelected = {},
+            onStripMetadataChanged = {},
+            onWorkbenchItemClick = {},
+            onWorkbenchItemLongClick = {},
+            onSelectAllWorkbenchImages = {},
+            onDeselectAllWorkbenchImages = {},
+            onCropWorkbenchImage = {},
+            onRotateWorkbenchImage = {},
+            onResetWorkbenchImage = {},
+            onApplyWorkbenchEdit = {},
+            onCancelWorkbenchEdit = {},
+            onPageRangeStartChanged = {},
+            onPageRangeEndChanged = {},
+            onOutputFileNameChanged = {},
+            onTargetWidthChanged = {},
+            onTargetHeightChanged = {},
+            onPaddingColorChanged = {},
+            onTargetSizeKbChanged = {},
+            onCompressionPresetSelected = {},
+            onPdfCompressionPresetSelected = {},
+            onAspectRatioPresetSelected = {},
+            onPreviewUriChanged = {},
+            onCropRectChanged = { _, _, _, _ -> },
+            onShowCropDialog = {},
+            onShowColorPickerDialog = {},
+            onShowOrganizerDialog = {},
+            onPdfPasswordChanged = {},
+            onAllowPrintingChanged = {},
+            onAllowCopyingChanged = {},
+            onAllowEditingChanged = {},
+            onConvert = {}
+        )
+    }
+}
+
+@Preview(name = "Dark Mode - Metadata Editor", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true, showSystemUi = true, device = Devices.PIXEL_7_PRO)
+@Composable
+fun ConversionConfigScreen_MetadataEditor_DarkPreview() {
+    val metaType = ConversionType.defaultList.firstOrNull { it.id == "metadata_editor" } ?: ConversionType.defaultList.first()
+    MorphDropTheme(darkTheme = true) {
+        ConversionConfigScreenContent(
+            state = ConversionConfigState(
+                conversionType = metaType,
+                selectedFileUris = listOf(Uri.parse("content://mock")),
+                selectedFileNames = listOf("IMG_20240512_143000.jpg"),
+                selectedFileSize = 3450000L,
+                fileMetadata = FileMetadata(
+                    fileName = "IMG_20240512_143000.jpg",
+                    fileSize = 3450000L,
+                    fileSizeFormatted = "3.4 MB",
+                    mimeType = "image/jpeg",
+                    fileExtension = "jpg",
+                    fileType = FileType.JPG,
+                    cameraMake = "Google",
+                    cameraModel = "Pixel 7 Pro",
+                    author = "MorphDrop User",
+                    title = "Golden Gate Bridge",
+                    hasMetadata = true,
+                    isScrubbable = true,
+                    isEditable = true
+                ),
+                editAuthor = "MorphDrop User",
+                editTitle = "Golden Gate Bridge",
+                outputFileName = "IMG_20240512_143000_edited",
+                isConvertEnabled = true
+            ),
+            isFolderOutput = false,
+            isImageConversion = false,
             onNavigateBack = {},
             onPickFile = {},
             onOutputFormatChanged = {},

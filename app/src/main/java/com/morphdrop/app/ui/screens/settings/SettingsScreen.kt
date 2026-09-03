@@ -413,3 +413,24 @@ fun SettingsScreenLightPreview() {
         )
     }
 }
+
+@Preview(name = "Dark Mode", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true, showSystemUi = true, device = Devices.PIXEL_7_PRO)
+@Composable
+fun SettingsScreenDarkPreview() {
+    MorphDropTheme(darkTheme = true) {
+        SettingsScreenContent(
+            state = SettingsUiState(
+                themeMode = ThemeMode.DARK,
+                defaultOutputDirectory = "Downloads/MorphDrop",
+                cacheSizeFormatted = "12 MB",
+                appVersion = "1.0.0"
+            ),
+            onSetThemeMode = {},
+            onClearCache = {},
+            onOutputFolderChange = {},
+            onCheckForUpdates = {},
+            onStarGithub = {},
+            onReportBug = {}
+        )
+    }
+}

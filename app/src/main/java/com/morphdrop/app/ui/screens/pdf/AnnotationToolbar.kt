@@ -1,7 +1,10 @@
 ﻿package com.morphdrop.app.ui.screens.pdf
 
+import android.content.res.Configuration
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
+import androidx.compose.ui.tooling.preview.Preview
+import com.morphdrop.app.ui.theme.MorphDropTheme
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -327,4 +330,52 @@ private fun ColorDot(
 
 private fun Color.luminance(): Float {
     return 0.299f * red + 0.587f * green + 0.114f * blue
+}
+
+@Preview(name = "Light Mode", showBackground = true)
+@Composable
+fun AnnotationBottomBarLightPreview() {
+    MorphDropTheme(darkTheme = false) {
+        Surface {
+            AnnotationBottomBar(
+                isVisible = true,
+                currentTool = AnnotationTool.DRAW,
+                currentColor = Color.Red,
+                currentStrokeWidth = 4f,
+                showAnnotations = true,
+                canUndo = true,
+                canRedo = false,
+                onUndo = {},
+                onRedo = {},
+                onToolSelected = {},
+                onColorSelected = {},
+                onStrokeWidthSelected = {},
+                onHide = {}
+            )
+        }
+    }
+}
+
+@Preview(name = "Dark Mode", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
+@Composable
+fun AnnotationBottomBarDarkPreview() {
+    MorphDropTheme(darkTheme = true) {
+        Surface {
+            AnnotationBottomBar(
+                isVisible = true,
+                currentTool = AnnotationTool.DRAW,
+                currentColor = Color.Red,
+                currentStrokeWidth = 4f,
+                showAnnotations = true,
+                canUndo = true,
+                canRedo = false,
+                onUndo = {},
+                onRedo = {},
+                onToolSelected = {},
+                onColorSelected = {},
+                onStrokeWidthSelected = {},
+                onHide = {}
+            )
+        }
+    }
 }

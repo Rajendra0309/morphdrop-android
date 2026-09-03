@@ -1,7 +1,10 @@
 package com.morphdrop.app.ui.screens.conversion.components
 
 import android.content.Intent
+import android.content.res.Configuration
 import android.net.Uri
+import androidx.compose.ui.tooling.preview.Preview
+import com.morphdrop.app.ui.theme.MorphDropTheme
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -68,6 +71,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.morphdrop.app.domain.model.FileMetadata
+import com.morphdrop.app.domain.model.FileType
 import com.morphdrop.app.domain.model.MetadataEditParams
 import com.morphdrop.app.ui.components.FormatBadge
 import java.util.Locale
@@ -928,3 +932,149 @@ private fun DiffRow(label: String, oldVal: String, newVal: String) {
 }
 
 private fun String?.isNull_or_empty(): Boolean = this == null || this.trim().isEmpty()
+
+@Preview(name = "Light Mode", showBackground = true)
+@Composable
+fun MetadataInspectorViewLightPreview() {
+    MorphDropTheme(darkTheme = false) {
+        Surface(modifier = Modifier.padding(16.dp)) {
+            MetadataInspectorView(
+                metadata = FileMetadata(
+                    fileName = "IMG_20240512_143000.jpg",
+                    fileSize = 3450000L,
+                    fileSizeFormatted = "3.4 MB",
+                    mimeType = "image/jpeg",
+                    fileExtension = "jpg",
+                    fileType = FileType.JPG,
+                    dateModified = "2024-05-12 14:32:10",
+                    fileHash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                    cameraMake = "Google",
+                    cameraModel = "Pixel 7 Pro",
+                    software = "Google Camera 9.1",
+                    lensModel = "Pixel 7 Pro Rear Main Camera",
+                    focalLength = "6.81 mm",
+                    fNumber = "f/1.85",
+                    isoSpeed = "100",
+                    exposureTime = "1/250s",
+                    flash = "No Flash",
+                    latitude = 37.7749,
+                    longitude = -122.4194,
+                    gpsAltitude = 15.0,
+                    locationAddress = "San Francisco, CA, USA",
+                    dateCreated = "2024-05-12 14:30:00",
+                    dateOriginal = "2024-05-12 14:30:00",
+                    dateDigitized = "2024-05-12 14:30:00",
+                    author = "MorphDrop User",
+                    title = "Golden Gate Capture",
+                    subject = "Landscape Photography",
+                    creator = "Pixel 7 Pro",
+                    copyright = "2024 MorphDrop",
+                    width = 4080,
+                    height = 3072,
+                    dpi = "300 dpi",
+                    colorSpace = "sRGB",
+                    hasMetadata = true,
+                    isScrubbable = true,
+                    isEditable = true
+                ),
+                isLoading = false,
+                editAuthor = "MorphDrop User",
+                editTitle = "Golden Gate Capture",
+                editSubject = "Landscape Photography",
+                editSoftware = "Google Camera 9.1",
+                editCopyright = "2024 MorphDrop",
+                editDateCreated = "2024-05-12 14:30:00",
+                editLatitude = "37.7749",
+                editLongitude = "-122.4194",
+                editCameraMake = "Google",
+                editCameraModel = "Pixel 7 Pro",
+                gpsError = null,
+                onAuthorChange = {},
+                onTitleChange = {},
+                onSubjectChange = {},
+                onSoftwareChange = {},
+                onCopyrightChange = {},
+                onDateCreatedChange = {},
+                onLatitudeChange = {},
+                onLongitudeChange = {},
+                onCameraMakeChange = {},
+                onCameraModelChange = {},
+                onScrubClicked = {},
+                onApplyEditsClicked = {}
+            )
+        }
+    }
+}
+
+@Preview(name = "Dark Mode", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
+@Composable
+fun MetadataInspectorViewDarkPreview() {
+    MorphDropTheme(darkTheme = true) {
+        Surface(modifier = Modifier.padding(16.dp)) {
+            MetadataInspectorView(
+                metadata = FileMetadata(
+                    fileName = "IMG_20240512_143000.jpg",
+                    fileSize = 3450000L,
+                    fileSizeFormatted = "3.4 MB",
+                    mimeType = "image/jpeg",
+                    fileExtension = "jpg",
+                    fileType = FileType.JPG,
+                    dateModified = "2024-05-12 14:32:10",
+                    fileHash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                    cameraMake = "Google",
+                    cameraModel = "Pixel 7 Pro",
+                    software = "Google Camera 9.1",
+                    lensModel = "Pixel 7 Pro Rear Main Camera",
+                    focalLength = "6.81 mm",
+                    fNumber = "f/1.85",
+                    isoSpeed = "100",
+                    exposureTime = "1/250s",
+                    flash = "No Flash",
+                    latitude = 37.7749,
+                    longitude = -122.4194,
+                    gpsAltitude = 15.0,
+                    locationAddress = "San Francisco, CA, USA",
+                    dateCreated = "2024-05-12 14:30:00",
+                    dateOriginal = "2024-05-12 14:30:00",
+                    dateDigitized = "2024-05-12 14:30:00",
+                    author = "MorphDrop User",
+                    title = "Golden Gate Capture",
+                    subject = "Landscape Photography",
+                    creator = "Pixel 7 Pro",
+                    copyright = "2024 MorphDrop",
+                    width = 4080,
+                    height = 3072,
+                    dpi = "300 dpi",
+                    colorSpace = "sRGB",
+                    hasMetadata = true,
+                    isScrubbable = true,
+                    isEditable = true
+                ),
+                isLoading = false,
+                editAuthor = "MorphDrop User",
+                editTitle = "Golden Gate Capture",
+                editSubject = "Landscape Photography",
+                editSoftware = "Google Camera 9.1",
+                editCopyright = "2024 MorphDrop",
+                editDateCreated = "2024-05-12 14:30:00",
+                editLatitude = "37.7749",
+                editLongitude = "-122.4194",
+                editCameraMake = "Google",
+                editCameraModel = "Pixel 7 Pro",
+                gpsError = null,
+                onAuthorChange = {},
+                onTitleChange = {},
+                onSubjectChange = {},
+                onSoftwareChange = {},
+                onCopyrightChange = {},
+                onDateCreatedChange = {},
+                onLatitudeChange = {},
+                onLongitudeChange = {},
+                onCameraMakeChange = {},
+                onCameraModelChange = {},
+                onScrubClicked = {},
+                onApplyEditsClicked = {}
+            )
+        }
+    }
+}

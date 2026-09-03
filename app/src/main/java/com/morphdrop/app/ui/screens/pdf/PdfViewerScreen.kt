@@ -7,9 +7,12 @@ import androidx.compose.foundation.gestures.detectTapGestures
 
 import androidx.activity.compose.BackHandler
 import android.app.Activity
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.net.Uri
 import android.widget.Toast
+import androidx.compose.ui.tooling.preview.Preview
+import com.morphdrop.app.ui.theme.MorphDropTheme
 import androidx.compose.animation.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -93,6 +96,7 @@ import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowRight
+import com.morphdrop.app.data.pdf.PdfTocItem
 
 @OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
@@ -1855,5 +1859,71 @@ fun TocItemRow(
                 TocItemRow(item = child, depth = depth + 1, onNavigate = onNavigate)
             }
         }
+    }
+}
+
+@Preview(name = "Light Mode", showBackground = true)
+@Composable
+fun PasswordUnlockDialogLightPreview() {
+    MorphDropTheme(darkTheme = false) {
+        Surface {
+            PasswordUnlockDialog(
+                password = "",
+                isPasswordVisible = false,
+                onPasswordChange = {},
+                onToggleVisibility = {},
+                onUnlock = {},
+                onCancel = {}
+            )
+        }
+    }
+}
+
+@Preview(name = "Dark Mode", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
+@Composable
+fun PasswordUnlockDialogDarkPreview() {
+    MorphDropTheme(darkTheme = true) {
+        Surface {
+            PasswordUnlockDialog(
+                password = "",
+                isPasswordVisible = false,
+                onPasswordChange = {},
+                onToggleVisibility = {},
+                onUnlock = {},
+                onCancel = {}
+            )
+        }
+    }
+}
+
+@Preview(name = "Light Mode", showBackground = true)
+@Composable
+fun TocDrawerSheetLightPreview() {
+    MorphDropTheme(darkTheme = false) {
+        TocDrawerSheet(
+            tocList = listOf(
+                PdfTocItem("1. Introduction", 0, emptyList()),
+                PdfTocItem("2. Getting Started", 2, listOf(
+                    PdfTocItem("2.1 Installation", 3, emptyList())
+                ))
+            ),
+            onNavigate = {}
+        )
+    }
+}
+
+@Preview(name = "Dark Mode", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
+@Composable
+fun TocDrawerSheetDarkPreview() {
+    MorphDropTheme(darkTheme = true) {
+        TocDrawerSheet(
+            tocList = listOf(
+                PdfTocItem("1. Introduction", 0, emptyList()),
+                PdfTocItem("2. Getting Started", 2, listOf(
+                    PdfTocItem("2.1 Installation", 3, emptyList())
+                ))
+            ),
+            onNavigate = {}
+        )
     }
 }

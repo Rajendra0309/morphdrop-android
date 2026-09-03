@@ -1,5 +1,6 @@
 package com.morphdrop.app.ui.screens.ocr
 
+import android.content.res.Configuration
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -46,7 +47,10 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -59,10 +63,14 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -72,11 +80,15 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Devices
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.morphdrop.app.domain.model.OcrScript
 import com.morphdrop.app.ui.components.MorphDropTopAppBar
 import com.morphdrop.app.ui.components.PrimaryButton
+import com.morphdrop.app.ui.theme.MorphDropTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -110,6 +122,44 @@ fun OcrScreen(
         }
     }
 
+    OcrScreenContent(
+        state = state,
+        scrollBehavior = scrollBehavior,
+        onNavigateBack = onNavigateBack,
+        onPickFileClick = { filePickerLauncher.launch("*/*") },
+        onDismissDisclaimer = { viewModel.dismissDisclaimer() },
+        onDismissSaveFileNameDialog = { viewModel.dismissSaveFileNameDialog() },
+        onConfirmSaveAsTxt = { viewModel.confirmSaveAsTxt(context) },
+        onCustomFileNameChange = { viewModel.onCustomFileNameChange(it) },
+        onToggleExtractAllPages = { viewModel.onToggleExtractAllPages(it) },
+        onPageSelected = { page -> viewModel.onPageSelected(context, page) },
+        onScriptSelected = { script -> viewModel.onScriptSelected(script) },
+        onStartExtraction = { viewModel.startExtraction() },
+        onCopyToClipboard = { viewModel.copyToClipboard(context) },
+        onOpenSaveFileNameDialog = { viewModel.openSaveFileNameDialog() },
+        onShareText = { viewModel.shareText(context) }
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun OcrScreenContent(
+    state: OcrUiState,
+    scrollBehavior: TopAppBarScrollBehavior,
+    onNavigateBack: () -> Unit,
+    onPickFileClick: () -> Unit,
+    onDismissDisclaimer: () -> Unit,
+    onDismissSaveFileNameDialog: () -> Unit,
+    onConfirmSaveAsTxt: () -> Unit,
+    onCustomFileNameChange: (String) -> Unit,
+    onToggleExtractAllPages: (Boolean) -> Unit,
+    onPageSelected: (Int) -> Unit,
+    onScriptSelected: (OcrScript) -> Unit,
+    onStartExtraction: () -> Unit,
+    onCopyToClipboard: () -> Unit,
+    onOpenSaveFileNameDialog: () -> Unit,
+    onShareText: () -> Unit
+) {
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
@@ -132,7 +182,7 @@ fun OcrScreen(
             // First time disclaimer modal (Shows ONCE ONLY on first launch)
             if (state.showDisclaimerDialog) {
                 AlertDialog(
-                    onDismissRequest = { viewModel.dismissDisclaimer() },
+                    onDismissRequest = onDismissDisclaimer,
                     icon = { Icon(Icons.Outlined.Info, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
                     title = { Text(text = "On-Device Text Recognition") },
                     text = {
@@ -141,7 +191,7 @@ fun OcrScreen(
                         )
                     },
                     confirmButton = {
-                        TextButton(onClick = { viewModel.dismissDisclaimer() }) {
+                        TextButton(onClick = onDismissDisclaimer) {
                             Text("Got it")
                         }
                     }
@@ -151,7 +201,7 @@ fun OcrScreen(
             // Save Filename Dialog
             if (state.showSaveFileNameDialog) {
                 AlertDialog(
-                    onDismissRequest = { viewModel.dismissSaveFileNameDialog() },
+                    onDismissRequest = onDismissSaveFileNameDialog,
                     icon = { Icon(Icons.Outlined.Save, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
                     title = { Text("Save Extracted Text") },
                     text = {
@@ -163,7 +213,7 @@ fun OcrScreen(
                             Spacer(modifier = Modifier.height(12.dp))
                             OutlinedTextField(
                                 value = state.customSaveFileName,
-                                onValueChange = { viewModel.onCustomFileNameChange(it) },
+                                onValueChange = onCustomFileNameChange,
                                 label = { Text("File Name") },
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth()
@@ -171,12 +221,12 @@ fun OcrScreen(
                         }
                     },
                     confirmButton = {
-                        Button(onClick = { viewModel.confirmSaveAsTxt(context) }) {
+                        Button(onClick = onConfirmSaveAsTxt) {
                             Text("Save")
                         }
                     },
                     dismissButton = {
-                        TextButton(onClick = { viewModel.dismissSaveFileNameDialog() }) {
+                        TextButton(onClick = onDismissSaveFileNameDialog) {
                             Text("Cancel")
                         }
                     }
@@ -188,7 +238,7 @@ fun OcrScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(20.dp))
-                    .clickable { filePickerLauncher.launch("*/*") },
+                    .clickable { onPickFileClick() },
                 shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
@@ -297,7 +347,7 @@ fun OcrScreen(
                                     }
                                 }
                             }
-                            TextButton(onClick = { filePickerLauncher.launch("*/*") }) {
+                            TextButton(onClick = onPickFileClick) {
                                 Text("Change")
                             }
                         }
@@ -325,7 +375,7 @@ fun OcrScreen(
                                     CircularProgressIndicator(modifier = Modifier.size(36.dp))
                                 } else if (state.currentThumbnailBitmap != null) {
                                     Image(
-                                        bitmap = state.currentThumbnailBitmap!!.asImageBitmap(),
+                                        bitmap = state.currentThumbnailBitmap.asImageBitmap(),
                                         contentDescription = "Content Preview",
                                         contentScale = ContentScale.Fit,
                                         modifier = Modifier
@@ -375,7 +425,7 @@ fun OcrScreen(
                             )
                             Switch(
                                 checked = state.extractAllPages,
-                                onCheckedChange = { viewModel.onToggleExtractAllPages(it) }
+                                onCheckedChange = onToggleExtractAllPages
                             )
                         }
 
@@ -387,7 +437,7 @@ fun OcrScreen(
                                 horizontalArrangement = Arrangement.Center
                             ) {
                                 IconButton(
-                                    onClick = { viewModel.onPageSelected(context, state.selectedPage - 1) },
+                                    onClick = { onPageSelected(state.selectedPage - 1) },
                                     enabled = state.selectedPage > 1
                                 ) {
                                     Icon(Icons.AutoMirrored.Filled.ArrowBackIos, contentDescription = "Previous Page")
@@ -401,7 +451,7 @@ fun OcrScreen(
                                 )
                                 Spacer(modifier = Modifier.width(16.dp))
                                 IconButton(
-                                    onClick = { viewModel.onPageSelected(context, state.selectedPage + 1) },
+                                    onClick = { onPageSelected(state.selectedPage + 1) },
                                     enabled = state.selectedPage < state.pdfPageCount
                                 ) {
                                     Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, contentDescription = "Next Page")
@@ -412,11 +462,50 @@ fun OcrScreen(
                 }
             }
 
-            // 3. Extraction Action Button & Live Progress
+            // 3. Language Selector & Extraction Action Button
             if (state.selectedUri != null) {
+                var expanded by remember { mutableStateOf(false) }
+
+                ExposedDropdownMenuBox(
+                    expanded = expanded,
+                    onExpandedChange = { expanded = !expanded },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    OutlinedTextField(
+                        value = state.selectedScript.displayName,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Language / Script") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                        colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .menuAnchor()
+                    )
+                    ExposedDropdownMenu(
+                        expanded = expanded,
+                        onDismissRequest = { expanded = false }
+                    ) {
+                        OcrScript.entries.forEach { script ->
+                            DropdownMenuItem(
+                                text = { 
+                                    Column {
+                                        Text(script.displayName, fontWeight = FontWeight.Bold)
+                                        Text(script.description, style = MaterialTheme.typography.bodySmall)
+                                    }
+                                },
+                                onClick = {
+                                    onScriptSelected(script)
+                                    expanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+
                 PrimaryButton(
                     text = if (state.isExtracting) "Extracting Text..." else "Extract Text (OCR)",
-                    onClick = { viewModel.startExtraction() },
+                    onClick = onStartExtraction,
                     enabled = !state.isExtracting,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -552,7 +641,7 @@ fun OcrScreen(
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             OutlinedButton(
-                                onClick = { viewModel.copyToClipboard(context) },
+                                onClick = onCopyToClipboard,
                                 modifier = Modifier.weight(1f),
                                 shape = RoundedCornerShape(12.dp),
                                 contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
@@ -563,7 +652,7 @@ fun OcrScreen(
                             }
 
                             Button(
-                                onClick = { viewModel.openSaveFileNameDialog() },
+                                onClick = onOpenSaveFileNameDialog,
                                 modifier = Modifier.weight(1f),
                                 shape = RoundedCornerShape(12.dp),
                                 contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
@@ -574,7 +663,7 @@ fun OcrScreen(
                             }
 
                             OutlinedButton(
-                                onClick = { viewModel.shareText(context) },
+                                onClick = onShareText,
                                 modifier = Modifier.weight(1f),
                                 shape = RoundedCornerShape(12.dp),
                                 contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
@@ -588,5 +677,73 @@ fun OcrScreen(
                 }
             }
         }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Preview(name = "Light Mode", showBackground = true, showSystemUi = true, device = Devices.PIXEL_7_PRO)
+@Composable
+fun OcrScreenLightPreview() {
+    MorphDropTheme(darkTheme = false) {
+        OcrScreenContent(
+            state = OcrUiState(
+                fileName = "Scanned_Invoice.pdf",
+                fileSizeFormatted = "1.4 MB",
+                isPdf = true,
+                pdfPageCount = 3,
+                selectedUri = Uri.parse("content://mock"),
+                extractedText = "Sample Extracted Text\nInvoice #1024\nTotal: $49.99",
+                wordCount = 6,
+                charCount = 42
+            ),
+            scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(),
+            onNavigateBack = {},
+            onPickFileClick = {},
+            onDismissDisclaimer = {},
+            onDismissSaveFileNameDialog = {},
+            onConfirmSaveAsTxt = {},
+            onCustomFileNameChange = {},
+            onToggleExtractAllPages = {},
+            onPageSelected = {},
+            onScriptSelected = {},
+            onStartExtraction = {},
+            onCopyToClipboard = {},
+            onOpenSaveFileNameDialog = {},
+            onShareText = {}
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Preview(name = "Dark Mode", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true, showSystemUi = true, device = Devices.PIXEL_7_PRO)
+@Composable
+fun OcrScreenDarkPreview() {
+    MorphDropTheme(darkTheme = true) {
+        OcrScreenContent(
+            state = OcrUiState(
+                fileName = "Scanned_Invoice.pdf",
+                fileSizeFormatted = "1.4 MB",
+                isPdf = true,
+                pdfPageCount = 3,
+                selectedUri = Uri.parse("content://mock"),
+                extractedText = "Sample Extracted Text\nInvoice #1024\nTotal: $49.99",
+                wordCount = 6,
+                charCount = 42
+            ),
+            scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(),
+            onNavigateBack = {},
+            onPickFileClick = {},
+            onDismissDisclaimer = {},
+            onDismissSaveFileNameDialog = {},
+            onConfirmSaveAsTxt = {},
+            onCustomFileNameChange = {},
+            onToggleExtractAllPages = {},
+            onPageSelected = {},
+            onScriptSelected = {},
+            onStartExtraction = {},
+            onCopyToClipboard = {},
+            onOpenSaveFileNameDialog = {},
+            onShareText = {}
+        )
     }
 }
