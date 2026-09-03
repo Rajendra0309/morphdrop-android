@@ -6,15 +6,16 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.morphdrop.app.domain.model.ReadingMode
+import com.morphdrop.app.domain.model.ThemeMode
 import com.morphdrop.app.domain.repository.SettingsRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
-import com.morphdrop.app.domain.model.ThemeMode
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -33,16 +34,17 @@ class DataStoreSettingsRepository @Inject constructor(
         val READING_MODE = stringPreferencesKey("reading_mode")
         val SEPIA_INTENSITY = floatPreferencesKey("sepia_intensity")
         val LAST_IMAGE_FORMAT = stringPreferencesKey("last_image_format")
-        val LAST_IMAGE_QUALITY = androidx.datastore.preferences.core.intPreferencesKey("last_image_quality")
+        val LAST_IMAGE_QUALITY = intPreferencesKey("last_image_quality")
         val LAST_IMAGE_RESIZE_OPTION = stringPreferencesKey("last_image_resize_option")
         val LAST_STRIP_METADATA = booleanPreferencesKey("last_strip_metadata")
+        val HAS_SEEN_OCR_DISCLAIMER = booleanPreferencesKey("has_seen_ocr_disclaimer")
     }
 
     override val themeMode: Flow<ThemeMode> = context.dataStore.data.map { preferences ->
         val modeString = preferences[PreferencesKeys.THEME_MODE] ?: ThemeMode.SYSTEM.name
         try {
             ThemeMode.valueOf(modeString)
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             ThemeMode.SYSTEM
         }
     }
@@ -63,7 +65,7 @@ class DataStoreSettingsRepository @Inject constructor(
         val modeString = preferences[PreferencesKeys.READING_MODE] ?: ReadingMode.DEFAULT.name
         try {
             ReadingMode.valueOf(modeString)
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             ReadingMode.DEFAULT
         }
     }
@@ -86,6 +88,10 @@ class DataStoreSettingsRepository @Inject constructor(
 
     override val lastStripMetadata: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[PreferencesKeys.LAST_STRIP_METADATA] ?: false
+    }
+
+    override val hasSeenOcrDisclaimer: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.HAS_SEEN_OCR_DISCLAIMER] ?: false
     }
 
     override suspend fun setThemeMode(mode: ThemeMode) {
@@ -145,6 +151,12 @@ class DataStoreSettingsRepository @Inject constructor(
     override suspend fun setLastStripMetadata(strip: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.LAST_STRIP_METADATA] = strip
+        }
+    }
+
+    override suspend fun setHasSeenOcrDisclaimer(hasSeen: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.HAS_SEEN_OCR_DISCLAIMER] = hasSeen
         }
     }
 }

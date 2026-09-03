@@ -35,6 +35,16 @@ data class ConversionType(
         val defaultList = listOf(
             // Conversions
             ConversionType(
+                id = "ocr_text_extractor",
+                name = "Extract Text (OCR)",
+                description = "Extract text from images or scanned PDFs (Offline)",
+                inputType = FileType.PNG,
+                outputType = FileType.TXT,
+                icon = Icons.Outlined.Description,
+                category = CATEGORY_CONVERSIONS,
+                isMultiFileAllowed = false
+            ),
+            ConversionType(
                 id = "metadata_editor",
                 name = "Metadata Inspector & Editor",
                 description = "Inspect, scrub, or edit hidden file metadata (EXIF/PDF/Video)",

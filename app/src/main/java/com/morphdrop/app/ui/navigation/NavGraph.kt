@@ -1,13 +1,5 @@
 package com.morphdrop.app.ui.navigation
 
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.runtime.Composable
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
@@ -20,6 +12,7 @@ import com.morphdrop.app.ui.screens.conversion.ConversionConfigScreen
 import com.morphdrop.app.ui.screens.history.HistoryDetailScreen
 import com.morphdrop.app.ui.screens.history.HistoryScreen
 import com.morphdrop.app.ui.screens.home.HomeScreen
+import com.morphdrop.app.ui.screens.ocr.OcrScreen
 import com.morphdrop.app.ui.screens.processing.ProcessingScreen
 import com.morphdrop.app.ui.screens.result.ResultScreen
 import com.morphdrop.app.ui.screens.settings.SettingsScreen
@@ -40,7 +33,11 @@ fun NavGraph(
         composable(Screen.Home.route) {
             HomeScreen(
                 onNavigateToConfig = { conversionTypeId ->
-                    navController.navigate(Screen.ConversionConfig.createRoute(conversionTypeId))
+                    if (conversionTypeId == "ocr_text_extractor") {
+                        navController.navigate(Screen.Ocr.route)
+                    } else {
+                        navController.navigate(Screen.ConversionConfig.createRoute(conversionTypeId))
+                    }
                 },
                 onNavigate = { route ->
                     navController.navigate(route) {
@@ -96,12 +93,25 @@ fun NavGraph(
         composable(
             route = Screen.ConversionConfig.route,
             arguments = listOf(navArgument("conversionTypeId") { type = NavType.StringType })
-        ) {
-            ConversionConfigScreen(
-                onNavigateBack = { navController.popBackStack() },
-                onNavigateToProcessing = { typeId, workId ->
-                    navController.navigate(Screen.Processing.createRoute(typeId, workId))
-                }
+        ) { backStackEntry ->
+            val typeId = backStackEntry.arguments?.getString("conversionTypeId") ?: ""
+            if (typeId == "ocr_text_extractor") {
+                OcrScreen(
+                    onNavigateBack = { navController.popBackStack() }
+                )
+            } else {
+                ConversionConfigScreen(
+                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateToProcessing = { tId, workId ->
+                        navController.navigate(Screen.Processing.createRoute(tId, workId))
+                    }
+                )
+            }
+        }
+
+        composable(Screen.Ocr.route) {
+            OcrScreen(
+                onNavigateBack = { navController.popBackStack() }
             )
         }
 

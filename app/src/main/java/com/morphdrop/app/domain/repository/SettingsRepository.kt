@@ -1,8 +1,8 @@
 package com.morphdrop.app.domain.repository
 
 import com.morphdrop.app.domain.model.ReadingMode
-import kotlinx.coroutines.flow.Flow
 import com.morphdrop.app.domain.model.ThemeMode
+import kotlinx.coroutines.flow.Flow
 
 interface SettingsRepository {
     val themeMode: Flow<ThemeMode>
@@ -15,6 +15,7 @@ interface SettingsRepository {
     val lastImageQuality: Flow<Int>
     val lastImageResizeOption: Flow<String>
     val lastStripMetadata: Flow<Boolean>
+    val hasSeenOcrDisclaimer: Flow<Boolean>
 
     suspend fun setThemeMode(mode: ThemeMode)
     suspend fun setOutputFolderName(name: String)
@@ -26,4 +27,5 @@ interface SettingsRepository {
     suspend fun setLastImageQuality(quality: Int)
     suspend fun setLastImageResizeOption(option: String)
     suspend fun setLastStripMetadata(strip: Boolean)
+    suspend fun setHasSeenOcrDisclaimer(hasSeen: Boolean)
 }
