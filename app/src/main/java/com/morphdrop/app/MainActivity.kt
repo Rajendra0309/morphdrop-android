@@ -66,12 +66,7 @@ class MainActivity : ComponentActivity() {
         // Clean app cache on startup if > 100MB
         cleanCacheIfOverLimit()
 
-        // Request ACCESS_MEDIA_LOCATION permission on Android 10+ for unredacted EXIF reading
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-            if (checkSelfPermission(android.Manifest.permission.ACCESS_MEDIA_LOCATION) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                requestPermissions(arrayOf(android.Manifest.permission.ACCESS_MEDIA_LOCATION), 1001)
-            }
-        }
+        // Removed aggressive ACCESS_MEDIA_LOCATION request on startup
 
         // Immediate exit for all devices to reduce splash screen delay to zero.
         splashScreen.setOnExitAnimationListener { splashScreenView ->
