@@ -8,6 +8,7 @@ import androidx.compose.material.icons.outlined.Collections
 import androidx.compose.material.icons.outlined.Compress
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.EditNote
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.PictureAsPdf
 import androidx.compose.material.icons.outlined.Slideshow
@@ -33,6 +34,16 @@ data class ConversionType(
 
         val defaultList = listOf(
             // Conversions
+            ConversionType(
+                id = "metadata_editor",
+                name = "Metadata Inspector & Editor",
+                description = "Inspect, scrub, or edit hidden file metadata (EXIF/PDF/Video)",
+                inputType = FileType.JPG,
+                outputType = FileType.JPG,
+                icon = Icons.Outlined.Info,
+                category = CATEGORY_CONVERSIONS,
+                isMultiFileAllowed = false
+            ),
             ConversionType(
                 id = "pdf_to_images",
                 name = "PDF to Images",

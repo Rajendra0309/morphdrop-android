@@ -76,8 +76,9 @@ fun MorphDropTopAppBar(
                         style = MaterialTheme.typography.headlineMedium,
                         fontWeight = titleWeight,
                         fontSize = 32.sp,
+                        lineHeight = 38.sp,
                         color = MaterialTheme.colorScheme.onBackground,
-                        maxLines = 1,
+                        maxLines = 2,
                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                     )
                     

@@ -84,8 +84,9 @@ dependencies {
     // Coil
     implementation(libs.io.coil.kt.coil.compose)
     
-    // AppCompat
+    // AppCompat & ExifInterface
     implementation(libs.androidx.appcompat)
+    implementation("androidx.exifinterface:exifinterface:1.3.7")
     
     // Lottie
     implementation(libs.com.airbnb.android.lottie.compose)

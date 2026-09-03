@@ -26,6 +26,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
+import androidx.compose.material.icons.automirrored.outlined.Article
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Edit
@@ -34,6 +35,10 @@ import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.outlined.AudioFile
+import androidx.compose.material.icons.outlined.Movie
+import androidx.compose.material.icons.outlined.PictureAsPdf
+import androidx.compose.material.icons.outlined.TableChart
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -79,12 +84,14 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.morphdrop.app.domain.model.ConversionType
 import com.morphdrop.app.domain.model.FileType
+import com.morphdrop.app.domain.model.MetadataEditParams
 import com.morphdrop.app.ui.components.FormatBadge
 import com.morphdrop.app.ui.components.ImageWorkbenchGrid
 import com.morphdrop.app.ui.components.InteractiveCropDialog
 import com.morphdrop.app.ui.components.MorphDropTopAppBar
 import com.morphdrop.app.ui.components.PdfPageOrganizerDialog
 import com.morphdrop.app.ui.components.WorkbenchImageItem
+import com.morphdrop.app.ui.screens.conversion.components.MetadataInspectorView
 import com.morphdrop.app.ui.theme.MorphDropTheme
 import com.morphdrop.app.util.FileHelper
 import kotlinx.coroutines.Dispatchers
@@ -138,7 +145,16 @@ fun ConversionConfigScreen(
         isAppendingFiles = false
     }
 
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { _ -> } // Result is handled implicitly by OS, no direct action needed
+
     LaunchedEffect(Unit) {
+        if (state.conversionType?.id == "metadata_editor" && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_MEDIA_LOCATION) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                locationPermissionLauncher.launch(android.Manifest.permission.ACCESS_MEDIA_LOCATION)
+            }
+        }
         if (state.selectedFileUris.isEmpty() && state.workbenchImageItems.isEmpty()) {
             if (isImageConversion) {
                 imagePicker.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
@@ -193,6 +209,28 @@ fun ConversionConfigScreen(
         onAllowPrintingChanged = viewModel::onAllowPrintingChanged,
         onAllowCopyingChanged = viewModel::onAllowCopyingChanged,
         onAllowEditingChanged = viewModel::onAllowEditingChanged,
+        onAuthorChange = viewModel::onEditAuthorChanged,
+        onTitleChange = viewModel::onEditTitleChanged,
+        onSubjectChange = viewModel::onEditSubjectChanged,
+        onSoftwareChange = viewModel::onEditSoftwareChanged,
+        onCopyrightChange = viewModel::onEditCopyrightChanged,
+        onDateCreatedChange = viewModel::onEditDateCreatedChanged,
+        onLatitudeChange = viewModel::onEditLatitudeChanged,
+        onLongitudeChange = viewModel::onEditLongitudeChanged,
+        onCameraMakeChange = viewModel::onEditCameraMakeChanged,
+        onCameraModelChange = viewModel::onEditCameraModelChanged,
+        onScrubClicked = {
+            val workId = viewModel.startMetadataWorker(context, "scrub")
+            if (workId != null) {
+                onNavigateToProcessing("metadata_editor", workId.toString())
+            }
+        },
+        onApplyEditsClicked = { params ->
+            val workId = viewModel.startMetadataWorker(context, "edit", params)
+            if (workId != null) {
+                onNavigateToProcessing("metadata_editor", workId.toString())
+            }
+        },
         onConvert = {
             val workId = viewModel.startConversion(context)
             if (workId != null && state.conversionType != null) {
@@ -340,6 +378,18 @@ fun ConversionConfigScreenContent(
     onAllowPrintingChanged: (Boolean) -> Unit,
     onAllowCopyingChanged: (Boolean) -> Unit,
     onAllowEditingChanged: (Boolean) -> Unit,
+    onAuthorChange: (String) -> Unit = {},
+    onTitleChange: (String) -> Unit = {},
+    onSubjectChange: (String) -> Unit = {},
+    onSoftwareChange: (String) -> Unit = {},
+    onCopyrightChange: (String) -> Unit = {},
+    onDateCreatedChange: (String) -> Unit = {},
+    onLatitudeChange: (String) -> Unit = {},
+    onLongitudeChange: (String) -> Unit = {},
+    onCameraMakeChange: (String) -> Unit = {},
+    onCameraModelChange: (String) -> Unit = {},
+    onScrubClicked: () -> Unit = {},
+    onApplyEditsClicked: (MetadataEditParams) -> Unit = {},
     onConvert: () -> Unit
 ) {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
@@ -415,7 +465,7 @@ fun ConversionConfigScreenContent(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
                 ) {
                     Column {
-                        Box(modifier = Modifier.fillMaxWidth().height(260.dp)) {
+                        Box(modifier = Modifier.fillMaxWidth().height(220.dp)) {
                             if (state.selectedPreviewUri != null) {
                                 AsyncImage(
                                     model = state.selectedPreviewUri,
@@ -434,12 +484,23 @@ fun ConversionConfigScreenContent(
                                         .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f)),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.AutoMirrored.Filled.InsertDriveFile,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(64.dp),
-                                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
-                                    )
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Icon(
+                                            imageVector = getContentIconForFileName(state.selectedFileName),
+                                            contentDescription = null,
+                                            modifier = Modifier.size(56.dp),
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                        if (state.selectedFileUris.isNotEmpty()) {
+                                            Spacer(modifier = Modifier.height(10.dp))
+                                            Text(
+                                                text = getContentLabelForFileName(state.selectedFileName),
+                                                style = MaterialTheme.typography.titleMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -461,7 +522,18 @@ fun ConversionConfigScreenContent(
                                         )
                                     }
                                 }
-                                state.conversionType?.inputType?.let { FormatBadge(fileType = it) }
+                                if (state.conversionType?.id == "metadata_editor" && state.fileMetadata != null) {
+                                    if (state.fileMetadata.fileType != null) {
+                                        FormatBadge(fileType = state.fileMetadata.fileType)
+                                    } else {
+                                        FormatBadge(
+                                            text = state.fileMetadata.fileExtension,
+                                            backgroundColor = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                } else if (state.conversionType?.id != "metadata_editor") {
+                                    state.conversionType?.inputType?.let { FormatBadge(fileType = it) }
+                                }
                             }
                             
                             Spacer(modifier = Modifier.height(16.dp))
@@ -496,6 +568,37 @@ fun ConversionConfigScreenContent(
                         }
                     }
                 }
+            }
+
+            // Metadata Inspector & Editor View
+            if (state.conversionType?.id == "metadata_editor" && state.selectedFileUri != null) {
+                MetadataInspectorView(
+                    metadata = state.fileMetadata,
+                    isLoading = state.isMetadataLoading,
+                    editAuthor = state.editAuthor,
+                    editTitle = state.editTitle,
+                    editSubject = state.editSubject,
+                    editSoftware = state.editSoftware,
+                    editCopyright = state.editCopyright,
+                    editDateCreated = state.editDateCreated,
+                    editLatitude = state.editLatitude,
+                    editLongitude = state.editLongitude,
+                    editCameraMake = state.editCameraMake,
+                    editCameraModel = state.editCameraModel,
+                    gpsError = state.gpsError,
+                    onAuthorChange = onAuthorChange,
+                    onTitleChange = onTitleChange,
+                    onSubjectChange = onSubjectChange,
+                    onSoftwareChange = onSoftwareChange,
+                    onCopyrightChange = onCopyrightChange,
+                    onDateCreatedChange = onDateCreatedChange,
+                    onLatitudeChange = onLatitudeChange,
+                    onLongitudeChange = onLongitudeChange,
+                    onCameraMakeChange = onCameraMakeChange,
+                    onCameraModelChange = onCameraModelChange,
+                    onScrubClicked = onScrubClicked,
+                    onApplyEditsClicked = onApplyEditsClicked
+                )
             }
 
             // Options
@@ -687,36 +790,38 @@ fun ConversionConfigScreenContent(
                 }
             }
 
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp)
-                    .background(
-                        brush = Brush.linearGradient(
-                            colors = listOf(
-                                MaterialTheme.colorScheme.primary,
-                                MaterialTheme.colorScheme.tertiary
-                            )
+            if (state.conversionType?.id != "metadata_editor") {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp)
+                        .background(
+                            brush = Brush.linearGradient(
+                                colors = listOf(
+                                    MaterialTheme.colorScheme.primary,
+                                    MaterialTheme.colorScheme.tertiary
+                                )
+                            ),
+                            shape = RoundedCornerShape(28.dp)
+                        )
+                ) {
+                    Button(
+                        onClick = onConvert,
+                        enabled = state.isConvertEnabled,
+                        modifier = Modifier.fillMaxSize(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color.Transparent,
+                            disabledContainerColor = Color.Transparent
                         ),
                         shape = RoundedCornerShape(28.dp)
-                    )
-            ) {
-                Button(
-                    onClick = onConvert,
-                    enabled = state.isConvertEnabled,
-                    modifier = Modifier.fillMaxSize(),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color.Transparent,
-                        disabledContainerColor = Color.Transparent
-                    ),
-                    shape = RoundedCornerShape(28.dp)
-                ) {
-                    Text(
-                        text = "Convert",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = if (state.isConvertEnabled) Color.White else Color.White.copy(alpha = 0.5f)
-                    )
+                    ) {
+                        Text(
+                            text = "Convert",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = if (state.isConvertEnabled) Color.White else Color.White.copy(alpha = 0.5f)
+                        )
+                    }
                 }
             }
 
@@ -881,6 +986,36 @@ private fun PermissionToggle(
         Spacer(modifier = Modifier.width(12.dp))
         Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
         Switch(checked = checked, onCheckedChange = onCheckedChange)
+    }
+}
+
+private fun isPreviewableImage(fileName: String): Boolean {
+    val ext = fileName.substringAfterLast('.', "").lowercase()
+    return ext in listOf("jpg", "jpeg", "png", "webp", "bmp", "heic", "gif")
+}
+
+private fun getContentIconForFileName(fileName: String): androidx.compose.ui.graphics.vector.ImageVector {
+    val ext = fileName.substringAfterLast('.', "").lowercase()
+    return when (ext) {
+        "pdf" -> Icons.Outlined.PictureAsPdf
+        "mp4", "mkv", "avi", "mov", "3gp", "webm", "m4v" -> Icons.Outlined.Movie
+        "mp3", "flac", "wav", "aac", "ogg", "m4a" -> Icons.Outlined.AudioFile
+        "xlsx", "xls", "csv" -> Icons.Outlined.TableChart
+        "txt", "md", "markdown" -> Icons.AutoMirrored.Outlined.Article
+        else -> Icons.AutoMirrored.Filled.InsertDriveFile
+    }
+}
+
+private fun getContentLabelForFileName(fileName: String): String {
+    val ext = fileName.substringAfterLast('.', "").lowercase()
+    return when (ext) {
+        "pdf" -> "PDF Document"
+        "mp4", "mkv", "avi", "mov", "3gp", "webm", "m4v" -> "Video File"
+        "mp3", "flac", "wav", "aac", "ogg", "m4a" -> "Audio File"
+        "xlsx", "xls", "csv" -> "Spreadsheet"
+        "txt", "md", "markdown" -> "Text Document"
+        "" -> "File"
+        else -> "${ext.uppercase()} File"
     }
 }
 

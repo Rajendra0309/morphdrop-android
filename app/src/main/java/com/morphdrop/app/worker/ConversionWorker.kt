@@ -14,6 +14,7 @@ import com.morphdrop.app.domain.usecase.conversion.ExcelToPdfUseCase
 import com.morphdrop.app.domain.usecase.conversion.ImageConverterUseCase
 import com.morphdrop.app.domain.usecase.conversion.ImagesToPdfUseCase
 import com.morphdrop.app.domain.usecase.conversion.MdToPdfUseCase
+import com.morphdrop.app.domain.usecase.conversion.MetadataUseCase
 import com.morphdrop.app.domain.usecase.conversion.MergePdfUseCase
 import com.morphdrop.app.domain.usecase.conversion.MergePdfItem
 import com.morphdrop.app.domain.usecase.conversion.PdfPageEditorUseCase
@@ -50,6 +51,7 @@ class ConversionWorker @AssistedInject constructor(
     private val reorderPdfPagesUseCase: ReorderPdfPagesUseCase,
     private val pdfPasswordUseCase: PdfPasswordUseCase,
     private val pdfPageEditorUseCase: PdfPageEditorUseCase,
+    private val metadataUseCase: MetadataUseCase,
     private val historyRepository: HistoryRepository,
     private val notificationHelper: NotificationHelper
 ) : CoroutineWorker(appContext, workerParams) {
@@ -87,6 +89,18 @@ class ConversionWorker @AssistedInject constructor(
         const val KEY_CROP_RECT_TOP = "crop_rect_top"
         const val KEY_CROP_RECT_RIGHT = "crop_rect_right"
         const val KEY_CROP_RECT_BOTTOM = "crop_rect_bottom"
+
+        // Metadata Tool Keys
+        const val KEY_AUTHOR = "author"
+        const val KEY_TITLE = "title"
+        const val KEY_SUBJECT = "subject"
+        const val KEY_SOFTWARE = "software"
+        const val KEY_COPYRIGHT = "copyright"
+        const val KEY_DATE_CREATED = "date_created"
+        const val KEY_LATITUDE = "latitude"
+        const val KEY_LONGITUDE = "longitude"
+        const val KEY_CAMERA_MAKE = "camera_make"
+        const val KEY_CAMERA_MODEL = "camera_model"
     }
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
@@ -115,11 +129,13 @@ class ConversionWorker @AssistedInject constructor(
 
         val outputFileNameInput = inputData.getString(KEY_OUTPUT_FILE_NAME) ?: "Converted_File"
         val outputFileName = if (!outputFileNameInput.contains(".")) {
+            val inputExt = inputFileName.substringAfterLast('.', "").lowercase()
             val ext = when (conversionType) {
                 "pdf_to_images", "split_pdf" -> "" // Folder
                 "images_to_pdf", "excel_to_pdf", "txt_to_pdf", "md_to_pdf", "compress_pdf" -> "pdf"
                 "image_converter", "compress_images" -> inputData.getString(KEY_TARGET_FORMAT) ?: "jpg"
-                else -> "pdf"
+                "metadata_editor" -> inputExt
+                else -> if (inputExt.isNotBlank()) inputExt else "pdf"
             }
             if (ext.isNotEmpty()) "$outputFileNameInput.$ext" else outputFileNameInput
         } else outputFileNameInput
@@ -479,6 +495,45 @@ class ConversionWorker @AssistedInject constructor(
                     result
                 }
 
+                "metadata_editor" -> {
+                    checkCancellation()
+                    notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 30, cancelPendingIntent)
+                    setProgress(workDataOf("progress" to 30))
+                    val uri = Uri.parse(requireNotNull(inputUriString))
+                    val action = inputData.getString(KEY_ACTION) ?: "scrub"
+                    val resultUri = if (action == "edit") {
+                        val author = inputData.getString(KEY_AUTHOR)
+                        val title = inputData.getString(KEY_TITLE)
+                        val subject = inputData.getString(KEY_SUBJECT)
+                        val software = inputData.getString(KEY_SOFTWARE)
+                        val copyright = inputData.getString(KEY_COPYRIGHT)
+                        val dateCreated = inputData.getString(KEY_DATE_CREATED)
+                        val lat = if (inputData.keyValueMap.containsKey(KEY_LATITUDE)) inputData.getDouble(KEY_LATITUDE, 0.0) else null
+                        val lng = if (inputData.keyValueMap.containsKey(KEY_LONGITUDE)) inputData.getDouble(KEY_LONGITUDE, 0.0) else null
+                        val make = inputData.getString(KEY_CAMERA_MAKE)
+                        val model = inputData.getString(KEY_CAMERA_MODEL)
+                        val editParams = com.morphdrop.app.domain.model.MetadataEditParams(
+                            author = author,
+                            title = title,
+                            subject = subject,
+                            software = software,
+                            copyright = copyright,
+                            dateCreated = dateCreated,
+                            latitude = lat,
+                            longitude = lng,
+                            cameraMake = make,
+                            cameraModel = model
+                        )
+                        metadataUseCase.editMetadataAndSave(appContext, uri, editParams, outputFileName)
+                    } else {
+                        metadataUseCase.scrubMetadataAndSave(appContext, uri, outputFileName)
+                    }
+                    checkCancellation()
+                    notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 80, cancelPendingIntent)
+                    setProgress(workDataOf("progress" to 80))
+                    listOf(resultUri)
+                }
+
                 else -> throw IllegalArgumentException("Unsupported conversion type: $conversionType")
             }
 
@@ -588,6 +643,7 @@ class ConversionWorker @AssistedInject constructor(
 
     private fun mapIdToDisplayName(id: String): String {
         return when (id) {
+            "metadata_editor" -> "Metadata Inspector & Editor"
             "page_editor" -> "Organize PDF"
             "split_pdf" -> "Split PDF"
             "protect_pdf" -> "Protect PDF"

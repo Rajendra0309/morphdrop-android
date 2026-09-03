@@ -11,6 +11,7 @@ import com.morphdrop.app.domain.model.FileType
 import com.morphdrop.app.domain.repository.SettingsRepository
 import com.morphdrop.app.ui.components.WorkbenchImageItem
 import com.morphdrop.app.util.FileHelper
+import com.morphdrop.app.util.MediaThumbnailHelper
 import com.morphdrop.app.util.PdfThumbnailHelper
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -86,7 +87,22 @@ data class ConversionConfigState(
     val isPdfLoading: Boolean = false,
     val splitMode: String = "selection", // "selection", "every_n", "all"
     val splitEveryN: Int = 1,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    // Metadata Inspector & Editor State
+    val fileMetadata: com.morphdrop.app.domain.model.FileMetadata? = null,
+    val isMetadataLoading: Boolean = false,
+    val editAuthor: String = "",
+    val editTitle: String = "",
+    val editSubject: String = "",
+    val editSoftware: String = "",
+    val editCopyright: String = "",
+    val editDateCreated: String = "",
+    val editLatitude: String = "",
+    val editLongitude: String = "",
+    val editCameraMake: String = "",
+    val editCameraModel: String = "",
+    val gpsError: String? = null,
+    val metadataAction: String = "scrub"
 ) {
     val selectedFileUri: Uri?
         get() = selectedFileUris.firstOrNull()
@@ -102,7 +118,8 @@ data class ConversionConfigState(
 @HiltViewModel
 class ConversionConfigViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
-    private val settingsRepository: SettingsRepository
+    private val settingsRepository: SettingsRepository,
+    private val metadataUseCase: com.morphdrop.app.domain.usecase.conversion.MetadataUseCase
 ) : ViewModel() {
 
     private val conversionTypeId: String = savedStateHandle["conversionTypeId"] ?: ""
@@ -147,6 +164,7 @@ class ConversionConfigViewModel @Inject constructor(
             "md_to_pdf" -> listOf("md", "markdown")
             "pdf_to_images", "split_pdf", "compress_pdf", "protect_pdf", "unlock_pdf", "organize_pdf", "merge_pdf" -> listOf("pdf")
             "images_to_pdf", "compress_images", "image_converter" -> listOf("png", "jpg", "jpeg", "webp", "bmp")
+            "metadata_editor" -> emptyList() // Empty list = ALL file types allowed!
             else -> listOf(t.inputType.extension)
         }
     }
@@ -262,6 +280,25 @@ class ConversionConfigViewModel @Inject constructor(
             s.copy(isConvertEnabled = isStateValid(s))
         }
 
+        if (selectedUris.isNotEmpty()) {
+            val firstUri = selectedUris.first()
+            val mime = FileHelper.getMimeType(context, firstUri)
+            val ext = firstFileName.substringAfterLast('.', "").lowercase()
+            val isPdfFile = mime == "application/pdf" || ext == "pdf"
+            val isMediaFile = mime.startsWith("video/") || mime.startsWith("audio/") || ext in listOf("mp4", "mkv", "avi", "mov", "3gp", "webm", "mp3", "flac", "wav")
+
+            viewModelScope.launch {
+                val thumbUri = when {
+                    isPdfFile -> PdfThumbnailHelper.getThumbnailUri(context, firstUri, 0)
+                    isMediaFile -> MediaThumbnailHelper.getMediaThumbnailUri(context, firstUri)
+                    else -> null
+                }
+                if (thumbUri != null) {
+                    _state.update { it.copy(selectedPreviewUri = thumbUri) }
+                }
+            }
+        }
+
         if (type?.inputType == FileType.PDF && selectedUris.isNotEmpty()) {
             _state.update { it.copy(isPdfLoading = true) }
             viewModelScope.launch {
@@ -310,6 +347,121 @@ class ConversionConfigViewModel @Inject constructor(
                 }
             }
         }
+
+        if (type?.id == "metadata_editor" && selectedUris.isNotEmpty()) {
+            loadMetadata(context, selectedUris.first())
+        }
+    }
+
+    fun loadMetadata(context: Context, uri: Uri) {
+        _state.update { it.copy(isMetadataLoading = true) }
+        viewModelScope.launch {
+            val meta = metadataUseCase.inspectMetadata(context, uri)
+            val defaultOutputName = "${FileHelper.getFileNameWithoutExtension(meta.fileName)}_metadata_edited"
+            _state.update {
+                it.copy(
+                    fileMetadata = meta,
+                    isMetadataLoading = false,
+                    editAuthor = meta.author ?: "",
+                    editTitle = meta.title ?: "",
+                    editSubject = meta.subject ?: "",
+                    editSoftware = meta.software ?: "",
+                    editCopyright = meta.copyright ?: "",
+                    editDateCreated = meta.dateCreated ?: "",
+                    editLatitude = meta.latitude?.toString() ?: "",
+                    editLongitude = meta.longitude?.toString() ?: "",
+                    editCameraMake = meta.cameraMake ?: "",
+                    editCameraModel = meta.cameraModel ?: "",
+                    outputFileName = defaultOutputName,
+                    isConvertEnabled = true
+                )
+            }
+        }
+    }
+
+    fun onEditAuthorChanged(value: String) {
+        _state.update { it.copy(editAuthor = value) }
+    }
+
+    fun onEditTitleChanged(value: String) {
+        _state.update { it.copy(editTitle = value) }
+    }
+
+    fun onEditSubjectChanged(value: String) {
+        _state.update { it.copy(editSubject = value) }
+    }
+
+    fun onEditSoftwareChanged(value: String) {
+        _state.update { it.copy(editSoftware = value) }
+    }
+
+    fun onEditCopyrightChanged(value: String) {
+        _state.update { it.copy(editCopyright = value) }
+    }
+
+    fun onEditDateCreatedChanged(value: String) {
+        _state.update { it.copy(editDateCreated = value) }
+    }
+
+    fun onEditLatitudeChanged(value: String) {
+        val lat = value.toDoubleOrNull()
+        val err = if (value.isNotBlank() && (lat == null || lat !in -90.0..90.0)) "Latitude must be between -90 and 90" else null
+        _state.update { it.copy(editLatitude = value, gpsError = err) }
+    }
+
+    fun onEditLongitudeChanged(value: String) {
+        val lng = value.toDoubleOrNull()
+        val err = if (value.isNotBlank() && (lng == null || lng !in -180.0..180.0)) "Longitude must be between -180 and 180" else null
+        _state.update { it.copy(editLongitude = value, gpsError = err) }
+    }
+
+    fun onEditCameraMakeChanged(value: String) {
+        _state.update { it.copy(editCameraMake = value) }
+    }
+
+    fun onEditCameraModelChanged(value: String) {
+        _state.update { it.copy(editCameraModel = value) }
+    }
+
+    fun startMetadataWorker(
+        context: Context,
+        action: String,
+        editParams: com.morphdrop.app.domain.model.MetadataEditParams? = null
+    ): UUID? {
+        val currentState = _state.value
+        val inputUri = currentState.selectedFileUri ?: return null
+        val defaultOutputName = if (action == "edit") {
+            "${FileHelper.getFileNameWithoutExtension(currentState.selectedFileName)}_metadata_edited"
+        } else {
+            "${FileHelper.getFileNameWithoutExtension(currentState.selectedFileName)}_metadata_scrubbed"
+        }
+        val outputName = if (currentState.outputFileName.isNotBlank()) currentState.outputFileName else defaultOutputName
+
+        val dataBuilder = androidx.work.Data.Builder()
+            .putString(com.morphdrop.app.worker.ConversionWorker.KEY_CONVERSION_TYPE, "metadata_editor")
+            .putString(com.morphdrop.app.worker.ConversionWorker.KEY_INPUT_URI, inputUri.toString())
+            .putString(com.morphdrop.app.worker.ConversionWorker.KEY_OUTPUT_FILE_NAME, outputName)
+            .putString(com.morphdrop.app.worker.ConversionWorker.KEY_ACTION, action)
+
+        if (action == "edit" && editParams != null) {
+            dataBuilder.putString(com.morphdrop.app.worker.ConversionWorker.KEY_AUTHOR, editParams.author)
+            dataBuilder.putString(com.morphdrop.app.worker.ConversionWorker.KEY_TITLE, editParams.title)
+            dataBuilder.putString(com.morphdrop.app.worker.ConversionWorker.KEY_SUBJECT, editParams.subject)
+            dataBuilder.putString(com.morphdrop.app.worker.ConversionWorker.KEY_SOFTWARE, editParams.software)
+            dataBuilder.putString(com.morphdrop.app.worker.ConversionWorker.KEY_COPYRIGHT, editParams.copyright)
+            dataBuilder.putString(com.morphdrop.app.worker.ConversionWorker.KEY_DATE_CREATED, editParams.dateCreated)
+            if (editParams.latitude != null) dataBuilder.putDouble(com.morphdrop.app.worker.ConversionWorker.KEY_LATITUDE, editParams.latitude)
+            if (editParams.longitude != null) dataBuilder.putDouble(com.morphdrop.app.worker.ConversionWorker.KEY_LONGITUDE, editParams.longitude)
+            dataBuilder.putString(com.morphdrop.app.worker.ConversionWorker.KEY_CAMERA_MAKE, editParams.cameraMake)
+            dataBuilder.putString(com.morphdrop.app.worker.ConversionWorker.KEY_CAMERA_MODEL, editParams.cameraModel)
+        }
+
+        val request = androidx.work.OneTimeWorkRequestBuilder<com.morphdrop.app.worker.ConversionWorker>()
+            .setInputData(dataBuilder.build())
+            .build()
+
+        androidx.work.WorkManager.getInstance(context).enqueue(request)
+        return request.id
     }
 
     private fun createWorkingCacheCopy(context: Context, sourceUri: Uri): Uri {

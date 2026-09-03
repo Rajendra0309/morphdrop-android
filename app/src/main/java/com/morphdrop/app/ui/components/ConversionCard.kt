@@ -112,18 +112,25 @@ fun ConversionCard(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                FormatBadge(fileType = conversionType.inputType)
+                if (conversionType.id == "metadata_editor") {
+                    FormatBadge(
+                        text = "ALL FORMATS",
+                        backgroundColor = MaterialTheme.colorScheme.primary
+                    )
+                } else {
+                    FormatBadge(fileType = conversionType.inputType)
 
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                    contentDescription = "to",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier
-                        .padding(horizontal = 8.dp)
-                        .size(12.dp)
-                )
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = "to",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier
+                            .padding(horizontal = 8.dp)
+                            .size(12.dp)
+                    )
 
-                FormatBadge(fileType = conversionType.outputType)
+                    FormatBadge(fileType = conversionType.outputType)
+                }
             }
         }
     }
