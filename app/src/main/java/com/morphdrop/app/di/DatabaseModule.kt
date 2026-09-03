@@ -3,8 +3,10 @@ package com.morphdrop.app.di
 import android.content.Context
 import androidx.room.Room
 import com.morphdrop.app.data.local.MorphDropDatabase
+import com.morphdrop.app.data.local.dao.BookmarkDao
 import com.morphdrop.app.data.local.dao.FavoriteDao
 import com.morphdrop.app.data.local.dao.HistoryDao
+import com.morphdrop.app.data.local.dao.PdfAnnotationDao
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -36,5 +38,15 @@ object DatabaseModule {
     @Provides
     fun provideFavoriteDao(database: MorphDropDatabase): FavoriteDao {
         return database.favoriteDao()
+    }
+
+    @Provides
+    fun provideBookmarkDao(database: MorphDropDatabase): BookmarkDao {
+        return database.bookmarkDao()
+    }
+
+    @Provides
+    fun providePdfAnnotationDao(database: MorphDropDatabase): PdfAnnotationDao {
+        return database.pdfAnnotationDao()
     }
 }

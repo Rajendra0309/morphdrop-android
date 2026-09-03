@@ -39,6 +39,24 @@ object PdfThumbnailHelper {
                     }
                 }
             }
+        } catch (e: SecurityException) {
+            // Document is password protected, generate a lock placeholder
+            val width = 400
+            val height = 566 // ~A4 ratio
+            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            val canvas = android.graphics.Canvas(bitmap)
+            canvas.drawColor(Color.LTGRAY)
+            
+            val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.DKGRAY
+                textAlign = android.graphics.Paint.Align.CENTER
+                textSize = 64f
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+            }
+            canvas.drawText("LOCKED", width / 2f, height / 2f, paint)
+            
+            thumbnailCache.put(cacheKey, bitmap)
+            return@withContext bitmap
         } catch (e: Exception) {
             e.printStackTrace()
             null

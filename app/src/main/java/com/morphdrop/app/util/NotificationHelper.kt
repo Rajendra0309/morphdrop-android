@@ -46,16 +46,26 @@ class NotificationHelper @Inject constructor(
     fun createForegroundInfo(
         notificationId: Int,
         title: String,
-        progress: Int
+        progress: Int,
+        cancelIntent: PendingIntent? = null
     ): ForegroundInfo {
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+        val builder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setContentTitle(title)
             .setContentText(if (progress >= 0) "Converting... $progress%" else "Processing...")
             .setSmallIcon(android.R.drawable.stat_sys_download)
             .setProgress(100, progress.coerceIn(0, 100), progress < 0)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
-            .build()
+
+        if (cancelIntent != null) {
+            builder.addAction(
+                android.R.drawable.ic_menu_close_clear_cancel,
+                "Cancel",
+                cancelIntent
+            )
+        }
+
+        val notification = builder.build()
 
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             ForegroundInfo(
@@ -71,19 +81,27 @@ class NotificationHelper @Inject constructor(
     fun showProgressNotification(
         notificationId: Int,
         title: String,
-        progress: Int
+        progress: Int,
+        cancelIntent: PendingIntent? = null
     ) {
         try {
-            val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+            val builder = NotificationCompat.Builder(context, CHANNEL_ID)
                 .setContentTitle(title)
                 .setContentText(if (progress >= 0) "Converting... $progress%" else "Processing...")
                 .setSmallIcon(android.R.drawable.stat_sys_download)
                 .setProgress(100, progress.coerceIn(0, 100), progress < 0)
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
-                .build()
 
-            notificationManager.notify(notificationId, notification)
+            if (cancelIntent != null) {
+                builder.addAction(
+                    android.R.drawable.ic_menu_close_clear_cancel,
+                    "Cancel",
+                    cancelIntent
+                )
+            }
+
+            notificationManager.notify(notificationId, builder.build())
         } catch (_: Exception) {
             // Notification display restricted or permission denied
         }
@@ -121,6 +139,37 @@ class NotificationHelper @Inject constructor(
                     "Open",
                     pendingIntent
                 )
+                .build()
+
+            notificationManager.notify(notificationId, notification)
+        } catch (_: Exception) {
+            // Notification display restricted or permission denied
+        }
+    }
+
+    fun showCancelledNotification(
+        notificationId: Int,
+        title: String,
+        message: String
+    ) {
+        try {
+            val intent = Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+
+            val pendingIntent = PendingIntent.getActivity(
+                context,
+                notificationId,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+
+            val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+                .setContentTitle("$title Cancelled")
+                .setContentText(message)
+                .setSmallIcon(android.R.drawable.stat_notify_error)
+                .setAutoCancel(true)
+                .setContentIntent(pendingIntent)
                 .build()
 
             notificationManager.notify(notificationId, notification)

@@ -73,21 +73,41 @@
 
 ### What's New
 
-> - **Interactive PDF Workbench** — A high-end visual grid interface for merging, splitting, and organizing PDFs.
-> - **Image & Document Workstation** — Complete redesign featuring interactive cropping, a precision color picker, and native pill-shaped inputs.
-> - **Advanced PDF Engine** — Improved compression algorithms and iron-clad password protection options.
-> - **Material You Aesthetic** — Beautiful modern UI with dynamic theming.
-> - **Cooperative Background Tasks** — Safe cancellations without orphaned or corrupted files.
-> - **Search FAB System** — Quick and intuitive search functionality integrated tightly into the navigation.
-> - **Dynamic Material You Colors** — Blends seamlessly with your device’s wallpaper.
+> - **Professional PDF Viewer (Pro)** - Google Drive-style PDF engine with text search, page jump, immersive mode, bookmarks, and night/sepia reading modes.
+> - **On-Device OCR** - Extract text from any image or scanned PDF completely offline using Google ML Kit.
+> - **Interactive Image Workbench** - A high-end visual grid interface with in-place cropping, rotation, and seamless batch processing support.
+> - **Advanced Metadata Editor** - Inspect, scrub, or spoof hidden EXIF and document metadata for maximum privacy.
+> - **In-App GitHub Updater** - Silent background checks that notify you when a new release is available directly from GitHub.
+> - **Material You Aesthetic** - Zero-flash navigation transitions and dynamic wallpaper theming for Android 12+.
 
 <br>
+
+<details>
+<summary><b>Privacy & Security Tools</b></summary>
+<br>
+
+- **Metadata Inspector** — View hidden EXIF and GPS data in photos and documents.
+- **Metadata Scrubber** — Remove all tracking data with a single tap for secure sharing.
+- **Metadata Editor** — Modify dates, locations, and author info to protect your identity.
+
+</details>
+
+<details>
+<summary><b>Image & Text Utilities</b></summary>
+<br>
+
+- **On-Device OCR** — Extract selectable text from images securely and offline. Supports 5 languages (English, Chinese, Devanagari, Japanese, Korean).
+- **Batch Processing** — Convert hundreds of images simultaneously into organized folders.
+- **Interactive Cropping** — Crop and rotate images directly inside the workbench before saving.
+
+</details>
 
 <details>
 <summary><b>Core & Privacy</b></summary>
 <br>
 
-- **100% Offline** — Zero internet permissions required. Files never leave your device.
+- **100% Offline** — Zero internet permissions required for conversions. Files never leave your device.
+- **In-App Updater** — Seamlessly check and download the latest updates directly from GitHub without relying on an app store.
 - **Privacy-First** — No data collection and absolutely no analytics tracking.
 - **No Size Limits** — Convert large documents locally (subject to device hardware).
 

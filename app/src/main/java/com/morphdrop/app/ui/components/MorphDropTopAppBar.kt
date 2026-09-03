@@ -37,6 +37,7 @@ fun MorphDropTopAppBar(
     onBackClick: () -> Unit = {},
     showTagline: Boolean = false,
     hasActions: Boolean = false,
+    modifier: Modifier = Modifier,
     actions: @Composable () -> Unit = {}
 ) {
     val collapsedFraction = scrollBehavior.state.collapsedFraction
@@ -53,6 +54,7 @@ fun MorphDropTopAppBar(
     // Actions area: variable (48dp per action)
 
     LargeTopAppBar(
+        modifier = modifier,
         title = {
             // Expanded state: standard slot behavior
             // Collapsed state: absolute centering using negative translation
@@ -74,8 +76,9 @@ fun MorphDropTopAppBar(
                         style = MaterialTheme.typography.headlineMedium,
                         fontWeight = titleWeight,
                         fontSize = 32.sp,
+                        lineHeight = 38.sp,
                         color = MaterialTheme.colorScheme.onBackground,
-                        maxLines = 1,
+                        maxLines = 2,
                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                     )
                     

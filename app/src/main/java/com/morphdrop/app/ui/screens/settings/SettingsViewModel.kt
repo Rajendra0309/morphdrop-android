@@ -17,12 +17,13 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import javax.inject.Inject
 import com.morphdrop.app.domain.model.ThemeMode
+import com.morphdrop.app.BuildConfig
 
 data class SettingsUiState(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val defaultOutputDirectory: String = "Downloads/MorphDrop",
     val cacheSizeFormatted: String = "0 B",
-    val appVersion: String = "v1.0.1"
+    val appVersion: String = "v${BuildConfig.VERSION_NAME}"
 )
 
 @HiltViewModel

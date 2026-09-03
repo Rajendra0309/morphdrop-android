@@ -26,6 +26,7 @@ class ImageConverterUseCase @Inject constructor(
     private val settingsRepository: SettingsRepository,
 ) {
     class InvalidImageException : Exception("Failed to decode source image")
+    class ImageTooLargeException : Exception("Image is too large for device memory. Try reducing quality or size.")
 
     suspend operator fun invoke(
         inputUri: Uri,
@@ -33,17 +34,20 @@ class ImageConverterUseCase @Inject constructor(
         quality: Int = 85,
         targetWidth: Int? = null,
         targetHeight: Int? = null,
+        resizeScale: Float? = null, // e.g., 0.5f for 50%, 0.25f for 25%
         paddingColor: Int? = null,
         cropRect: Rect? = null,
         rotationDegrees: Int = 0,
         targetSizeKb: Int? = null,
+        stripMetadata: Boolean = false,
+        outputFolderName: String? = null,
         outputFileName: String = "converted_image_${System.currentTimeMillis()}.$outputFormat"
     ): Uri = withContext(Dispatchers.IO) {
         var originalBitmap: Bitmap? = null
         var processedBitmap: Bitmap? = null
         
         try {
-            // 1. Get original dimensions and orientation for memory safety and rotation
+            // 1. Check dimensions and orientation without loading full pixels
             val options = BitmapFactory.Options().apply {
                 inJustDecodeBounds = true
             }
@@ -62,35 +66,44 @@ class ImageConverterUseCase @Inject constructor(
             val originalWidth = if (isSwappedTotal) options.outHeight else options.outWidth
             val originalHeight = if (isSwappedTotal) options.outWidth else options.outHeight
 
-            // 2. Memory Safety: Calculate inSampleSize
-            // If target dimensions are provided, use them. Otherwise, limit to 4096px for high quality.
-            val reqWidth = targetWidth ?: 4096
-            val reqHeight = targetHeight ?: 4096
-            
-            options.inSampleSize = calculateInSampleSize(options, reqWidth, reqHeight)
+            // 2. Load image at FULL resolution (no automatic downscaling as per user requirement)
+            options.inSampleSize = 1
             options.inJustDecodeBounds = false
             
-            originalBitmap = openInputStream(inputUri)?.use { inputStream ->
-                BitmapFactory.decodeStream(inputStream, null, options)
-            } ?: throw InvalidImageException()
+            originalBitmap = try {
+                openInputStream(inputUri)?.use { inputStream ->
+                    BitmapFactory.decodeStream(inputStream, null, options)
+                } ?: throw InvalidImageException()
+            } catch (e: OutOfMemoryError) {
+                throw ImageTooLargeException()
+            }
 
-            // 3. Exif Orientation Support and Manual Rotation
-            var currentBitmap = rotateBitmapIfNecessary(originalBitmap, orientation)
+            // 3. Exif Orientation Support & Manual Rotation
+            var currentBitmap = try {
+                rotateBitmapIfNecessary(originalBitmap, orientation)
+            } catch (e: OutOfMemoryError) {
+                throw ImageTooLargeException()
+            }
+
             if (rotationDegrees % 360 != 0) {
-                val matrix = Matrix().apply { postRotate(rotationDegrees.toFloat()) }
-                val manuallyRotated = Bitmap.createBitmap(currentBitmap, 0, 0, currentBitmap.width, currentBitmap.height, matrix, true)
-                if (manuallyRotated != currentBitmap) {
-                    if (currentBitmap != originalBitmap) {
-                        currentBitmap.recycle()
+                try {
+                    val matrix = Matrix().apply { postRotate(rotationDegrees.toFloat()) }
+                    val manuallyRotated = Bitmap.createBitmap(currentBitmap, 0, 0, currentBitmap.width, currentBitmap.height, matrix, true)
+                    if (manuallyRotated != currentBitmap) {
+                        if (currentBitmap != originalBitmap) {
+                            currentBitmap.recycle()
+                        }
+                        currentBitmap = manuallyRotated
                     }
-                    currentBitmap = manuallyRotated
+                } catch (e: OutOfMemoryError) {
+                    throw ImageTooLargeException()
                 }
             }
 
-            // 4. Cropping (adjusting coordinates if we used inSampleSize)
+            // 4. Cropping if cropRect is specified
             if (cropRect != null) {
-                val scaleX = currentBitmap.width.toFloat() / originalWidth
-                val scaleY = currentBitmap.height.toFloat() / originalHeight
+                val scaleX = currentBitmap.width.toFloat() / originalWidth.coerceAtLeast(1)
+                val scaleY = currentBitmap.height.toFloat() / originalHeight.coerceAtLeast(1)
                 
                 val safeLeft = max(0, (cropRect.left * scaleX).toInt())
                 val safeTop = max(0, (cropRect.top * scaleY).toInt())
@@ -98,48 +111,70 @@ class ImageConverterUseCase @Inject constructor(
                 val safeBottom = min(currentBitmap.height, (cropRect.bottom * scaleY).toInt())
                 
                 if (safeLeft < safeRight && safeTop < safeBottom) {
-                    val cropped = Bitmap.createBitmap(currentBitmap, safeLeft, safeTop, safeRight - safeLeft, safeBottom - safeTop)
-                    if (cropped != currentBitmap) {
-                        if (currentBitmap != originalBitmap) {
-                            currentBitmap.recycle()
+                    try {
+                        val cropped = Bitmap.createBitmap(currentBitmap, safeLeft, safeTop, safeRight - safeLeft, safeBottom - safeTop)
+                        if (cropped != currentBitmap) {
+                            if (currentBitmap != originalBitmap) {
+                                currentBitmap.recycle()
+                            }
+                            currentBitmap = cropped
                         }
+                    } catch (e: OutOfMemoryError) {
+                        throw ImageTooLargeException()
                     }
-                    currentBitmap = cropped
                 }
             }
 
-            // 5. Resizing with Letterboxing (Padding)
-            if (targetWidth != null && targetHeight != null && targetWidth > 0 && targetHeight > 0) {
-                if (currentBitmap.width != targetWidth || currentBitmap.height != targetHeight) {
-                    val paddedBitmap = Bitmap.createBitmap(targetWidth, targetHeight, Bitmap.Config.ARGB_8888)
-                    val canvas = Canvas(paddedBitmap)
-                    
-                    paddingColor?.let { canvas.drawColor(it) }
-
-                    val scale = min(
-                        targetWidth.toFloat() / currentBitmap.width,
-                        targetHeight.toFloat() / currentBitmap.height
-                    )
-
-                    val scaledWidth = (currentBitmap.width * scale).toInt()
-                    val scaledHeight = (currentBitmap.height * scale).toInt()
-                    
-                    val left = (targetWidth - scaledWidth) / 2f
-                    val top = (targetHeight - scaledHeight) / 2f
-                    
-                    val destRect = RectF(left, top, left + scaledWidth, top + scaledHeight)
-                    canvas.drawBitmap(currentBitmap, null, destRect, Paint(Paint.FILTER_BITMAP_FLAG))
-                    
-                    if (currentBitmap != originalBitmap) {
-                        currentBitmap.recycle()
+            // 5. User-Selected Resizing (Explicit Percentage or Width/Height)
+            if (resizeScale != null && resizeScale > 0f && resizeScale < 1f) {
+                val newWidth = (currentBitmap.width * resizeScale).toInt().coerceAtLeast(1)
+                val newHeight = (currentBitmap.height * resizeScale).toInt().coerceAtLeast(1)
+                try {
+                    val scaled = Bitmap.createScaledBitmap(currentBitmap, newWidth, newHeight, true)
+                    if (scaled != currentBitmap) {
+                        if (currentBitmap != originalBitmap) {
+                            currentBitmap.recycle()
+                        }
+                        currentBitmap = scaled
                     }
-                    currentBitmap = paddedBitmap
+                } catch (e: OutOfMemoryError) {
+                    throw ImageTooLargeException()
+                }
+            } else if (targetWidth != null && targetHeight != null && targetWidth > 0 && targetHeight > 0) {
+                if (currentBitmap.width != targetWidth || currentBitmap.height != targetHeight) {
+                    try {
+                        val paddedBitmap = Bitmap.createBitmap(targetWidth, targetHeight, Bitmap.Config.ARGB_8888)
+                        val canvas = Canvas(paddedBitmap)
+                        
+                        paddingColor?.let { canvas.drawColor(it) }
+
+                        val scale = min(
+                            targetWidth.toFloat() / currentBitmap.width,
+                            targetHeight.toFloat() / currentBitmap.height
+                        )
+
+                        val scaledWidth = (currentBitmap.width * scale).toInt()
+                        val scaledHeight = (currentBitmap.height * scale).toInt()
+                        
+                        val left = (targetWidth - scaledWidth) / 2f
+                        val top = (targetHeight - scaledHeight) / 2f
+                        
+                        val destRect = RectF(left, top, left + scaledWidth, top + scaledHeight)
+                        canvas.drawBitmap(currentBitmap, null, destRect, Paint(Paint.FILTER_BITMAP_FLAG))
+                        
+                        if (currentBitmap != originalBitmap) {
+                            currentBitmap.recycle()
+                        }
+                        currentBitmap = paddedBitmap
+                    } catch (e: OutOfMemoryError) {
+                        throw ImageTooLargeException()
+                    }
                 }
             }
             
             processedBitmap = currentBitmap
 
-            // 6. Robust Compression & Target Size
+            // 6. Output Compression
             val format = when (outputFormat.lowercase()) {
                 "png", "bmp" -> Bitmap.CompressFormat.PNG
                 "webp" -> if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
@@ -159,7 +194,7 @@ class ImageConverterUseCase @Inject constructor(
                 var currentQuality = quality.coerceIn(5, 100)
                 var loopBitmap = finalProcessed
                 var loopCount = 0
-                val maxLoops = 25
+                val maxLoops = 20
                 
                 while (loopCount < maxLoops) {
                     baos = ByteArrayOutputStream()
@@ -168,25 +203,25 @@ class ImageConverterUseCase @Inject constructor(
                     if (baos.size() <= targetBytes) {
                         break
                     } else {
-                        // If format is PNG (lossless) or quality is already low, downscale resolution
                         if (format == Bitmap.CompressFormat.PNG || currentQuality <= 30) {
-                            val nextBitmap = Bitmap.createScaledBitmap(
-                                loopBitmap, 
-                                (loopBitmap.width * 0.9).toInt().coerceAtLeast(1), 
-                                (loopBitmap.height * 0.9).toInt().coerceAtLeast(1), 
-                                true
-                            )
+                            val nextBitmap = try {
+                                Bitmap.createScaledBitmap(
+                                    loopBitmap, 
+                                    (loopBitmap.width * 0.9).toInt().coerceAtLeast(1), 
+                                    (loopBitmap.height * 0.9).toInt().coerceAtLeast(1), 
+                                    true
+                                )
+                            } catch (e: OutOfMemoryError) {
+                                throw ImageTooLargeException()
+                            }
                             if (loopBitmap != finalProcessed) {
                                 loopBitmap.recycle()
                             }
                             loopBitmap = nextBitmap
-                            
-                            // For lossy formats, reset quality for the smaller version to try and keep details
                             if (format != Bitmap.CompressFormat.PNG) {
                                 currentQuality = min(quality + 10, 90)
                             }
                         } else {
-                            // Reduce quality in 10-unit steps
                             currentQuality = (currentQuality - 10).coerceAtLeast(5)
                         }
                     }
@@ -203,7 +238,14 @@ class ImageConverterUseCase @Inject constructor(
                 finalProcessed.compress(format, quality, baos)
             }
 
-            FileHelper.saveToFile(context, settingsRepository, outputFileName, baos.toByteArray())
+            val fileData = baos.toByteArray()
+            baos.close()
+
+            if (outputFolderName != null) {
+                FileHelper.saveToFile(context, outputFolderName, outputFileName, fileData)
+            } else {
+                FileHelper.saveToFile(context, settingsRepository, outputFileName, fileData)
+            }
         } finally {
             originalBitmap?.recycle()
             if (processedBitmap != originalBitmap) {
@@ -246,18 +288,5 @@ class ImageConverterUseCase @Inject constructor(
         } catch (e: Exception) {
             bitmap
         }
-    }
-
-    private fun calculateInSampleSize(options: BitmapFactory.Options, reqWidth: Int, reqHeight: Int): Int {
-        val (height: Int, width: Int) = options.run { outHeight to outWidth }
-        var inSampleSize = 1
-        if (height > reqHeight || width > reqWidth) {
-            val halfHeight: Int = height / 2
-            val halfWidth: Int = width / 2
-            while (halfHeight / inSampleSize >= reqHeight && halfWidth / inSampleSize >= reqWidth) {
-                inSampleSize *= 2
-            }
-        }
-        return inSampleSize
     }
 }

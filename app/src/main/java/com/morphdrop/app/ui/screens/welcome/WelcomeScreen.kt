@@ -18,6 +18,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.content.res.Configuration
+import androidx.compose.ui.tooling.preview.Devices
+import androidx.compose.ui.tooling.preview.Preview
+import com.morphdrop.app.ui.theme.MorphDropTheme
 import com.airbnb.lottie.compose.*
 import com.morphdrop.app.R
 import kotlinx.coroutines.launch
@@ -239,4 +243,20 @@ sealed class OnboardingPage(
         description = "Material You design that adapts to your style while delivering peak performance.",
         com.morphdrop.app.R.raw.performance
     )
+}
+
+@Preview(name = "Light Mode", showBackground = true, showSystemUi = true, device = Devices.PIXEL_7_PRO)
+@Composable
+fun WelcomeScreenLightPreview() {
+    MorphDropTheme(darkTheme = false) {
+        WelcomeScreen(onFinish = {})
+    }
+}
+
+@Preview(name = "Dark Mode", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true, showSystemUi = true, device = Devices.PIXEL_7_PRO)
+@Composable
+fun WelcomeScreenDarkPreview() {
+    MorphDropTheme(darkTheme = true) {
+        WelcomeScreen(onFinish = {})
+    }
 }
