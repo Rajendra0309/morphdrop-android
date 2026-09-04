@@ -121,5 +121,4 @@ class MainViewModel @Inject constructor(
     fun dismissUpdateDialog() {
         _updateInfo.value = null
     }
-
 }

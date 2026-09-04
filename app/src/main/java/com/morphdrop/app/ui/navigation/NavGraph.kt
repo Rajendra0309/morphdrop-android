@@ -74,8 +74,7 @@ fun NavGraph(
         composable(Screen.Settings.route) {
             SettingsScreen(
                 onNavigateBack = { navController.popBackStack() },
-                onCheckForUpdates = { mainViewModel.checkForUpdates(force = true) },
-                mainViewModel = mainViewModel
+                onCheckForUpdates = { mainViewModel.checkForUpdates(force = true) }
             )
         }
 

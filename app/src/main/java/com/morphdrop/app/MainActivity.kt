@@ -36,6 +36,7 @@ import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.morphdrop.app.ui.components.MorphDropBottomNavigation
+import com.morphdrop.app.ui.components.UpdateDialog
 import com.morphdrop.app.ui.navigation.NavGraph
 import com.morphdrop.app.ui.navigation.Screen
 import com.morphdrop.app.ui.theme.MorphDropTheme
@@ -161,33 +162,10 @@ class MainActivity : ComponentActivity() {
                     }
 
                     if (updateInfo != null) {
-                        androidx.compose.material3.AlertDialog(
-                            onDismissRequest = { viewModel.dismissUpdateDialog() },
-                            title = { androidx.compose.material3.Text("Update Available") },
-                            text = { 
-                                androidx.compose.foundation.layout.Column {
-                                    androidx.compose.material3.Text("A new version (${updateInfo?.versionName}) is available.")
-                                    androidx.compose.foundation.layout.Spacer(modifier = Modifier.padding(8.dp))
-                                    androidx.compose.material3.Text(
-                                        text = updateInfo?.releaseNotes ?: "",
-                                        style = MaterialTheme.typography.bodySmall
-                                    )
-                                }
-                            },
-                            confirmButton = {
-                                androidx.compose.material3.TextButton(
-                                    onClick = { viewModel.downloadUpdate(updateInfo!!) }
-                                ) {
-                                    androidx.compose.material3.Text("Download")
-                                }
-                            },
-                            dismissButton = {
-                                androidx.compose.material3.TextButton(
-                                    onClick = { viewModel.dismissUpdateDialog() }
-                                ) {
-                                    androidx.compose.material3.Text("Later")
-                                }
-                            }
+                        UpdateDialog(
+                            updateInfo = updateInfo!!,
+                            onDownload = { viewModel.downloadUpdate(updateInfo!!) },
+                            onDismiss = { viewModel.dismissUpdateDialog() }
                         )
                     }
 

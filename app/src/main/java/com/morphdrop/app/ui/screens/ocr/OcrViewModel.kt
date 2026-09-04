@@ -75,7 +75,8 @@ class OcrViewModel @Inject constructor(
         val size = FileHelper.getFileSize(context, uri)
         val sizeFormatted = FileHelper.formatFileSize(size)
         val mime = FileHelper.getMimeType(context, uri)
-        val isPdfFile = mime.contains("pdf", ignoreCase = true) || name.endsWith(".pdf", ignoreCase = true)
+        val isImage = mime.startsWith("image/", ignoreCase = true)
+        val isPdfFile = !isImage && (mime.contains("pdf", ignoreCase = true) || name.endsWith(".pdf", ignoreCase = true))
 
         val baseName = FileHelper.getFileNameWithoutExtension(name).ifBlank { "extracted_text" }
         val defaultSaveName = "${baseName}_ocr.txt"

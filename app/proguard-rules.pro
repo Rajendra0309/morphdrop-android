@@ -15,10 +15,19 @@
 -keep public class * extends android.content.BroadcastReceiver
 -keep public class * extends android.content.ContentProvider
 
-
 # Apache POI relies on java.awt classes which are not fully present on Android.
 # We tell R8 to ignore these missing class warnings.
 -dontwarn java.awt.**
+-dontwarn java.awt.geom.**
+-dontwarn java.awt.geom.Rectangle2D
 -dontwarn com.graphbuilder.**
 -dontwarn org.apache.poi.**
+-dontwarn org.apache.poi.xslf.draw.**
+-dontwarn org.apache.poi.xslf.draw.SVGUserAgent
+
+# ML Kit specific rules to prevent text recognition models and internal classes from being stripped in Release builds
+-keep class com.google.mlkit.** { *; }
+-dontwarn com.google.mlkit.**
+-keep class com.google.android.gms.internal.mlkit_vision_text_common.** { *; }
+-keep class com.google.android.gms.tasks.** { *; }
 

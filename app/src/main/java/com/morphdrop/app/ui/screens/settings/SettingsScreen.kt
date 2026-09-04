@@ -36,7 +36,6 @@ import com.morphdrop.app.ui.theme.MorphDropTheme
 fun SettingsScreen(
     onNavigateBack: () -> Unit = {},
     onCheckForUpdates: () -> Unit = {},
-    mainViewModel: MainViewModel,
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
