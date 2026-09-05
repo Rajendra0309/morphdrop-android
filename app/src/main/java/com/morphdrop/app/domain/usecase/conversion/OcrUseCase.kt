@@ -11,6 +11,7 @@ import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.Build
 import android.os.ParcelFileDescriptor
+import android.util.Log
 import androidx.exifinterface.media.ExifInterface
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
@@ -26,6 +27,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -38,31 +40,91 @@ class OcrUseCase @Inject constructor(
     @param:ApplicationContext private val context: Context
 ) {
 
-    private val latinRecognizer: TextRecognizer by lazy {
-        TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
-    }
-    private val devanagariRecognizer: TextRecognizer by lazy {
-        TextRecognition.getClient(DevanagariTextRecognizerOptions.Builder().build())
-    }
-    private val chineseRecognizer: TextRecognizer by lazy {
-        TextRecognition.getClient(ChineseTextRecognizerOptions.Builder().build())
-    }
-    private val japaneseRecognizer: TextRecognizer by lazy {
-        TextRecognition.getClient(JapaneseTextRecognizerOptions.Builder().build())
-    }
-    private val koreanRecognizer: TextRecognizer by lazy {
-        TextRecognition.getClient(KoreanTextRecognizerOptions.Builder().build())
+    suspend fun extractFromBatch(
+        uris: List<Uri>,
+        script: OcrScript,
+        onProgress: (current: Int, total: Int, currentImageUri: Uri) -> Unit
+    ): Result<List<Pair<Uri, String>>> = withContext(Dispatchers.IO) {
+        if (uris.isEmpty()) return@withContext Result.success(emptyList())
+
+        val recognizer = getRecognizerForScript(script)
+        val results = mutableListOf<Pair<Uri, String>>()
+
+        try {
+            for ((index, uri) in uris.withIndex()) {
+                ensureActive()
+                onProgress(index + 1, uris.size, uri)
+
+                try {
+                    val mimeType = context.contentResolver.getType(uri)
+                    val text = if (mimeType == "application/pdf" || uri.toString().endsWith(".pdf", ignoreCase = true)) {
+                        // Extract from first page of PDF for batch (or should it extract all? The user prompt said extract from images. Let's do all pages if it's a PDF)
+                        val pageCount = getPdfPageCount(uri)
+                        val pdfText = StringBuilder()
+                        for (i in 0 until pageCount) {
+                            ensureActive()
+                            var pageBitmap: Bitmap? = null
+                            try {
+                                pageBitmap = renderPdfPage(context, uri, i)
+                                val pageInput = InputImage.fromBitmap(pageBitmap, 0)
+                                val result = recognizer.process(pageInput).await()
+                                pdfText.append(result.text).append("\n")
+                            } finally {
+                                pageBitmap?.recycle()
+                            }
+                        }
+                        pdfText.toString()
+                    } else {
+                        // Image
+                        try {
+                            val inputImage = InputImage.fromFilePath(context, uri)
+                            val result = recognizer.process(inputImage).await()
+                            result.text
+                        } catch (e: Exception) {
+                            Log.e("OcrUseCase", "fromFilePath failed for $uri, falling back to bitmap", e)
+                            var bitmap: Bitmap? = null
+                            try {
+                                bitmap = loadUniversalScaledBitmap(context, uri)
+                                val inputImage = InputImage.fromBitmap(bitmap, 0)
+                                val result = recognizer.process(inputImage).await()
+                                result.text
+                            } finally {
+                                bitmap?.recycle()
+                            }
+                        }
+                    }
+
+                    if (text.isNotBlank()) {
+                        results.add(uri to text.trim())
+                    }
+                } catch (e: Exception) {
+                    Log.e("OcrUseCase", "Failed to extract text from uri: $uri", e)
+                    // Skip failed image and continue
+                }
+            }
+
+            if (results.isEmpty()) {
+                Result.failure(OcrException.NoTextFoundException())
+            } else {
+                Result.success(results)
+            }
+        } finally {
+            recognizer.close()
+        }
     }
 
+    private fun getRecognizerForScript(script: OcrScript): TextRecognizer {
+        return when (script) {
+            OcrScript.LATIN -> TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+            OcrScript.DEVANAGARI -> TextRecognition.getClient(DevanagariTextRecognizerOptions.Builder().build())
+            OcrScript.CHINESE -> TextRecognition.getClient(ChineseTextRecognizerOptions.Builder().build())
+            OcrScript.JAPANESE -> TextRecognition.getClient(JapaneseTextRecognizerOptions.Builder().build())
+            OcrScript.KOREAN -> TextRecognition.getClient(KoreanTextRecognizerOptions.Builder().build())
+        }
+    }
 
     suspend fun processBitmapForScript(bitmap: Bitmap, script: OcrScript): Result<String> = withContext(Dispatchers.Default) {
-        val recognizer = when (script) {
-            OcrScript.LATIN -> latinRecognizer
-            OcrScript.DEVANAGARI -> devanagariRecognizer
-            OcrScript.CHINESE -> chineseRecognizer
-            OcrScript.JAPANESE -> japaneseRecognizer
-            OcrScript.KOREAN -> koreanRecognizer
-        }
+        val recognizer = getRecognizerForScript(script)
         try {
             val inputImage = InputImage.fromBitmap(bitmap, 0)
             val result = recognizer.process(inputImage).await()
@@ -75,21 +137,47 @@ class OcrUseCase @Inject constructor(
         } catch (_: OutOfMemoryError) {
             Result.failure(OcrException.MemoryException())
         } catch (e: Exception) {
+            Log.e("OcrUseCase", "Failed to process bitmap", e)
             Result.failure(OcrException.ExtractionFailedException(e.message))
+        } finally {
+            recognizer.close()
         }
     }
 
     suspend fun extractFromImageUri(uri: Uri, script: OcrScript): Result<String> = withContext(Dispatchers.IO) {
-        var bitmap: Bitmap? = null
+        val recognizer = getRecognizerForScript(script)
         try {
-            bitmap = loadUniversalScaledBitmap(context, uri)
-            processBitmapForScript(bitmap, script)
-        } catch (_: OutOfMemoryError) {
-            Result.failure(OcrException.MemoryException())
+            val inputImage = InputImage.fromFilePath(context, uri)
+            val result = recognizer.process(inputImage).await()
+            val text = result.text.trim()
+            if (text.isEmpty()) {
+                Result.failure(OcrException.NoTextFoundException())
+            } else {
+                Result.success(text)
+            }
         } catch (e: Exception) {
-            Result.failure(OcrException.ExtractionFailedException(e.message))
+            Log.e("OcrUseCase", "fromFilePath failed for $uri, falling back to bitmap", e)
+            var bitmap: Bitmap? = null
+            try {
+                bitmap = loadUniversalScaledBitmap(context, uri)
+                val inputImage = InputImage.fromBitmap(bitmap, 0)
+                val result = recognizer.process(inputImage).await()
+                val text = result.text.trim()
+                if (text.isEmpty()) {
+                    Result.failure(OcrException.NoTextFoundException())
+                } else {
+                    Result.success(text)
+                }
+            } catch (_: OutOfMemoryError) {
+                Result.failure(OcrException.MemoryException())
+            } catch (e: Exception) {
+                Log.e("OcrUseCase", "Bitmap fallback failed for $uri", e)
+                Result.failure(OcrException.ExtractionFailedException(e.message))
+            } finally {
+                bitmap?.recycle()
+            }
         } finally {
-            bitmap?.recycle()
+            recognizer.close()
         }
     }
 
@@ -116,6 +204,7 @@ class OcrUseCase @Inject constructor(
         } catch (_: OutOfMemoryError) {
             Result.failure(OcrException.MemoryException())
         } catch (e: Exception) {
+            Log.e("OcrUseCase", "Failed to extract from PDF page", e)
             Result.failure(OcrException.ExtractionFailedException(e.message))
         } finally {
             bitmap?.recycle()
@@ -132,18 +221,22 @@ class OcrUseCase @Inject constructor(
             return@withContext Result.failure(OcrException.ExtractionFailedException("Invalid or empty PDF file"))
         }
 
-        val fullTextBuilder = StringBuilder()
-        var hasFoundAnyText = false
+        val recognizer = getRecognizerForScript(script)
+        try {
+            val fullTextBuilder = StringBuilder()
+            var hasFoundAnyText = false
 
-        for (pageIndex in 0 until totalPages) {
-            onProgress(pageIndex + 1, totalPages)
-            var pageBitmap: Bitmap? = null
-            try {
-                pageBitmap = renderPdfPage(context, uri, pageIndex)
-                val pageResult = processBitmapForScript(pageBitmap, script)
-                if (pageResult.isSuccess) {
-                    val text = pageResult.getOrNull()
-                    if (!text.isNullOrBlank()) {
+            for (pageIndex in 0 until totalPages) {
+                ensureActive()
+                onProgress(pageIndex + 1, totalPages)
+                var pageBitmap: Bitmap? = null
+                try {
+                    pageBitmap = renderPdfPage(context, uri, pageIndex)
+                    val pageInput = InputImage.fromBitmap(pageBitmap, 0)
+                    val result = recognizer.process(pageInput).await()
+                    val text = result.text.trim()
+                    
+                    if (text.isNotBlank()) {
                         hasFoundAnyText = true
                         if (totalPages > 1) {
                             if (fullTextBuilder.isNotEmpty()) fullTextBuilder.append("\n\n")
@@ -151,20 +244,23 @@ class OcrUseCase @Inject constructor(
                         }
                         fullTextBuilder.append(text)
                     }
+                } catch (_: OutOfMemoryError) {
+                    // Continue
+                } catch (e: Exception) {
+                    Log.e("OcrUseCase", "Failed to extract text from page $pageIndex", e)
+                    // Continue
+                } finally {
+                    pageBitmap?.recycle()
                 }
-            } catch (_: OutOfMemoryError) {
-                // Continue
-            } catch (_: Exception) {
-                // Continue
-            } finally {
-                pageBitmap?.recycle()
             }
-        }
 
-        if (!hasFoundAnyText || fullTextBuilder.isBlank()) {
-            Result.failure(OcrException.NoTextFoundException())
-        } else {
-            Result.success(fullTextBuilder.toString().trim())
+            if (!hasFoundAnyText || fullTextBuilder.isBlank()) {
+                Result.failure(OcrException.NoTextFoundException())
+            } else {
+                Result.success(fullTextBuilder.toString().trim())
+            }
+        } finally {
+            recognizer.close()
         }
     }
 

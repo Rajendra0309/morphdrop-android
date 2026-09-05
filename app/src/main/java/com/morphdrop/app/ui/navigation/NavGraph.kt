@@ -12,6 +12,7 @@ import com.morphdrop.app.ui.screens.conversion.ConversionConfigScreen
 import com.morphdrop.app.ui.screens.history.HistoryDetailScreen
 import com.morphdrop.app.ui.screens.history.HistoryScreen
 import com.morphdrop.app.ui.screens.home.HomeScreen
+import com.morphdrop.app.ui.screens.ocr.BatchOcrScreen
 import com.morphdrop.app.ui.screens.ocr.OcrScreen
 import com.morphdrop.app.ui.screens.processing.ProcessingScreen
 import com.morphdrop.app.ui.screens.result.ResultScreen
@@ -33,10 +34,10 @@ fun NavGraph(
         composable(Screen.Home.route) {
             HomeScreen(
                 onNavigateToConfig = { conversionTypeId ->
-                    if (conversionTypeId == "ocr_text_extractor") {
-                        navController.navigate(Screen.Ocr.route)
-                    } else {
-                        navController.navigate(Screen.ConversionConfig.createRoute(conversionTypeId))
+                    when (conversionTypeId) {
+                        "ocr_text_extractor" -> navController.navigate(Screen.Ocr.route)
+                        "batch_ocr" -> navController.navigate(Screen.BatchOcr.route)
+                        else -> navController.navigate(Screen.ConversionConfig.createRoute(conversionTypeId))
                     }
                 },
                 onNavigate = { route ->
@@ -110,6 +111,13 @@ fun NavGraph(
 
         composable(Screen.Ocr.route) {
             OcrScreen(
+                onNavigateBack = { navController.popBackStack() },
+                onNavigateToBatchOcr = { navController.navigate(Screen.BatchOcr.route) }
+            )
+        }
+
+        composable(Screen.BatchOcr.route) {
+            BatchOcrScreen(
                 onNavigateBack = { navController.popBackStack() }
             )
         }

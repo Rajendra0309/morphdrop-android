@@ -45,6 +45,16 @@ data class ConversionType(
                 isMultiFileAllowed = false
             ),
             ConversionType(
+                id = "batch_ocr",
+                name = "Batch OCR",
+                description = "Extract text from multiple images or receipts at once",
+                inputType = FileType.PNG,
+                outputType = FileType.TXT,
+                icon = Icons.AutoMirrored.Outlined.Article,
+                category = CATEGORY_CONVERSIONS,
+                isMultiFileAllowed = true
+            ),
+            ConversionType(
                 id = "metadata_editor",
                 name = "Metadata Inspector & Editor",
                 description = "Inspect, scrub, or edit hidden file metadata (EXIF/PDF/Video)",

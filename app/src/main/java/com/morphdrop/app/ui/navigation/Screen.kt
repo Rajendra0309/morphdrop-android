@@ -18,4 +18,5 @@ sealed class Screen(val route: String) {
     data object Settings : Screen("settings")
     data object Welcome : Screen("welcome")
     data object Ocr : Screen("ocr")
+    data object BatchOcr : Screen("batch_ocr")
 }
