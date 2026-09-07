@@ -33,6 +33,7 @@ class DataStoreSettingsRepository @Inject constructor(
         val LAST_UPDATE_CHECK = longPreferencesKey("last_update_check")
         val READING_MODE = stringPreferencesKey("reading_mode")
         val SEPIA_INTENSITY = floatPreferencesKey("sepia_intensity")
+        val MARKDOWN_TEXT_SIZE = floatPreferencesKey("markdown_text_size")
         val LAST_IMAGE_FORMAT = stringPreferencesKey("last_image_format")
         val LAST_IMAGE_QUALITY = intPreferencesKey("last_image_quality")
         val LAST_IMAGE_RESIZE_OPTION = stringPreferencesKey("last_image_resize_option")
@@ -72,6 +73,10 @@ class DataStoreSettingsRepository @Inject constructor(
 
     override val sepiaIntensity: Flow<Float> = context.dataStore.data.map { preferences ->
         preferences[PreferencesKeys.SEPIA_INTENSITY] ?: 0.5f
+    }
+
+    override val markdownTextSize: Flow<Float> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.MARKDOWN_TEXT_SIZE] ?: 16f
     }
 
     override val lastImageFormat: Flow<String> = context.dataStore.data.map { preferences ->
@@ -127,6 +132,12 @@ class DataStoreSettingsRepository @Inject constructor(
     override suspend fun setSepiaIntensity(intensity: Float) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.SEPIA_INTENSITY] = intensity
+        }
+    }
+
+    override suspend fun setMarkdownTextSize(size: Float) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.MARKDOWN_TEXT_SIZE] = size
         }
     }
 

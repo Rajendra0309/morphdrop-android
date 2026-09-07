@@ -18,6 +18,7 @@ import com.morphdrop.app.ui.screens.processing.ProcessingScreen
 import com.morphdrop.app.ui.screens.result.ResultScreen
 import com.morphdrop.app.ui.screens.settings.SettingsScreen
 import com.morphdrop.app.ui.screens.welcome.WelcomeScreen
+import com.morphdrop.app.ui.screens.markdown.MarkdownViewerScreen
 
 @Composable
 fun NavGraph(
@@ -150,6 +151,26 @@ fun NavGraph(
                 onDone = {
                     navController.navigate(Screen.Home.route) {
                         popUpTo(Screen.Home.route) { inclusive = true }
+                    }
+                }
+            )
+        }
+
+        composable(
+            route = Screen.MarkdownViewer.route,
+            arguments = listOf(navArgument("uri") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val uriString = backStackEntry.arguments?.getString("uri") ?: ""
+            MarkdownViewerScreen(
+                uriString = uriString,
+                onNavigateBack = {
+                    if (navController.previousBackStackEntry != null) {
+                        navController.popBackStack()
+                    } else {
+                        // If opened externally and there's no backstack, go to Home or finish
+                        navController.navigate(Screen.Home.route) {
+                            popUpTo(0)
+                        }
                     }
                 }
             )

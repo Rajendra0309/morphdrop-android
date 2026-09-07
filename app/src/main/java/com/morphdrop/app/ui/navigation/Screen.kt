@@ -1,5 +1,7 @@
 package com.morphdrop.app.ui.navigation
 
+import android.net.Uri
+
 sealed class Screen(val route: String) {
     data object Home : Screen("home")
     data object ConversionConfig : Screen("config/{conversionTypeId}") {
@@ -19,4 +21,7 @@ sealed class Screen(val route: String) {
     data object Welcome : Screen("welcome")
     data object Ocr : Screen("ocr")
     data object BatchOcr : Screen("batch_ocr")
+    data object MarkdownViewer : Screen("markdown_viewer?uri={uri}") {
+        fun createRoute(uri: String) = "markdown_viewer?uri=${Uri.encode(uri)}"
+    }
 }

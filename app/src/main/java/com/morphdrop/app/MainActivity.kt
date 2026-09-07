@@ -1,6 +1,7 @@
 package com.morphdrop.app
 
 import android.animation.ObjectAnimator
+import android.content.Intent
 import android.os.Bundle
 import android.view.View
 import android.view.animation.AnticipateInterpolator
@@ -41,15 +42,44 @@ import com.morphdrop.app.ui.navigation.NavGraph
 import com.morphdrop.app.ui.navigation.Screen
 import com.morphdrop.app.ui.theme.MorphDropTheme
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.flow.MutableStateFlow
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     
     private val viewModel: MainViewModel by viewModels()
+    private val pendingMarkdownUri = MutableStateFlow<String?>(null)
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        extractMarkdownUri(intent)?.let { uriStr ->
+            pendingMarkdownUri.value = uriStr
+        }
+    }
+
+    private fun extractMarkdownUri(intent: Intent?): String? {
+        if (intent == null || intent.action != Intent.ACTION_VIEW) return null
+        val data = intent.data ?: return null
+        
+        val mimeType = intent.type ?: contentResolver.getType(data)
+        val path = data.path ?: ""
+        
+        val isMarkdown = mimeType?.contains("markdown", ignoreCase = true) == true ||
+                mimeType?.contains("text/plain", ignoreCase = true) == true ||
+                path.endsWith(".md", ignoreCase = true) ||
+                data.toString().endsWith(".md", ignoreCase = true)
+                
+        return if (isMarkdown) data.toString() else null
+    }
     
     override fun onCreate(savedInstanceState: Bundle?) {
         val splashScreen = installSplashScreen()
         super.onCreate(savedInstanceState)
+        
+        extractMarkdownUri(intent)?.let { uriStr ->
+            pendingMarkdownUri.value = uriStr
+        }
         
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
             val display = windowManager.defaultDisplay
@@ -132,10 +162,18 @@ class MainActivity : ComponentActivity() {
             
             val showSearchFab by viewModel.showSearchFab.collectAsState()
             val onSearchFabClick by viewModel.onSearchFabClick.collectAsState()
+            val markdownUriEvent by pendingMarkdownUri.collectAsState()
 
             if (hasSeenWelcome != null) {
                 val initialRoute = remember {
-                    if (hasSeenWelcome == true) Screen.Home.route else Screen.Welcome.route
+                    val initialMarkdown = extractMarkdownUri(intent)
+                    if (initialMarkdown != null) {
+                        Screen.MarkdownViewer.createRoute(initialMarkdown)
+                    } else if (hasSeenWelcome == true) {
+                        Screen.Home.route
+                    } else {
+                        Screen.Welcome.route
+                    }
                 }
                 
                 MorphDropTheme(darkTheme = isDarkMode) {
@@ -144,6 +182,16 @@ class MainActivity : ComponentActivity() {
                     val currentRoute = navBackStackEntry?.destination?.route ?: initialRoute
                     
                     val updateInfo by viewModel.updateInfo.collectAsState()
+
+                    // Handle onNewIntent or dynamic markdown opening
+                    LaunchedEffect(markdownUriEvent) {
+                        markdownUriEvent?.let { uri ->
+                            navController.navigate(Screen.MarkdownViewer.createRoute(uri)) {
+                                launchSingleTop = true
+                            }
+                            pendingMarkdownUri.value = null
+                        }
+                    }
 
                     val showBottomNav = currentRoute in listOf(
                         Screen.Home.route,

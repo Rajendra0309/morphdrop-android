@@ -52,6 +52,10 @@ android {
     }
 }
 
+configurations.all {
+    exclude(group = "org.jetbrains", module = "annotations-java5")
+}
+
 dependencies {
     // Compose BOM
     implementation(platform(libs.androidx.compose.bom))
@@ -132,6 +136,16 @@ dependencies {
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.junit)
+    
+    // Markwon for Markdown Rendering
+    val markwonVersion = "4.6.2"
+    implementation("io.noties.markwon:core:$markwonVersion")
+    implementation("io.noties.markwon:ext-strikethrough:$markwonVersion")
+    implementation("io.noties.markwon:html:$markwonVersion")
+    implementation("io.noties.markwon:ext-tables:$markwonVersion")
+    implementation("io.noties.markwon:syntax-highlight:$markwonVersion")
+    implementation("io.noties.markwon:linkify:$markwonVersion")
+    implementation("io.noties.markwon:image-coil:$markwonVersion")
     
     // Debug
     debugImplementation(libs.androidx.compose.ui.tooling)
