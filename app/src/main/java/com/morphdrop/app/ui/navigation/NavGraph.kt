@@ -19,6 +19,7 @@ import com.morphdrop.app.ui.screens.result.ResultScreen
 import com.morphdrop.app.ui.screens.settings.SettingsScreen
 import com.morphdrop.app.ui.screens.welcome.WelcomeScreen
 import com.morphdrop.app.ui.screens.markdown.MarkdownViewerScreen
+import com.morphdrop.app.ui.screens.markdown.MarkdownEditorScreen
 
 @Composable
 fun NavGraph(
@@ -38,6 +39,7 @@ fun NavGraph(
                     when (conversionTypeId) {
                         "ocr_text_extractor" -> navController.navigate(Screen.Ocr.route)
                         "batch_ocr" -> navController.navigate(Screen.BatchOcr.route)
+                        "markdown_editor" -> navController.navigate(Screen.MarkdownEditor.createRoute(isNew = true))
                         else -> navController.navigate(Screen.ConversionConfig.createRoute(conversionTypeId))
                     }
                 },
@@ -172,7 +174,32 @@ fun NavGraph(
                             popUpTo(0)
                         }
                     }
+                },
+                onNavigateToEditor = { editUri ->
+                    navController.navigate(Screen.MarkdownEditor.createRoute(uri = editUri))
                 }
+            )
+        }
+
+        composable(
+            route = Screen.MarkdownEditor.route,
+            arguments = listOf(
+                navArgument("uri") {
+                    type = NavType.StringType
+                    defaultValue = ""
+                },
+                navArgument("isNew") {
+                    type = NavType.BoolType
+                    defaultValue = false
+                }
+            )
+        ) { backStackEntry ->
+            val uriString = backStackEntry.arguments?.getString("uri")?.takeIf { it.isNotEmpty() }
+            val isNew = backStackEntry.arguments?.getBoolean("isNew") ?: false
+            MarkdownEditorScreen(
+                uriString = uriString,
+                isNew = isNew,
+                onNavigateBack = { navController.popBackStack() }
             )
         }
     }

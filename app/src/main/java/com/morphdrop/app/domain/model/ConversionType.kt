@@ -114,6 +114,16 @@ data class ConversionType(
                 category = CATEGORY_CONVERSIONS,
                 isMultiFileAllowed = false
             ),
+            ConversionType(
+                id = "markdown_editor",
+                name = "Markdown Editor",
+                description = "Create and edit Markdown notes with live preview",
+                inputType = FileType.MD,
+                outputType = FileType.MD,
+                icon = Icons.Outlined.EditNote,
+                category = CATEGORY_CONVERSIONS,
+                isMultiFileAllowed = false
+            ),
 
             // PDF Tools
             ConversionType(

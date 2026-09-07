@@ -24,4 +24,10 @@ sealed class Screen(val route: String) {
     data object MarkdownViewer : Screen("markdown_viewer?uri={uri}") {
         fun createRoute(uri: String) = "markdown_viewer?uri=${Uri.encode(uri)}"
     }
+    data object MarkdownEditor : Screen("markdown_editor?uri={uri}&isNew={isNew}") {
+        fun createRoute(uri: String? = null, isNew: Boolean = false): String {
+            val encodedUri = uri?.let { Uri.encode(it) } ?: ""
+            return "markdown_editor?uri=$encodedUri&isNew=$isNew"
+        }
+    }
 }

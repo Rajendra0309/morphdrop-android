@@ -48,6 +48,7 @@ import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -120,7 +121,12 @@ fun parseTableCells(line: String): List<String> {
     return trimmed.split("|").map { it.trim() }
 }
 
-fun formatInlineMarkdown(text: String, textColor: Color, codeBg: Color): AnnotatedString {
+fun formatInlineMarkdown(
+    text: String,
+    textColor: Color,
+    codeBg: Color,
+    codeTextColor: Color = textColor
+): AnnotatedString {
     return buildAnnotatedString {
         var i = 0
         val len = text.length
@@ -170,7 +176,7 @@ fun formatInlineMarkdown(text: String, textColor: Color, codeBg: Color): Annotat
                             fontFamily = FontFamily.Monospace,
                             fontWeight = FontWeight.Medium,
                             background = codeBg,
-                            color = textColor
+                            color = codeTextColor
                         )
                     ) {
                         append(" $codeContent ")
@@ -286,6 +292,7 @@ fun parseMarkdownToBlocks(markdown: String): List<ParsedBlock> {
 fun MarkdownViewerScreen(
     uriString: String,
     onNavigateBack: () -> Unit,
+    onNavigateToEditor: (String) -> Unit = {},
     viewModel: MarkdownViewerViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -298,6 +305,7 @@ fun MarkdownViewerScreen(
         state = state,
         uriString = uriString,
         onNavigateBack = onNavigateBack,
+        onNavigateToEditor = { onNavigateToEditor(uriString) },
         onToggleSearch = { viewModel.toggleSearch() },
         onSetSearchQuery = { viewModel.setSearchQuery(it) },
         onSetSearchMatches = { viewModel.setSearchMatches(it) },
@@ -323,6 +331,7 @@ fun MarkdownViewerContent(
     state: MarkdownViewerState,
     uriString: String,
     onNavigateBack: () -> Unit,
+    onNavigateToEditor: () -> Unit = {},
     onToggleSearch: () -> Unit,
     onSetSearchQuery: (String) -> Unit,
     onSetSearchMatches: (List<SearchMatch>) -> Unit,
@@ -463,9 +472,9 @@ fun MarkdownViewerContent(
     }
 
     // Window Insets & Status Bar Controller:
-    // If background luminance is high (>0.5), status bar icons MUST be dark.
-    // In Night mode, background is black, so icons MUST be white.
-    val isDark = state.readingMode == ReadingMode.NIGHT
+    // System dark theme detection
+    val isSystemDark = androidx.compose.foundation.isSystemInDarkTheme()
+    val isDark = state.readingMode == ReadingMode.NIGHT || (state.readingMode == ReadingMode.DEFAULT && isSystemDark)
     val isLightBg = (bgColor.red * 0.299f + bgColor.green * 0.587f + bgColor.blue * 0.114f) > 0.5f
     val activity = context as? ComponentActivity
     DisposableEffect(isLightBg, state.immersiveMode) {
@@ -510,7 +519,7 @@ fun MarkdownViewerContent(
     }
 
     // Markwon instance configured for inline rich text formatting
-    val markwon = remember(state.readingMode, state.textSizeSp) {
+    val markwon = remember(state.readingMode, state.textSizeSp, isDark) {
         val density = context.resources.displayMetrics.density
 
         Markwon.builder(context)
@@ -521,15 +530,20 @@ fun MarkdownViewerContent(
             .usePlugin(object : AbstractMarkwonPlugin() {
                 override fun configureTheme(builder: MarkwonTheme.Builder) {
                     val codeBg = when {
-                        isDark -> AndroidColor.parseColor("#161B22")
+                        isDark -> AndroidColor.parseColor("#21262D")
                         state.readingMode == ReadingMode.SEPIA -> AndroidColor.parseColor("#EFEBE9")
                         else -> AndroidColor.parseColor("#F6F8FA")
                     }
+                    val codeFg = when {
+                        isDark -> AndroidColor.parseColor("#E6EDF3")
+                        state.readingMode == ReadingMode.SEPIA -> AndroidColor.parseColor("#3E2723")
+                        else -> AndroidColor.parseColor("#24292F")
+                    }
                     builder
                         .codeBlockBackgroundColor(codeBg)
-                        .codeBlockTextColor(textColor.toArgb())
+                        .codeBlockTextColor(codeFg)
                         .codeBackgroundColor(codeBg)
-                        .codeTextColor(textColor.toArgb())
+                        .codeTextColor(codeFg)
                         .codeTypeface(Typeface.MONOSPACE)
                         .codeBlockMargin((8 * density).toInt())
                 }
@@ -959,27 +973,35 @@ fun MarkdownViewerContent(
                                 }
                             }
                         } else {
-                            // Fullscreen / Immersive mode toggle icon
-                            IconButton(onClick = onToggleImmersiveMode) {
-                                Icon(Icons.Default.Fullscreen, contentDescription = "Full Screen Mode")
-                            }
-
                             // Search button
                             IconButton(onClick = {
                                 onToggleSearch()
                                 onSetSearchQuery("")
                             }) {
-                                Icon(Icons.Default.Search, contentDescription = "Search")
+                                Icon(Icons.Default.Search, contentDescription = "Search", tint = textColor)
+                            }
+
+                            // Edit document action
+                            IconButton(onClick = onNavigateToEditor) {
+                                Icon(Icons.Default.Edit, contentDescription = "Edit Document", tint = textColor)
                             }
 
                             // Options menu
                             IconButton(onClick = { showMenu = true }) {
-                                Icon(Icons.Default.MoreVert, contentDescription = "Options")
+                                Icon(Icons.Default.MoreVert, contentDescription = "Options", tint = textColor)
                             }
                             DropdownMenu(
                                 expanded = showMenu,
                                 onDismissRequest = { showMenu = false }
                             ) {
+                                DropdownMenuItem(
+                                    text = { Text("Full Screen Mode") },
+                                    onClick = {
+                                        showMenu = false
+                                        onToggleImmersiveMode()
+                                    },
+                                    leadingIcon = { Icon(Icons.Default.Fullscreen, null) }
+                                )
                                 DropdownMenuItem(
                                     text = { Text("Reading Mode") },
                                     onClick = {
@@ -1540,21 +1562,41 @@ fun MarkdownTableCard(
     borderColor: Color,
     textColor: Color,
     headerBg: Color,
-    readingMode: ReadingMode,
+    readingMode: ReadingMode = ReadingMode.DEFAULT,
     textSizeSp: Float,
-    codeBgColor: Color = if (readingMode == ReadingMode.NIGHT) Color(0xFF2D333B) else Color(0xFFEAEAEA),
+    isDark: Boolean = androidx.compose.foundation.isSystemInDarkTheme() || readingMode == ReadingMode.NIGHT,
+    codeBgColor: Color? = null,
+    codeTextColor: Color? = null,
     modifier: Modifier = Modifier
 ) {
+    val isSystemDark = androidx.compose.foundation.isSystemInDarkTheme()
+    val isThemeDark = (MaterialTheme.colorScheme.surface.red * 0.299f + MaterialTheme.colorScheme.surface.green * 0.587f + MaterialTheme.colorScheme.surface.blue * 0.114f) < 0.5f
+    val effectivelyDark = isDark || isSystemDark || isThemeDark || readingMode == ReadingMode.NIGHT
+
+    val resolvedCodeBgColor = codeBgColor ?: when {
+        readingMode == ReadingMode.NIGHT -> Color(0xFF21262D)
+        readingMode == ReadingMode.SEPIA -> Color(0xFFEFEBE9)
+        effectivelyDark -> Color(0xFF21262D)
+        else -> Color(0xFFF6F8FA)
+    }
+
+    val resolvedCodeTextColor = codeTextColor ?: when {
+        readingMode == ReadingMode.NIGHT -> Color(0xFFE6EDF3)
+        readingMode == ReadingMode.SEPIA -> Color(0xFF3E2723)
+        effectivelyDark -> Color(0xFFE6EDF3)
+        else -> Color(0xFF24292F)
+    }
+
     val evenRowBg = when (readingMode) {
-        ReadingMode.DEFAULT -> MaterialTheme.colorScheme.surface
         ReadingMode.NIGHT -> Color(0xFF161B22)
         ReadingMode.SEPIA -> Color(0xFFF5E6D3)
+        ReadingMode.DEFAULT -> MaterialTheme.colorScheme.surface
     }
 
     val oddRowBg = when (readingMode) {
-        ReadingMode.DEFAULT -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
         ReadingMode.NIGHT -> Color(0xFF0D1117)
         ReadingMode.SEPIA -> Color(0xFFECE0D1)
+        ReadingMode.DEFAULT -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
     }
 
     val colCount = maxOf(headers.size, rows.maxOfOrNull { it.size } ?: 1)
@@ -1573,63 +1615,83 @@ fun MarkdownTableCard(
         }
     }
 
-    Surface(
-        shape = RoundedCornerShape(10.dp),
-        border = BorderStroke(1.dp, borderColor),
-        color = evenRowBg,
-        modifier = modifier.fillMaxWidth()
-    ) {
-        // Horizontally scrollable table container
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
-        ) {
-            Column {
-                // Table Header
-                Row(
-                    modifier = Modifier
-                        .background(headerBg)
-                        .border(width = 0.5.dp, color = borderColor)
-                ) {
-                    (0 until colCount).forEach { colIdx ->
-                        val headerText = headers.getOrElse(colIdx) { "" }
-                        Box(
-                            modifier = Modifier
-                                .width(colWidths[colIdx])
-                                .padding(horizontal = 12.dp, vertical = 10.dp)
-                        ) {
-                            Text(
-                                text = formatInlineMarkdown(headerText, textColor, codeBgColor),
-                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                                fontSize = (textSizeSp - 1).sp,
-                                color = textColor
-                            )
-                        }
-                    }
-                }
+    BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
+        val availableWidth = maxWidth
+        val totalBaseWidth = remember(colWidths) {
+            colWidths.fold(0.dp) { acc, w -> acc + w }
+        }
 
-                // Table Rows
-                rows.forEachIndexed { rowIndex, rowCells ->
-                    val rowBg = if (rowIndex % 2 == 0) evenRowBg else oddRowBg
+        // When table's base width is less than the card width, expand columns to fill full width
+        val effectiveColWidths = remember(colWidths, availableWidth, totalBaseWidth) {
+            if (totalBaseWidth < availableWidth && colCount > 0) {
+                val extraPerCol = (availableWidth - totalBaseWidth) / colCount
+                colWidths.map { it + extraPerCol }
+            } else {
+                colWidths
+            }
+        }
+        val tableWidth = if (totalBaseWidth < availableWidth) availableWidth else totalBaseWidth
+
+        Surface(
+            shape = RoundedCornerShape(10.dp),
+            border = BorderStroke(1.dp, borderColor),
+            color = evenRowBg,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            // Horizontally scrollable table container
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+            ) {
+                Column(modifier = Modifier.width(tableWidth)) {
+                    // Table Header
                     Row(
                         modifier = Modifier
-                            .background(rowBg)
-                            .border(width = 0.5.dp, color = borderColor.copy(alpha = 0.4f))
+                            .fillMaxWidth()
+                            .background(headerBg)
+                            .border(width = 0.5.dp, color = borderColor)
                     ) {
                         (0 until colCount).forEach { colIdx ->
-                            val cellText = rowCells.getOrElse(colIdx) { "" }
+                            val headerText = headers.getOrElse(colIdx) { "" }
                             Box(
                                 modifier = Modifier
-                                    .width(colWidths[colIdx])
-                                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                                    .width(effectiveColWidths[colIdx])
+                                    .padding(horizontal = 12.dp, vertical = 10.dp)
                             ) {
                                 Text(
-                                    text = formatInlineMarkdown(cellText, textColor, codeBgColor),
-                                    style = MaterialTheme.typography.bodyMedium,
+                                    text = formatInlineMarkdown(headerText, textColor, resolvedCodeBgColor, resolvedCodeTextColor),
+                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
                                     fontSize = (textSizeSp - 1).sp,
                                     color = textColor
                                 )
+                            }
+                        }
+                    }
+
+                    // Table Rows
+                    rows.forEachIndexed { rowIndex, rowCells ->
+                        val rowBg = if (rowIndex % 2 == 0) evenRowBg else oddRowBg
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(rowBg)
+                                .border(width = 0.5.dp, color = borderColor.copy(alpha = 0.4f))
+                        ) {
+                            (0 until colCount).forEach { colIdx ->
+                                val cellText = rowCells.getOrElse(colIdx) { "" }
+                                Box(
+                                    modifier = Modifier
+                                        .width(effectiveColWidths[colIdx])
+                                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                                ) {
+                                    Text(
+                                        text = formatInlineMarkdown(cellText, textColor, resolvedCodeBgColor, resolvedCodeTextColor),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontSize = (textSizeSp - 1).sp,
+                                        color = textColor
+                                    )
+                                }
                             }
                         }
                     }
