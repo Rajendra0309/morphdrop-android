@@ -76,6 +76,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         val splashScreen = installSplashScreen()
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
         
         extractMarkdownUri(intent)?.let { uriStr ->
             pendingMarkdownUri.value = uriStr
@@ -155,7 +156,56 @@ class MainActivity : ComponentActivity() {
             }
 
             androidx.compose.runtime.DisposableEffect(isDarkMode) {
-                enableEdgeToEdge()
+                enableEdgeToEdge(
+                    statusBarStyle = if (isDarkMode) {
+                        SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
+                    } else {
+                        SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT)
+                    },
+                    navigationBarStyle = if (isDarkMode) {
+                        SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
+                    } else {
+                        SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT)
+                    }
+                )
+
+                val insetsController = androidx.core.view.WindowCompat.getInsetsController(window, window.decorView)
+                insetsController.isAppearanceLightStatusBars = !isDarkMode
+                insetsController.isAppearanceLightNavigationBars = !isDarkMode
+
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                    window.insetsController?.setSystemBarsAppearance(
+                        if (!isDarkMode) {
+                            android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
+                                    android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
+                        } else 0,
+                        android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
+                                android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
+                    )
+                }
+                @Suppress("DEPRECATION")
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                    var flags = window.decorView.systemUiVisibility
+                    flags = if (!isDarkMode) {
+                        flags or android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+                    } else {
+                        flags and android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR.inv()
+                    }
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                        flags = if (!isDarkMode) {
+                            flags or android.view.View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+                        } else {
+                            flags and android.view.View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR.inv()
+                        }
+                    }
+                    window.decorView.systemUiVisibility = flags
+                }
+
+                androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(
+                    if (isDarkMode) androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES
+                    else androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_NO
+                )
+
                 onDispose {}
             }
             val hasSeenWelcome by viewModel.hasSeenWelcome.collectAsState()

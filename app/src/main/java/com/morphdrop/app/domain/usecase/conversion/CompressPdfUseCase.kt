@@ -47,7 +47,8 @@ class CompressPdfUseCase @Inject constructor(
         pdfUri: Uri,
         compressionLevel: CompressionLevel = CompressionLevel.MEDIUM,
         targetSizeKb: Int? = null,
-        outputFileName: String = "compressed_${System.currentTimeMillis()}.pdf"
+        outputFileName: String = "compressed_${System.currentTimeMillis()}.pdf",
+        subFolder: String? = null
     ): CompressResult = withContext(Dispatchers.IO) {
         val originalSize = FileHelper.getFileSize(context, pdfUri)
         val inputStream = FileHelper.readFileFromUri(context, pdfUri)
@@ -111,7 +112,17 @@ class CompressPdfUseCase @Inject constructor(
                 )
             }
 
-            val outputUri = FileHelper.saveToFile(context, settingsRepository, outputFileName, bytes)
+            val sanitizedFileName = if (outputFileName.endsWith(".pdf", ignoreCase = true)) {
+                outputFileName
+            } else {
+                "$outputFileName.pdf"
+            }
+
+            val outputUri = if (!subFolder.isNullOrBlank()) {
+                FileHelper.saveToDirectory(context, subFolder, sanitizedFileName, bytes)
+            } else {
+                FileHelper.saveToFile(context, settingsRepository, sanitizedFileName, bytes)
+            }
 
             CompressResult(
                 outputUri = outputUri,

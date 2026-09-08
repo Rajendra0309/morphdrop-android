@@ -30,4 +30,5 @@ sealed class Screen(val route: String) {
             return "markdown_editor?uri=$encodedUri&isNew=$isNew"
         }
     }
+    data object BatchPdf : Screen("batch_pdf")
 }

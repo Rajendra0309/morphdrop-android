@@ -9,6 +9,7 @@ import androidx.compose.material.icons.outlined.Compress
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Layers
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.PictureAsPdf
 import androidx.compose.material.icons.outlined.Slideshow
@@ -126,6 +127,16 @@ data class ConversionType(
             ),
 
             // PDF Tools
+            ConversionType(
+                id = "batch_pdf",
+                name = "Batch PDF Operations",
+                description = "Apply the same operation to multiple PDFs at once",
+                inputType = FileType.PDF,
+                outputType = FileType.PDF,
+                icon = Icons.Outlined.Layers,
+                category = CATEGORY_PDF_TOOLS,
+                isMultiFileAllowed = true
+            ),
             ConversionType(
                 id = "merge_pdf",
                 name = "Merge PDFs",

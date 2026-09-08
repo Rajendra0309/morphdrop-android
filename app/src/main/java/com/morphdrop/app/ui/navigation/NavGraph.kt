@@ -20,6 +20,7 @@ import com.morphdrop.app.ui.screens.settings.SettingsScreen
 import com.morphdrop.app.ui.screens.welcome.WelcomeScreen
 import com.morphdrop.app.ui.screens.markdown.MarkdownViewerScreen
 import com.morphdrop.app.ui.screens.markdown.MarkdownEditorScreen
+import com.morphdrop.app.ui.screens.pdf.batch.BatchPdfScreen
 
 @Composable
 fun NavGraph(
@@ -39,6 +40,7 @@ fun NavGraph(
                     when (conversionTypeId) {
                         "ocr_text_extractor" -> navController.navigate(Screen.Ocr.route)
                         "batch_ocr" -> navController.navigate(Screen.BatchOcr.route)
+                        "batch_pdf" -> navController.navigate(Screen.BatchPdf.route)
                         "markdown_editor" -> navController.navigate(Screen.MarkdownEditor.createRoute(isNew = true))
                         else -> navController.navigate(Screen.ConversionConfig.createRoute(conversionTypeId))
                     }
@@ -121,6 +123,12 @@ fun NavGraph(
 
         composable(Screen.BatchOcr.route) {
             BatchOcrScreen(
+                onNavigateBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(Screen.BatchPdf.route) {
+            BatchPdfScreen(
                 onNavigateBack = { navController.popBackStack() }
             )
         }

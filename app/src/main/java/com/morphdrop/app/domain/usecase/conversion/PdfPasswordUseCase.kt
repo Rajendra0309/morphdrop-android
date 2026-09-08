@@ -34,7 +34,8 @@ class PdfPasswordUseCase @Inject constructor(
         allowPrinting: Boolean = true,
         allowCopying: Boolean = true,
         allowEditing: Boolean = true,
-        outputFileName: String = "secured_${System.currentTimeMillis()}.pdf"
+        outputFileName: String = "secured_${System.currentTimeMillis()}.pdf",
+        subFolder: String? = null
     ): Uri = withContext(Dispatchers.IO) {
         if (password.isEmpty()) throw PasswordException.InvalidAction()
 
@@ -79,7 +80,19 @@ class PdfPasswordUseCase @Inject constructor(
 
             val baos = ByteArrayOutputStream()
             document.save(baos)
-            FileHelper.saveToFile(context, settingsRepository, outputFileName, baos.toByteArray())
+            val bytes = baos.toByteArray()
+
+            val sanitizedFileName = if (outputFileName.endsWith(".pdf", ignoreCase = true)) {
+                outputFileName
+            } else {
+                "$outputFileName.pdf"
+            }
+
+            if (!subFolder.isNullOrBlank()) {
+                FileHelper.saveToDirectory(context, subFolder, sanitizedFileName, bytes)
+            } else {
+                FileHelper.saveToFile(context, settingsRepository, sanitizedFileName, bytes)
+            }
         } finally {
             document.close()
             inputStream.close()
