@@ -49,10 +49,32 @@ class MainActivity : ComponentActivity() {
     
     private val viewModel: MainViewModel by viewModels()
     private val pendingMarkdownUri = MutableStateFlow<String?>(null)
+    private val pendingShortcutRoute = MutableStateFlow<String?>(null)
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        handleIncomingIntent(intent)
+    }
+
+    private fun handleIncomingIntent(intent: Intent?) {
+        if (intent == null) return
+
+        val shortcutTarget = intent.getStringExtra("extra_navigate_to")
+        if (!shortcutTarget.isNullOrBlank()) {
+            pendingShortcutRoute.value = resolveShortcutRoute(shortcutTarget)
+        }
+
+        val openMarkdown = intent.getStringExtra("extra_open_markdown")
+        if (!openMarkdown.isNullOrBlank()) {
+            pendingMarkdownUri.value = openMarkdown
+        }
+
+        val openHistoryId = intent.getLongExtra("extra_open_history_id", -1L)
+        if (openHistoryId != -1L) {
+            pendingShortcutRoute.value = Screen.HistoryDetail.createRoute(openHistoryId)
+        }
+
         extractMarkdownUri(intent)?.let { uriStr ->
             pendingMarkdownUri.value = uriStr
         }
@@ -72,15 +94,41 @@ class MainActivity : ComponentActivity() {
                 
         return if (isMarkdown) data.toString() else null
     }
+
+    private fun resolveShortcutRoute(target: String): String {
+        return when (target.trim()) {
+            "ocr", "ocr_text_extractor" -> Screen.Ocr.route
+            "batch_ocr" -> Screen.BatchOcr.route
+            "batch_pdf" -> Screen.BatchPdf.route
+            "markdown", "markdown_editor" -> Screen.MarkdownEditor.createRoute(isNew = true)
+            "watermark_pdf" -> Screen.PdfWatermark.createRoute()
+            "page_numbers_pdf" -> Screen.PdfPageNumbers.createRoute()
+            "compress_pdf" -> Screen.PdfCompress.createRoute()
+            "rotate_pdf" -> Screen.PdfRotate.createRoute()
+            "settings" -> Screen.Settings.route
+            "history" -> Screen.History.route
+            "config/image_to_pdf", "config/image_pdf", "image_converter" -> Screen.ConversionConfig.createRoute("image_converter")
+            "image_to_pdf", "images_to_pdf" -> Screen.ConversionConfig.createRoute("images_to_pdf")
+            "pdf_to_images", "pdf_to_image" -> Screen.ConversionConfig.createRoute("pdf_to_images")
+            else -> {
+                if (!target.startsWith("config/") && !target.contains("/") && !target.contains("?")) {
+                    Screen.ConversionConfig.createRoute(target)
+                } else {
+                    target
+                }
+            }
+        }
+    }
     
     override fun onCreate(savedInstanceState: Bundle?) {
         val splashScreen = installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         
-        extractMarkdownUri(intent)?.let { uriStr ->
-            pendingMarkdownUri.value = uriStr
-        }
+        handleIncomingIntent(intent)
+
+        // Sync widgets and dynamic shortcuts on app launch
+        com.morphdrop.app.ui.widget.WidgetUpdateHelper.updateAllWidgets(this)
         
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
             val display = windowManager.defaultDisplay
@@ -243,6 +291,17 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
+                    // Handle app shortcuts navigation
+                    val shortcutRoute by pendingShortcutRoute.collectAsState()
+                    LaunchedEffect(shortcutRoute) {
+                        shortcutRoute?.let { route ->
+                            navController.navigate(route) {
+                                launchSingleTop = true
+                            }
+                            pendingShortcutRoute.value = null
+                        }
+                    }
+
                     val showBottomNav = currentRoute in listOf(
                         Screen.Home.route,
                         Screen.History.route,
@@ -259,10 +318,14 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
+                    val downloadProgress by viewModel.downloadProgress.collectAsState()
+
                     if (updateInfo != null) {
                         UpdateDialog(
                             updateInfo = updateInfo!!,
+                            downloadProgress = downloadProgress,
                             onDownload = { viewModel.downloadUpdate(updateInfo!!) },
+                            onSkipVersion = { viewModel.skipVersion(updateInfo!!.versionName) },
                             onDismiss = { viewModel.dismissUpdateDialog() }
                         )
                     }

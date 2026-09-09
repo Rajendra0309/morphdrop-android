@@ -156,6 +156,7 @@ class PdfRotateViewModel @Inject constructor(
                             success = true
                         )
                     )
+                    com.morphdrop.app.ui.widget.WidgetUpdateHelper.updateAllWidgets(context)
                 } catch (_: Exception) {}
 
                 _state.update {

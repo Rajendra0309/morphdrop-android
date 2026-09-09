@@ -39,6 +39,7 @@ class DataStoreSettingsRepository @Inject constructor(
         val LAST_IMAGE_RESIZE_OPTION = stringPreferencesKey("last_image_resize_option")
         val LAST_STRIP_METADATA = booleanPreferencesKey("last_strip_metadata")
         val HAS_SEEN_OCR_DISCLAIMER = booleanPreferencesKey("has_seen_ocr_disclaimer")
+        val SKIPPED_UPDATE_VERSION = stringPreferencesKey("skipped_update_version")
     }
 
     override val themeMode: Flow<ThemeMode> = context.dataStore.data.map { preferences ->
@@ -97,6 +98,10 @@ class DataStoreSettingsRepository @Inject constructor(
 
     override val hasSeenOcrDisclaimer: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[PreferencesKeys.HAS_SEEN_OCR_DISCLAIMER] ?: false
+    }
+
+    override val skippedUpdateVersion: Flow<String> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.SKIPPED_UPDATE_VERSION] ?: ""
     }
 
     override suspend fun setThemeMode(mode: ThemeMode) {
@@ -168,6 +173,12 @@ class DataStoreSettingsRepository @Inject constructor(
     override suspend fun setHasSeenOcrDisclaimer(hasSeen: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.HAS_SEEN_OCR_DISCLAIMER] = hasSeen
+        }
+    }
+
+    override suspend fun setSkippedUpdateVersion(version: String) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.SKIPPED_UPDATE_VERSION] = version
         }
     }
 }

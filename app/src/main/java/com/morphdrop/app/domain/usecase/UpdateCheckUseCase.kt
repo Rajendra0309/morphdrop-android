@@ -55,7 +55,8 @@ class UpdateCheckUseCase @Inject constructor(
                 }
 
                 val currentVersion = BuildConfig.VERSION_NAME
-                val isUpdateAvailable = isVersionHigher(tagName, currentVersion)
+                val skippedVersion = settingsRepository.skippedUpdateVersion.first()
+                val isUpdateAvailable = isVersionHigher(tagName, currentVersion) && (force || tagName != skippedVersion)
 
                 settingsRepository.setLastUpdateCheck(System.currentTimeMillis())
 

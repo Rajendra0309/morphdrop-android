@@ -59,6 +59,11 @@
                 <data android:pathPattern=".*\\.md" />
                 <data android:pathSuffix=".md" tools:targetApi="31" />
             </intent-filter>
+
+            <!-- App Shortcuts -->
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
         </activity>
 
         <activity
@@ -105,6 +110,45 @@
             <intent-filter>
                 <action android:name="android.intent.action.DOWNLOAD_COMPLETE" />
             </intent-filter>
+        </receiver>
+
+        <!-- 1. MorphDrop Combined Widget (Actions & History) -->
+        <receiver
+            android:name=".ui.widget.MorphDropWidgetReceiver"
+            android:exported="true"
+            android:label="@string/widget_combined_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/morphdrop_widget_info" />
+        </receiver>
+
+        <!-- 2. MorphDrop History Widget (Recent Conversions Only) -->
+        <receiver
+            android:name=".ui.widget.MorphDropHistoryWidgetReceiver"
+            android:exported="true"
+            android:label="@string/widget_history_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/morphdrop_history_widget_info" />
+        </receiver>
+
+        <!-- 3. MorphDrop Tools Widget (Quick Action Launchers Only) -->
+        <receiver
+            android:name=".ui.widget.MorphDropToolsWidgetReceiver"
+            android:exported="true"
+            android:label="@string/widget_tools_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/morphdrop_tools_widget_info" />
         </receiver>
     </application>
 

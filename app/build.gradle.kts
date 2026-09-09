@@ -92,6 +92,10 @@ dependencies {
     // WorkManager
     implementation(libs.androidx.work.runtime.ktx)
     
+    // Glance AppWidget
+    implementation(libs.androidx.glance)
+    implementation(libs.androidx.glance.material3)
+    
     // DataStore
     implementation(libs.androidx.datastore.preferences)
     

@@ -275,6 +275,7 @@ class BatchOcrViewModel @Inject constructor(
                         timestamp = System.currentTimeMillis()
                     )
                 )
+                com.morphdrop.app.ui.widget.WidgetUpdateHelper.updateAllWidgets(context)
 
                 _state.update { it.copy(infoMessage = "Saved combined text to Downloads/$subFolder/$fileName") }
             } catch (e: Exception) {

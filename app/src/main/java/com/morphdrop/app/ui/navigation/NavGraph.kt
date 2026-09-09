@@ -27,6 +27,13 @@ import com.morphdrop.app.ui.screens.pdf.pagenumbers.PdfPageNumbersScreen
 import com.morphdrop.app.ui.screens.pdf.compress.PdfCompressScreen
 import com.morphdrop.app.ui.screens.pdf.rotate.PdfRotateScreen
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+
 @Composable
 fun NavGraph(
     navController: NavHostController,
@@ -37,7 +44,51 @@ fun NavGraph(
 
     NavHost(
         navController = navController,
-        startDestination = startDestination
+        startDestination = startDestination,
+        enterTransition = {
+            val isTopLevel = targetState.destination.route in topLevelRoutes && initialState.destination.route in topLevelRoutes
+            if (isTopLevel) {
+                fadeIn(animationSpec = tween(200, easing = FastOutSlowInEasing))
+            } else {
+                slideInHorizontally(
+                    initialOffsetX = { fullWidth -> (fullWidth * 0.15f).toInt() },
+                    animationSpec = tween(300, easing = FastOutSlowInEasing)
+                ) + fadeIn(animationSpec = tween(300, easing = FastOutSlowInEasing))
+            }
+        },
+        exitTransition = {
+            val isTopLevel = targetState.destination.route in topLevelRoutes && initialState.destination.route in topLevelRoutes
+            if (isTopLevel) {
+                fadeOut(animationSpec = tween(200, easing = FastOutSlowInEasing))
+            } else {
+                slideOutHorizontally(
+                    targetOffsetX = { fullWidth -> -(fullWidth * 0.15f).toInt() },
+                    animationSpec = tween(300, easing = FastOutSlowInEasing)
+                ) + fadeOut(animationSpec = tween(300, easing = FastOutSlowInEasing))
+            }
+        },
+        popEnterTransition = {
+            val isTopLevel = targetState.destination.route in topLevelRoutes && initialState.destination.route in topLevelRoutes
+            if (isTopLevel) {
+                fadeIn(animationSpec = tween(200, easing = FastOutSlowInEasing))
+            } else {
+                slideInHorizontally(
+                    initialOffsetX = { fullWidth -> -(fullWidth * 0.15f).toInt() },
+                    animationSpec = tween(300, easing = FastOutSlowInEasing)
+                ) + fadeIn(animationSpec = tween(300, easing = FastOutSlowInEasing))
+            }
+        },
+        popExitTransition = {
+            val isTopLevel = targetState.destination.route in topLevelRoutes && initialState.destination.route in topLevelRoutes
+            if (isTopLevel) {
+                fadeOut(animationSpec = tween(200, easing = FastOutSlowInEasing))
+            } else {
+                slideOutHorizontally(
+                    targetOffsetX = { fullWidth -> (fullWidth * 0.15f).toInt() },
+                    animationSpec = tween(300, easing = FastOutSlowInEasing)
+                ) + fadeOut(animationSpec = tween(300, easing = FastOutSlowInEasing))
+            }
+        }
     ) {
         composable(Screen.Home.route) {
             HomeScreen(

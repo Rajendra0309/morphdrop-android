@@ -3,10 +3,14 @@ package com.morphdrop.app.ui.screens.settings
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.morphdrop.app.BuildConfig
+import com.morphdrop.app.domain.model.ThemeMode
 import com.morphdrop.app.domain.repository.HistoryRepository
 import com.morphdrop.app.domain.repository.SettingsRepository
+import com.morphdrop.app.ui.widget.WidgetUpdateHelper
 import com.morphdrop.app.util.FileHelper
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -16,8 +20,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import javax.inject.Inject
-import com.morphdrop.app.domain.model.ThemeMode
-import com.morphdrop.app.BuildConfig
 
 data class SettingsUiState(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
@@ -29,7 +31,8 @@ data class SettingsUiState(
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val historyRepository: HistoryRepository,
-    private val settingsRepository: SettingsRepository
+    private val settingsRepository: SettingsRepository,
+    @param:ApplicationContext private val context: Context
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
@@ -91,6 +94,7 @@ class SettingsViewModel @Inject constructor(
     fun clearHistory() {
         viewModelScope.launch {
             historyRepository.clearAllHistory()
+            WidgetUpdateHelper.updateAllWidgets(context)
         }
     }
 

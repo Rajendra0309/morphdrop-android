@@ -113,12 +113,33 @@ class MainViewModel @Inject constructor(
         }
     }
 
+    private val _downloadProgress = MutableStateFlow(com.morphdrop.app.data.updater.DownloadProgress())
+    val downloadProgress = _downloadProgress.asStateFlow()
+
     fun downloadUpdate(info: UpdateInfo) {
-        updateManager.downloadApk(info.downloadUrl, info.versionName)
-        _updateInfo.value = null
+        viewModelScope.launch {
+            val downloadId = updateManager.downloadApk(info.downloadUrl, info.versionName)
+            updateManager.pollDownloadProgress(downloadId).collect { progress ->
+                _downloadProgress.value = progress
+                if (progress.status == com.morphdrop.app.data.updater.DownloadStatus.SUCCESSFUL) {
+                    kotlinx.coroutines.delay(1000)
+                    _updateInfo.value = null
+                    _downloadProgress.value = com.morphdrop.app.data.updater.DownloadProgress()
+                }
+            }
+        }
+    }
+
+    fun skipVersion(versionName: String) {
+        viewModelScope.launch {
+            settingsRepository.setSkippedUpdateVersion(versionName)
+            _updateInfo.value = null
+            _downloadProgress.value = com.morphdrop.app.data.updater.DownloadProgress()
+        }
     }
 
     fun dismissUpdateDialog() {
         _updateInfo.value = null
+        _downloadProgress.value = com.morphdrop.app.data.updater.DownloadProgress()
     }
 }

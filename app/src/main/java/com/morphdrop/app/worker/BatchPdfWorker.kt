@@ -441,6 +441,7 @@ class BatchPdfWorker @AssistedInject constructor(
                             timestamp = System.currentTimeMillis()
                         )
                     )
+                    com.morphdrop.app.ui.widget.WidgetUpdateHelper.updateAllWidgets(appContext)
                 } catch (_: Exception) {}
             }
 

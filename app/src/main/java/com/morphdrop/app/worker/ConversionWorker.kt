@@ -602,6 +602,7 @@ class ConversionWorker @AssistedInject constructor(
                     success = true
                 )
             )
+            com.morphdrop.app.ui.widget.WidgetUpdateHelper.updateAllWidgets(appContext)
 
             val primaryOutputUri = resultUris.firstOrNull()
             notificationHelper.showCompletionNotification(
