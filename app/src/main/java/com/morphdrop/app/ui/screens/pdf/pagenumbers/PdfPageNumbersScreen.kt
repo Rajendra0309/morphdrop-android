@@ -80,6 +80,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import android.content.res.Configuration
+import androidx.compose.ui.tooling.preview.Devices
+import androidx.compose.ui.tooling.preview.Preview
+import com.morphdrop.app.ui.theme.MorphDropTheme
 import com.morphdrop.app.PdfViewerActivity
 import com.morphdrop.app.domain.model.FileType
 import com.morphdrop.app.domain.model.PageNumberConfig
@@ -88,9 +92,14 @@ import com.morphdrop.app.domain.model.PageNumberPosition
 import com.morphdrop.app.ui.components.FormatBadge
 import com.morphdrop.app.ui.components.MorphDropTopAppBar
 import com.morphdrop.app.ui.components.PrimaryButton
+import com.morphdrop.app.ui.screens.processing.ProcessingScreenContent
+import com.morphdrop.app.ui.screens.processing.ProcessingUiState
+import com.morphdrop.app.ui.screens.result.OutputFileItem
+import com.morphdrop.app.ui.screens.result.ResultScreenContent
+import com.morphdrop.app.ui.screens.result.ResultUiState
 import com.morphdrop.app.util.FileHelper
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PdfPageNumbersScreen(
     initialUri: Uri? = null,
@@ -99,14 +108,6 @@ fun PdfPageNumbersScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
-    val scrollState = rememberScrollState()
-
-    LaunchedEffect(state.isSuccess) {
-        if (state.isSuccess) {
-            scrollState.animateScrollTo(0)
-        }
-    }
 
     LaunchedEffect(initialUri) {
         if (initialUri != null && state.selectedUri == null) {
@@ -136,6 +137,81 @@ fun PdfPageNumbersScreen(
             pdfPickerLauncher.launch(arrayOf("application/pdf"))
         }
     }
+
+    when {
+        state.isProcessing -> {
+            val processingScrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState())
+            ProcessingScreenContent(
+                state = ProcessingUiState(
+                    progress = 50f,
+                    currentStage = "Adding page numbers...",
+                    fileName = state.fileName
+                ),
+                scrollBehavior = processingScrollBehavior,
+                onCancel = viewModel::cancelProcessing
+            )
+        }
+        state.isSuccess && state.resultUri != null -> {
+            val resultScrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
+            ResultScreenContent(
+                state = ResultUiState(
+                    title = "Page Numbers Added Successfully!",
+                    subtitle = "1 file created • ${FileHelper.formatFileSize(state.resultFileSize)}",
+                    outputFiles = listOf(
+                        OutputFileItem(
+                            id = state.resultUri.toString(),
+                            fileName = state.resultFileName,
+                            fileSizeFormatted = FileHelper.formatFileSize(state.resultFileSize),
+                            extension = "pdf",
+                            uri = state.resultUri
+                        )
+                    )
+                ),
+                scrollBehavior = resultScrollBehavior,
+                onDone = onNavigateBack,
+                onShare = {
+                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                        type = "application/pdf"
+                        putExtra(Intent.EXTRA_STREAM, state.resultUri)
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    context.startActivity(Intent.createChooser(shareIntent, "Share Numbered PDF"))
+                },
+                onOpen = {
+                    val intent = Intent(context, PdfViewerActivity::class.java).apply {
+                        data = state.resultUri
+                    }
+                    context.startActivity(intent)
+                }
+            )
+        }
+        else -> {
+            PdfPageNumbersContent(
+                state = state,
+                onNavigateBack = onNavigateBack,
+                onPickPdfClick = { pdfPickerLauncher.launch(arrayOf("application/pdf")) },
+                onSetActivePreviewTab = viewModel::setActivePreviewTab,
+                onUpdateConfig = viewModel::updateConfig,
+                onCustomRangeChanged = viewModel::onCustomRangeTextChanged,
+                onApplyPageNumbers = viewModel::applyPageNumbers
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+fun PdfPageNumbersContent(
+    state: PdfPageNumbersUiState,
+    onNavigateBack: () -> Unit = {},
+    onPickPdfClick: () -> Unit = {},
+    onSetActivePreviewTab: (Int) -> Unit = {},
+    onUpdateConfig: ((PageNumberConfig) -> PageNumberConfig) -> Unit = {},
+    onCustomRangeChanged: (String) -> Unit = {},
+    onApplyPageNumbers: () -> Unit = {}
+) {
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
+    val scrollState = rememberScrollState()
 
     Scaffold(
         modifier = Modifier
@@ -174,76 +250,6 @@ fun PdfPageNumbersScreen(
                         modifier = Modifier.padding(16.dp),
                         style = MaterialTheme.typography.bodyMedium
                     )
-                }
-            }
-
-            // Success Result Card
-            AnimatedVisibility(visible = state.isSuccess && state.resultUri != null) {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f))
-                ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.CheckCircle,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(48.dp)
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "Page Numbers Added Successfully!",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "${state.resultFileName} (${FileHelper.formatFileSize(state.resultFileSize)})",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            Button(
-                                onClick = {
-                                    val intent = Intent(context, PdfViewerActivity::class.java).apply {
-                                        data = state.resultUri
-                                    }
-                                    context.startActivity(intent)
-                                },
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Open PDF")
-                            }
-                            OutlinedButton(
-                                onClick = {
-                                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                        type = "application/pdf"
-                                        putExtra(Intent.EXTRA_STREAM, state.resultUri)
-                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                    }
-                                    context.startActivity(Intent.createChooser(shareIntent, "Share Numbered PDF"))
-                                },
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Share")
-                            }
-                        }
-                    }
                 }
             }
 
@@ -374,12 +380,12 @@ fun PdfPageNumbersScreen(
                         ) {
                             Tab(
                                 selected = state.activePreviewTab == 0,
-                                onClick = { viewModel.setActivePreviewTab(0) },
+                                onClick = { onSetActivePreviewTab(0) },
                                 text = { Text("First Page") }
                             )
                             Tab(
                                 selected = state.activePreviewTab == 1,
-                                onClick = { viewModel.setActivePreviewTab(1) },
+                                onClick = { onSetActivePreviewTab(1) },
                                 text = { Text("Last Page") }
                             )
                         }
@@ -415,7 +421,7 @@ fun PdfPageNumbersScreen(
                         Spacer(modifier = Modifier.height(16.dp))
 
                         OutlinedButton(
-                            onClick = { pdfPickerLauncher.launch(arrayOf("application/pdf")) },
+                            onClick = onPickPdfClick,
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(12.dp)
                         ) {
@@ -453,7 +459,7 @@ fun PdfPageNumbersScreen(
                             val isSelected = state.config.position == pos
                             FilterChip(
                                 selected = isSelected,
-                                onClick = { viewModel.updateConfig { it.copy(position = pos) } },
+                                onClick = { onUpdateConfig { it.copy(position = pos) } },
                                 label = {
                                     Text(
                                         when (pos) {
@@ -483,7 +489,7 @@ fun PdfPageNumbersScreen(
                             val isSelected = state.config.format == fmt
                             FilterChip(
                                 selected = isSelected,
-                                onClick = { viewModel.updateConfig { it.copy(format = fmt) } },
+                                onClick = { onUpdateConfig { it.copy(format = fmt) } },
                                 label = {
                                     Text(
                                         when (fmt) {
@@ -504,7 +510,7 @@ fun PdfPageNumbersScreen(
                         Spacer(modifier = Modifier.height(8.dp))
                         OutlinedTextField(
                             value = state.config.customTemplate,
-                            onValueChange = { tmpl -> viewModel.updateConfig { it.copy(customTemplate = tmpl) } },
+                            onValueChange = { tmpl -> onUpdateConfig { it.copy(customTemplate = tmpl) } },
                             label = { Text("Template (e.g. - {page} -)") },
                             supportingText = { Text("Use {page} and {total} as variables") },
                             singleLine = true,
@@ -526,7 +532,7 @@ fun PdfPageNumbersScreen(
                     }
                     Slider(
                         value = state.config.fontSizeSp,
-                        onValueChange = { sz -> viewModel.updateConfig { it.copy(fontSizeSp = sz) } },
+                        onValueChange = { sz -> onUpdateConfig { it.copy(fontSizeSp = sz) } },
                         valueRange = 8f..28f,
                         steps = 9
                     )
@@ -544,7 +550,7 @@ fun PdfPageNumbersScreen(
                     }
                     Slider(
                         value = state.config.marginDp,
-                        onValueChange = { m -> viewModel.updateConfig { it.copy(marginDp = m) } },
+                        onValueChange = { m -> onUpdateConfig { it.copy(marginDp = m) } },
                         valueRange = 8f..48f,
                         steps = 7
                     )
@@ -556,7 +562,7 @@ fun PdfPageNumbersScreen(
                         value = state.config.startNumber.toString(),
                         onValueChange = { str ->
                             val num = str.filter { it.isDigit() }.toIntOrNull() ?: 1
-                            viewModel.updateConfig { it.copy(startNumber = num.coerceIn(1, 9999)) }
+                            onUpdateConfig { it.copy(startNumber = num.coerceIn(1, 9999)) }
                         },
                         label = { Text("Start Numbering At") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -594,7 +600,7 @@ fun PdfPageNumbersScreen(
                                         color = if (isSelected) MaterialTheme.colorScheme.primary else Color.LightGray,
                                         shape = CircleShape
                                     )
-                                    .clickable { viewModel.updateConfig { it.copy(fontColor = c) } }
+                                    .clickable { onUpdateConfig { it.copy(fontColor = c) } }
                             )
                         }
                     }
@@ -613,7 +619,7 @@ fun PdfPageNumbersScreen(
                         }
                         Switch(
                             checked = state.config.skipFirstPage,
-                            onCheckedChange = { sk -> viewModel.updateConfig { it.copy(skipFirstPage = sk) } }
+                            onCheckedChange = { sk -> onUpdateConfig { it.copy(skipFirstPage = sk) } }
                         )
                     }
 
@@ -631,7 +637,7 @@ fun PdfPageNumbersScreen(
                         }
                         Switch(
                             checked = state.config.skipLastPage,
-                            onCheckedChange = { sk -> viewModel.updateConfig { it.copy(skipLastPage = sk) } }
+                            onCheckedChange = { sk -> onUpdateConfig { it.copy(skipLastPage = sk) } }
                         )
                     }
 
@@ -640,7 +646,7 @@ fun PdfPageNumbersScreen(
                     // Custom page range
                     OutlinedTextField(
                         value = state.customRangeText,
-                        onValueChange = viewModel::onCustomRangeTextChanged,
+                        onValueChange = onCustomRangeChanged,
                         label = { Text("Custom Target Pages (optional, e.g. 2-8)") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
@@ -652,7 +658,7 @@ fun PdfPageNumbersScreen(
             // Apply Button
             PrimaryButton(
                 text = if (state.isProcessing) "Adding Page Numbers..." else "Add Page Numbers",
-                onClick = viewModel::applyPageNumbers,
+                onClick = onApplyPageNumbers,
                 enabled = !state.isProcessing && state.selectedUri != null,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -710,5 +716,71 @@ private fun PageNumberOverlayLayer(
                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
             )
         }
+    }
+}
+
+// ----------------------------------------------------
+// COMPOSE PREVIEWS FOR ANDROID STUDIO
+// ----------------------------------------------------
+
+@Preview(name = "Page Numbers - Empty Light", showBackground = true, showSystemUi = true, device = Devices.PIXEL_7_PRO)
+@Composable
+fun PdfPageNumbersScreenEmptyLightPreview() {
+    MorphDropTheme(darkTheme = false) {
+        PdfPageNumbersContent(
+            state = PdfPageNumbersUiState()
+        )
+    }
+}
+
+@Preview(name = "Page Numbers - Empty Dark", showBackground = true, showSystemUi = true, device = Devices.PIXEL_7_PRO, uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Composable
+fun PdfPageNumbersScreenEmptyDarkPreview() {
+    MorphDropTheme(darkTheme = true) {
+        PdfPageNumbersContent(
+            state = PdfPageNumbersUiState()
+        )
+    }
+}
+
+@Preview(name = "Page Numbers - Selected Light", showBackground = true, showSystemUi = true, device = Devices.PIXEL_7_PRO)
+@Composable
+fun PdfPageNumbersScreenSelectedLightPreview() {
+    MorphDropTheme(darkTheme = false) {
+        PdfPageNumbersContent(
+            state = PdfPageNumbersUiState(
+                selectedUri = Uri.parse("content://dummy/report.pdf"),
+                fileName = "Project_Documentation.pdf",
+                fileSize = 3_420_000L,
+                pageCount = 12
+            )
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Preview(name = "Page Numbers - Result Light", showBackground = true, showSystemUi = true, device = Devices.PIXEL_7_PRO)
+@Composable
+fun PdfPageNumbersScreenResultLightPreview() {
+    MorphDropTheme(darkTheme = false) {
+        ResultScreenContent(
+            state = ResultUiState(
+                title = "Page Numbers Added Successfully!",
+                subtitle = "1 file created • 3.2 MB",
+                outputFiles = listOf(
+                    OutputFileItem(
+                        id = "1",
+                        fileName = "Project_Documentation_numbered.pdf",
+                        fileSizeFormatted = "3.2 MB",
+                        extension = "pdf",
+                        uri = null
+                    )
+                )
+            ),
+            scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState()),
+            onDone = {},
+            onShare = {},
+            onOpen = {}
+        )
     }
 }

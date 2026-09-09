@@ -71,15 +71,24 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.outlined.PictureAsPdf
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import android.content.res.Configuration
+import androidx.compose.ui.tooling.preview.Devices
+import androidx.compose.ui.tooling.preview.Preview
+import com.morphdrop.app.ui.theme.MorphDropTheme
 import com.morphdrop.app.PdfViewerActivity
 import com.morphdrop.app.domain.model.FileType
 import com.morphdrop.app.domain.model.RotateScope
 import com.morphdrop.app.ui.components.FormatBadge
 import com.morphdrop.app.ui.components.MorphDropTopAppBar
 import com.morphdrop.app.ui.components.PrimaryButton
+import com.morphdrop.app.ui.screens.processing.ProcessingScreenContent
+import com.morphdrop.app.ui.screens.processing.ProcessingUiState
+import com.morphdrop.app.ui.screens.result.OutputFileItem
+import com.morphdrop.app.ui.screens.result.ResultScreenContent
+import com.morphdrop.app.ui.screens.result.ResultUiState
 import com.morphdrop.app.util.FileHelper
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PdfRotateScreen(
     initialUri: Uri? = null,
@@ -88,14 +97,6 @@ fun PdfRotateScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
-    val scrollState = rememberScrollState()
-
-    LaunchedEffect(state.isSuccess) {
-        if (state.isSuccess) {
-            scrollState.animateScrollTo(0)
-        }
-    }
 
     LaunchedEffect(initialUri) {
         if (initialUri != null && state.selectedUri == null) {
@@ -125,6 +126,81 @@ fun PdfRotateScreen(
             pdfPickerLauncher.launch(arrayOf("application/pdf"))
         }
     }
+
+    when {
+        state.isProcessing -> {
+            val processingScrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState())
+            ProcessingScreenContent(
+                state = ProcessingUiState(
+                    progress = 50f,
+                    currentStage = "Rotating PDF pages...",
+                    fileName = state.fileName
+                ),
+                scrollBehavior = processingScrollBehavior,
+                onCancel = viewModel::cancelProcessing
+            )
+        }
+        state.isSuccess && state.resultUri != null -> {
+            val resultScrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
+            ResultScreenContent(
+                state = ResultUiState(
+                    title = "PDF Rotated Successfully!",
+                    subtitle = "1 file created • ${FileHelper.formatFileSize(state.resultFileSize)}",
+                    outputFiles = listOf(
+                        OutputFileItem(
+                            id = state.resultUri.toString(),
+                            fileName = state.resultFileName,
+                            fileSizeFormatted = FileHelper.formatFileSize(state.resultFileSize),
+                            extension = "pdf",
+                            uri = state.resultUri
+                        )
+                    )
+                ),
+                scrollBehavior = resultScrollBehavior,
+                onDone = onNavigateBack,
+                onShare = {
+                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                        type = "application/pdf"
+                        putExtra(Intent.EXTRA_STREAM, state.resultUri)
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    context.startActivity(Intent.createChooser(shareIntent, "Share Rotated PDF"))
+                },
+                onOpen = {
+                    val intent = Intent(context, PdfViewerActivity::class.java).apply {
+                        data = state.resultUri
+                    }
+                    context.startActivity(intent)
+                }
+            )
+        }
+        else -> {
+            PdfRotateContent(
+                state = state,
+                onNavigateBack = onNavigateBack,
+                onPickPdfClick = { pdfPickerLauncher.launch(arrayOf("application/pdf")) },
+                onSelectDegrees = viewModel::setDegrees,
+                onSelectScope = viewModel::setScope,
+                onCustomRangeChanged = viewModel::setCustomRangeText,
+                onRotatePdf = viewModel::rotatePdf
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+fun PdfRotateContent(
+    state: PdfRotateUiState,
+    onNavigateBack: () -> Unit = {},
+    onPickPdfClick: () -> Unit = {},
+    onSelectDegrees: (Int) -> Unit = {},
+    onSelectScope: (RotateScope) -> Unit = {},
+    onCustomRangeChanged: (String) -> Unit = {},
+    onRotatePdf: () -> Unit = {}
+) {
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
+    val scrollState = rememberScrollState()
 
     Scaffold(
         modifier = Modifier
@@ -163,76 +239,6 @@ fun PdfRotateScreen(
                         modifier = Modifier.padding(16.dp),
                         style = MaterialTheme.typography.bodyMedium
                     )
-                }
-            }
-
-            // Success Result Card
-            AnimatedVisibility(visible = state.isSuccess && state.resultUri != null) {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f))
-                ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.CheckCircle,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(48.dp)
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "PDF Rotated Successfully!",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "${state.resultFileName} (${FileHelper.formatFileSize(state.resultFileSize)})",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            Button(
-                                onClick = {
-                                    val intent = Intent(context, PdfViewerActivity::class.java).apply {
-                                        data = state.resultUri
-                                    }
-                                    context.startActivity(intent)
-                                },
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Open PDF")
-                            }
-                            OutlinedButton(
-                                onClick = {
-                                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                        type = "application/pdf"
-                                        putExtra(Intent.EXTRA_STREAM, state.resultUri)
-                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                    }
-                                    context.startActivity(Intent.createChooser(shareIntent, "Share Rotated PDF"))
-                                },
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Share")
-                            }
-                        }
-                    }
                 }
             }
 
@@ -352,7 +358,7 @@ fun PdfRotateScreen(
                         Spacer(modifier = Modifier.height(16.dp))
 
                         OutlinedButton(
-                            onClick = { pdfPickerLauncher.launch(arrayOf("application/pdf")) },
+                            onClick = onPickPdfClick,
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(12.dp)
                         ) {
@@ -396,7 +402,7 @@ fun PdfRotateScreen(
                         ).forEach { (deg, label) ->
                             FilterChip(
                                 selected = state.degrees == deg,
-                                onClick = { viewModel.setDegrees(deg) },
+                                onClick = { onSelectDegrees(deg) },
                                 label = { Text(label) },
                                 modifier = Modifier.weight(1f)
                             )
@@ -415,7 +421,7 @@ fun PdfRotateScreen(
                         RotateScope.entries.forEach { sc ->
                             FilterChip(
                                 selected = state.scope == sc,
-                                onClick = { viewModel.setScope(sc) },
+                                onClick = { onSelectScope(sc) },
                                 label = { Text(sc.label) }
                             )
                         }
@@ -425,7 +431,7 @@ fun PdfRotateScreen(
                         Spacer(modifier = Modifier.height(12.dp))
                         OutlinedTextField(
                             value = state.customRangeText,
-                            onValueChange = viewModel::setCustomRangeText,
+                            onValueChange = onCustomRangeChanged,
                             label = { Text("Specific Pages (optional, e.g. 1-3, 5)") },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth(),
@@ -438,12 +444,79 @@ fun PdfRotateScreen(
             // Action Button
             PrimaryButton(
                 text = if (state.isProcessing) "Rotating PDF..." else "Rotate PDF",
-                onClick = viewModel::rotatePdf,
+                onClick = onRotatePdf,
                 enabled = !state.isProcessing && state.selectedUri != null,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(bottom = 24.dp)
             )
         }
+    }
+}
+
+// ----------------------------------------------------
+// COMPOSE PREVIEWS FOR ANDROID STUDIO
+// ----------------------------------------------------
+
+@Preview(name = "Rotate PDF - Empty Light", showBackground = true, showSystemUi = true, device = Devices.PIXEL_7_PRO)
+@Composable
+fun PdfRotateScreenEmptyLightPreview() {
+    MorphDropTheme(darkTheme = false) {
+        PdfRotateContent(
+            state = PdfRotateUiState()
+        )
+    }
+}
+
+@Preview(name = "Rotate PDF - Empty Dark", showBackground = true, showSystemUi = true, device = Devices.PIXEL_7_PRO, uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Composable
+fun PdfRotateScreenEmptyDarkPreview() {
+    MorphDropTheme(darkTheme = true) {
+        PdfRotateContent(
+            state = PdfRotateUiState()
+        )
+    }
+}
+
+@Preview(name = "Rotate PDF - Selected Light", showBackground = true, showSystemUi = true, device = Devices.PIXEL_7_PRO)
+@Composable
+fun PdfRotateScreenSelectedLightPreview() {
+    MorphDropTheme(darkTheme = false) {
+        PdfRotateContent(
+            state = PdfRotateUiState(
+                selectedUri = Uri.parse("content://dummy/sample.pdf"),
+                fileName = "Annual_Report_2026.pdf",
+                fileSize = 4_850_000L,
+                pageCount = 16,
+                degrees = 90
+            )
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Preview(name = "Rotate PDF - Result Light", showBackground = true, showSystemUi = true, device = Devices.PIXEL_7_PRO)
+@Composable
+fun PdfRotateScreenResultLightPreview() {
+    MorphDropTheme(darkTheme = false) {
+        ResultScreenContent(
+            state = ResultUiState(
+                title = "PDF Rotated Successfully!",
+                subtitle = "1 file created • 431.7 KB",
+                outputFiles = listOf(
+                    OutputFileItem(
+                        id = "1",
+                        fileName = "interview_rotated.pdf",
+                        fileSizeFormatted = "431.7 KB",
+                        extension = "pdf",
+                        uri = null
+                    )
+                )
+            ),
+            scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState()),
+            onDone = {},
+            onShare = {},
+            onOpen = {}
+        )
     }
 }

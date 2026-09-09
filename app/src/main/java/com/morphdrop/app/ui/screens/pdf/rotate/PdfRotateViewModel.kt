@@ -113,11 +113,13 @@ class PdfRotateViewModel @Inject constructor(
         _state.update { it.copy(customRangeText = text) }
     }
 
+    private var processingJob: kotlinx.coroutines.Job? = null
+
     fun rotatePdf() {
         val uri = _state.value.selectedUri ?: return
         if (_state.value.isProcessing) return
 
-        viewModelScope.launch {
+        processingJob = viewModelScope.launch {
             _state.update { it.copy(isProcessing = true, errorMessage = null) }
 
             try {
@@ -166,19 +168,28 @@ class PdfRotateViewModel @Inject constructor(
                     )
                 }
             } catch (e: Exception) {
-                _state.update {
-                    it.copy(
-                        isProcessing = false,
-                        errorMessage = e.localizedMessage ?: "Failed to rotate PDF."
-                    )
+                if (e !is kotlinx.coroutines.CancellationException) {
+                    _state.update {
+                        it.copy(
+                            isProcessing = false,
+                            errorMessage = e.localizedMessage ?: "Failed to rotate PDF."
+                        )
+                    }
                 }
             }
         }
     }
 
+    fun cancelProcessing() {
+        processingJob?.cancel()
+        _state.update { it.copy(isProcessing = false) }
+    }
+
     fun reset() {
+        processingJob?.cancel()
         _state.update {
             it.copy(
+                isProcessing = false,
                 isSuccess = false,
                 resultUri = null,
                 errorMessage = null

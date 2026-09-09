@@ -42,6 +42,7 @@ data class PdfCompressUiState(
     val maxIterations: Int = 4,
     val isSuccess: Boolean = false,
     val resultUri: Uri? = null,
+    val resultFileName: String = "",
     val resultOriginalSize: Long = 0L,
     val resultNewSize: Long = 0L,
     val errorMessage: String? = null
@@ -177,11 +178,13 @@ class PdfCompressViewModel @Inject constructor(
         }
     }
 
+    private var processingJob: kotlinx.coroutines.Job? = null
+
     fun compressPdf() {
         val uri = _state.value.selectedUri ?: return
         if (_state.value.isProcessing) return
 
-        viewModelScope.launch {
+        processingJob = viewModelScope.launch {
             _state.update {
                 it.copy(
                     isProcessing = true,
@@ -235,26 +238,39 @@ class PdfCompressViewModel @Inject constructor(
                         isProcessing = false,
                         isSuccess = true,
                         resultUri = result.outputUri,
+                        resultFileName = outName,
                         resultOriginalSize = result.originalSize,
                         resultNewSize = result.newSize
                     )
                 }
             } catch (e: Exception) {
-                _state.update {
-                    it.copy(
-                        isProcessing = false,
-                        errorMessage = e.localizedMessage ?: "Compression failed. This PDF might be protected or corrupted."
-                    )
+                if (e !is kotlinx.coroutines.CancellationException) {
+                    _state.update {
+                        it.copy(
+                            isProcessing = false,
+                            errorMessage = e.localizedMessage ?: "Compression failed. This PDF might be protected or corrupted."
+                        )
+                    }
                 }
             }
         }
     }
 
+    fun cancelProcessing() {
+        processingJob?.cancel()
+        _state.update { it.copy(isProcessing = false) }
+    }
+
     fun reset() {
+        processingJob?.cancel()
         _state.update {
             it.copy(
+                isProcessing = false,
                 isSuccess = false,
                 resultUri = null,
+                resultFileName = "",
+                resultOriginalSize = 0L,
+                resultNewSize = 0L,
                 errorMessage = null
             )
         }

@@ -76,8 +76,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
+import android.content.res.Configuration
+import androidx.compose.ui.tooling.preview.Devices
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.morphdrop.app.PdfViewerActivity
 import com.morphdrop.app.domain.model.FileType
@@ -85,9 +87,15 @@ import com.morphdrop.app.domain.usecase.conversion.CompressionLevel
 import com.morphdrop.app.ui.components.FormatBadge
 import com.morphdrop.app.ui.components.MorphDropTopAppBar
 import com.morphdrop.app.ui.components.PrimaryButton
+import com.morphdrop.app.ui.screens.processing.ProcessingScreenContent
+import com.morphdrop.app.ui.screens.processing.ProcessingUiState
+import com.morphdrop.app.ui.screens.result.OutputFileItem
+import com.morphdrop.app.ui.screens.result.ResultScreenContent
+import com.morphdrop.app.ui.screens.result.ResultUiState
+import com.morphdrop.app.ui.theme.MorphDropTheme
 import com.morphdrop.app.util.FileHelper
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PdfCompressScreen(
     initialUri: Uri? = null,
@@ -96,14 +104,6 @@ fun PdfCompressScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
-    val scrollState = rememberScrollState()
-
-    LaunchedEffect(state.isSuccess) {
-        if (state.isSuccess) {
-            scrollState.animateScrollTo(0)
-        }
-    }
 
     LaunchedEffect(initialUri) {
         if (initialUri != null && state.selectedUri == null) {
@@ -134,6 +134,108 @@ fun PdfCompressScreen(
         }
     }
 
+    when {
+        state.isProcessing -> {
+            val processingScrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState())
+            val stage = if (state.isTargetSizeMode && state.currentIteration > 0) {
+                "Optimizing image stream... (Pass ${state.currentIteration} of ${state.maxIterations})"
+            } else {
+                "Compressing PDF resources..."
+            }
+            val progress = if (state.isTargetSizeMode && state.maxIterations > 0) {
+                ((state.currentIteration.toFloat() / state.maxIterations.toFloat()) * 100f).coerceIn(10f, 95f)
+            } else {
+                50f
+            }
+            ProcessingScreenContent(
+                state = ProcessingUiState(
+                    progress = progress,
+                    currentStage = stage,
+                    fileName = state.fileName
+                ),
+                scrollBehavior = processingScrollBehavior,
+                onCancel = viewModel::cancelProcessing
+            )
+        }
+        state.isSuccess && state.resultUri != null -> {
+            val resultScrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
+            val original = state.resultOriginalSize
+            val compressed = state.resultNewSize
+            val percentSaved = if (original > 0 && compressed < original) {
+                (((original - compressed).toFloat() / original.toFloat()) * 100).toInt()
+            } else 0
+            val sizeSubtitle = if (percentSaved > 0) {
+                "${FileHelper.formatFileSize(compressed)} (-$percentSaved%) • Saved ${FileHelper.formatFileSize(original - compressed)}"
+            } else {
+                "1 file created • ${FileHelper.formatFileSize(compressed)}"
+            }
+
+            ResultScreenContent(
+                state = ResultUiState(
+                    title = "PDF Compressed Successfully!",
+                    subtitle = sizeSubtitle,
+                    outputFiles = listOf(
+                        OutputFileItem(
+                            id = state.resultUri.toString(),
+                            fileName = state.resultFileName,
+                            fileSizeFormatted = FileHelper.formatFileSize(compressed),
+                            extension = "pdf",
+                            uri = state.resultUri
+                        )
+                    )
+                ),
+                scrollBehavior = resultScrollBehavior,
+                onDone = onNavigateBack,
+                onShare = {
+                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                        type = "application/pdf"
+                        putExtra(Intent.EXTRA_STREAM, state.resultUri)
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    context.startActivity(Intent.createChooser(shareIntent, "Share Compressed PDF"))
+                },
+                onOpen = {
+                    val intent = Intent(context, PdfViewerActivity::class.java).apply {
+                        data = state.resultUri
+                    }
+                    context.startActivity(intent)
+                }
+            )
+        }
+        else -> {
+            PdfCompressContent(
+                state = state,
+                onNavigateBack = onNavigateBack,
+                onPickPdfClick = { pdfPickerLauncher.launch(arrayOf("application/pdf")) },
+                onSetTargetSizeMode = viewModel::setTargetSizeMode,
+                onSetCompressionLevel = viewModel::setCompressionLevel,
+                onSetQualitySlider = viewModel::setQualitySlider,
+                onSetTargetSizeInput = viewModel::setTargetSizeInput,
+                onSetTargetSizeUnit = viewModel::setTargetSizeUnit,
+                onApplyPreset = viewModel::applyPreset,
+                onCompressPdf = viewModel::compressPdf
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+fun PdfCompressContent(
+    state: PdfCompressUiState,
+    onNavigateBack: () -> Unit = {},
+    onPickPdfClick: () -> Unit = {},
+    onSetTargetSizeMode: (Boolean) -> Unit = {},
+    onSetCompressionLevel: (CompressionLevel) -> Unit = {},
+    onSetQualitySlider: (Int) -> Unit = {},
+    onSetTargetSizeInput: (String) -> Unit = {},
+    onSetTargetSizeUnit: (Boolean) -> Unit = {},
+    onApplyPreset: (Float) -> Unit = {},
+    onCompressPdf: () -> Unit = {}
+) {
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
+    val scrollState = rememberScrollState()
+
     Scaffold(
         modifier = Modifier
             .fillMaxSize()
@@ -159,7 +261,6 @@ fun PdfCompressScreen(
         ) {
             Spacer(modifier = Modifier.height(4.dp))
 
-            // Error banner if any
             AnimatedVisibility(visible = state.errorMessage != null) {
                 Card(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
@@ -174,119 +275,6 @@ fun PdfCompressScreen(
                 }
             }
 
-            // Success Result Card with Size Comparison
-            AnimatedVisibility(visible = state.isSuccess && state.resultUri != null) {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f))
-                ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.CheckCircle,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(48.dp)
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "PDF Compressed Successfully!",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
-
-                        val original = state.resultOriginalSize
-                        val compressed = state.resultNewSize
-                        val percentSaved = if (original > 0 && compressed < original) {
-                            (((original - compressed).toFloat() / original.toFloat()) * 100).toInt()
-                        } else 0
-
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = MaterialTheme.colorScheme.surface,
-                            modifier = Modifier.padding(vertical = 8.dp)
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
-                            ) {
-                                Text(
-                                    text = FileHelper.formatFileSize(original),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(" → ", fontWeight = FontWeight.Bold)
-                                Text(
-                                    text = FileHelper.formatFileSize(compressed),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                                if (percentSaved > 0) {
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Surface(
-                                        shape = RoundedCornerShape(6.dp),
-                                        color = MaterialTheme.colorScheme.primaryContainer
-                                    ) {
-                                        Text(
-                                            text = "-$percentSaved%",
-                                            style = MaterialTheme.typography.labelMedium,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            Button(
-                                onClick = {
-                                    val intent = Intent(context, PdfViewerActivity::class.java).apply {
-                                        data = state.resultUri
-                                    }
-                                    context.startActivity(intent)
-                                },
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Open PDF")
-                            }
-                            OutlinedButton(
-                                onClick = {
-                                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                        type = "application/pdf"
-                                        putExtra(Intent.EXTRA_STREAM, state.resultUri)
-                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                    }
-                                    context.startActivity(Intent.createChooser(shareIntent, "Share Compressed PDF"))
-                                },
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Share")
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Unified Hero Document Card
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(24.dp),
@@ -296,7 +284,7 @@ fun PdfCompressScreen(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(220.dp)
+                            .height(260.dp)
                     ) {
                         if (state.selectedUri != null && state.previewBitmap != null) {
                             Box(
@@ -306,8 +294,7 @@ fun PdfCompressScreen(
                                     .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
                                 contentAlignment = Alignment.Center
                             ) {
-                                val bmp = state.previewBitmap!!
-                                val pageAspectRatio = (bmp.width.toFloat() / bmp.height.toFloat()).coerceIn(0.4f, 2.5f)
+                                val pageAspectRatio = (state.previewBitmap.width.toFloat() / state.previewBitmap.height.toFloat()).coerceIn(0.4f, 2.5f)
 
                                 Box(
                                     modifier = Modifier
@@ -319,8 +306,8 @@ fun PdfCompressScreen(
                                     contentAlignment = Alignment.Center
                                 ) {
                                     androidx.compose.foundation.Image(
-                                        bitmap = bmp.asImageBitmap(),
-                                        contentDescription = "PDF Document Preview",
+                                        bitmap = state.previewBitmap.asImageBitmap(),
+                                        contentDescription = "PDF Preview Page",
                                         contentScale = ContentScale.FillBounds,
                                         modifier = Modifier.fillMaxSize()
                                     )
@@ -393,7 +380,7 @@ fun PdfCompressScreen(
                         Spacer(modifier = Modifier.height(16.dp))
 
                         OutlinedButton(
-                            onClick = { pdfPickerLauncher.launch(arrayOf("application/pdf")) },
+                            onClick = onPickPdfClick,
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(12.dp)
                         ) {
@@ -406,7 +393,6 @@ fun PdfCompressScreen(
             }
 
             if (state.selectedUri != null) {
-                // PDF Structural Analysis Card
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(20.dp),
@@ -452,7 +438,6 @@ fun PdfCompressScreen(
                 }
             }
 
-            // Compression Mode Configuration
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(20.dp),
@@ -470,12 +455,12 @@ fun PdfCompressScreen(
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         FilterChip(
                             selected = !state.isTargetSizeMode,
-                            onClick = { viewModel.setTargetSizeMode(false) },
+                            onClick = { onSetTargetSizeMode(false) },
                             label = { Text("Quality Mode") }
                         )
                         FilterChip(
                             selected = state.isTargetSizeMode,
-                            onClick = { viewModel.setTargetSizeMode(true) },
+                            onClick = { onSetTargetSizeMode(true) },
                             label = { Text("Target Size Mode (New)") }
                         )
                     }
@@ -483,7 +468,6 @@ fun PdfCompressScreen(
                     Spacer(modifier = Modifier.height(16.dp))
 
                     if (!state.isTargetSizeMode) {
-                        // Quality Mode UI
                         Text(
                             text = "Compression Preset",
                             style = MaterialTheme.typography.bodyMedium,
@@ -504,7 +488,7 @@ fun PdfCompressScreen(
                                 val isSelected = state.compressionLevel == level
                                 FilterChip(
                                     selected = isSelected,
-                                    onClick = { viewModel.setCompressionLevel(level) },
+                                    onClick = { onSetCompressionLevel(level) },
                                     label = {
                                         Box(
                                             modifier = Modifier.fillMaxWidth(),
@@ -541,11 +525,10 @@ fun PdfCompressScreen(
                         Text("Custom Quality: ${state.qualitySlider}%", style = MaterialTheme.typography.bodyMedium)
                         Slider(
                             value = state.qualitySlider.toFloat(),
-                            onValueChange = { q -> viewModel.setQualitySlider(q.toInt()) },
+                            onValueChange = { q -> onSetQualitySlider(q.toInt()) },
                             valueRange = 10f..100f
                         )
                     } else {
-                        // Target Size Mode UI
                         Text("Target File Size", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                         Spacer(modifier = Modifier.height(6.dp))
 
@@ -555,7 +538,7 @@ fun PdfCompressScreen(
                         ) {
                             OutlinedTextField(
                                 value = state.targetSizeInput,
-                                onValueChange = viewModel::setTargetSizeInput,
+                                onValueChange = onSetTargetSizeInput,
                                 label = { Text("Target Size") },
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                 singleLine = true,
@@ -566,13 +549,13 @@ fun PdfCompressScreen(
                             Row {
                                 FilterChip(
                                     selected = state.isTargetSizeMb,
-                                    onClick = { viewModel.setTargetSizeUnit(true) },
+                                    onClick = { onSetTargetSizeUnit(true) },
                                     label = { Text("MB") }
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 FilterChip(
                                     selected = !state.isTargetSizeMb,
-                                    onClick = { viewModel.setTargetSizeUnit(false) },
+                                    onClick = { onSetTargetSizeUnit(false) },
                                     label = { Text("KB") }
                                 )
                             }
@@ -591,13 +574,12 @@ fun PdfCompressScreen(
                                 val label = if (mbVal == 25f) "Email (25 MB)" else "${mbVal.toInt()} MB"
                                 FilterChip(
                                     selected = state.isTargetSizeMb && state.targetSizeInput == mbVal.toInt().toString(),
-                                    onClick = { viewModel.applyPreset(mbVal) },
+                                    onClick = { onApplyPreset(mbVal) },
                                     label = { Text(label) }
                                 )
                             }
                         }
 
-                        // Smart warnings & heuristics
                         if (state.isTargetLargerThanOriginal) {
                             Spacer(modifier = Modifier.height(12.dp))
                             Surface(
@@ -639,45 +621,82 @@ fun PdfCompressScreen(
                 }
             }
 
-            // Processing Progress Bar
-            if (state.isProcessing) {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(
-                                text = if (state.isTargetSizeMode && state.currentIteration > 0) {
-                                    "Optimizing image stream... (Pass ${state.currentIteration} of ${state.maxIterations})"
-                                } else {
-                                    "Compressing PDF resources..."
-                                },
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                        }
-                        Spacer(modifier = Modifier.height(8.dp))
-                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                    }
-                }
-            }
-
-            // Action Button
             PrimaryButton(
-                text = if (state.isProcessing) "Compressing..." else "Compress PDF",
-                onClick = viewModel::compressPdf,
+                text = "Compress PDF",
+                onClick = onCompressPdf,
                 enabled = !state.isProcessing && state.selectedUri != null,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(bottom = 24.dp)
             )
         }
+    }
+}
+
+// ----------------------------------------------------
+// COMPOSE PREVIEWS FOR ANDROID STUDIO
+// ----------------------------------------------------
+
+@Preview(name = "Compress PDF - Empty Light", showBackground = true, showSystemUi = true, device = Devices.PIXEL_7_PRO)
+@Composable
+fun PdfCompressScreenEmptyLightPreview() {
+    MorphDropTheme(darkTheme = false) {
+        PdfCompressContent(
+            state = PdfCompressUiState()
+        )
+    }
+}
+
+@Preview(name = "Compress PDF - Empty Dark", showBackground = true, showSystemUi = true, device = Devices.PIXEL_7_PRO, uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Composable
+fun PdfCompressScreenEmptyDarkPreview() {
+    MorphDropTheme(darkTheme = true) {
+        PdfCompressContent(
+            state = PdfCompressUiState()
+        )
+    }
+}
+
+@Preview(name = "Compress PDF - Selected Light", showBackground = true, showSystemUi = true, device = Devices.PIXEL_7_PRO)
+@Composable
+fun PdfCompressScreenSelectedLightPreview() {
+    MorphDropTheme(darkTheme = false) {
+        PdfCompressContent(
+            state = PdfCompressUiState(
+                selectedUri = Uri.parse("content://dummy/large_scanned.pdf"),
+                fileName = "Large_Scanned_Document.pdf",
+                fileSize = 14_850_000L,
+                pageCount = 28,
+                compressionLevel = CompressionLevel.MEDIUM,
+                qualitySlider = 60
+            )
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Preview(name = "Compress PDF - Result Light", showBackground = true, showSystemUi = true, device = Devices.PIXEL_7_PRO)
+@Composable
+fun PdfCompressScreenResultLightPreview() {
+    MorphDropTheme(darkTheme = false) {
+        ResultScreenContent(
+            state = ResultUiState(
+                title = "PDF Compressed Successfully!",
+                subtitle = "5.2 MB (-65%) • Saved 9.6 MB",
+                outputFiles = listOf(
+                    OutputFileItem(
+                        id = "1",
+                        fileName = "Large_Scanned_Document_compressed.pdf",
+                        fileSizeFormatted = "5.2 MB",
+                        extension = "pdf",
+                        uri = null
+                    )
+                )
+            ),
+            scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState()),
+            onDone = {},
+            onShare = {},
+            onOpen = {}
+        )
     }
 }
