@@ -1032,12 +1032,14 @@ private fun WatermarkConfigSection(
                 )
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            if (viewModel?.state?.value?.selectedFiles?.isNotEmpty() == true) {
+                Spacer(modifier = Modifier.height(16.dp))
 
-            // Live Preview Card
-            Text("Live Preview", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-            Spacer(modifier = Modifier.height(8.dp))
-            WatermarkLivePreviewCard(config = config)
+                // Live Preview Card
+                Text("Live Preview", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(8.dp))
+                WatermarkLivePreviewCard(config = config)
+            }
         }
     }
 }
@@ -1223,10 +1225,12 @@ private fun PageNumbersConfigSection(
                 )
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
-            Text("Live Preview", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-            Spacer(modifier = Modifier.height(8.dp))
-            PageNumberLivePreviewCard(config = config)
+            if (viewModel?.state?.value?.selectedFiles?.isNotEmpty() == true) {
+                Spacer(modifier = Modifier.height(16.dp))
+                Text("Live Preview", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(8.dp))
+                PageNumberLivePreviewCard(config = config)
+            }
         }
     }
 }

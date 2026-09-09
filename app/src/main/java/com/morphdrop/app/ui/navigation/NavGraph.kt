@@ -1,5 +1,6 @@
 package com.morphdrop.app.ui.navigation
 
+import android.net.Uri
 import androidx.compose.runtime.Composable
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
@@ -21,6 +22,10 @@ import com.morphdrop.app.ui.screens.welcome.WelcomeScreen
 import com.morphdrop.app.ui.screens.markdown.MarkdownViewerScreen
 import com.morphdrop.app.ui.screens.markdown.MarkdownEditorScreen
 import com.morphdrop.app.ui.screens.pdf.batch.BatchPdfScreen
+import com.morphdrop.app.ui.screens.pdf.watermark.PdfWatermarkScreen
+import com.morphdrop.app.ui.screens.pdf.pagenumbers.PdfPageNumbersScreen
+import com.morphdrop.app.ui.screens.pdf.compress.PdfCompressScreen
+import com.morphdrop.app.ui.screens.pdf.rotate.PdfRotateScreen
 
 @Composable
 fun NavGraph(
@@ -42,6 +47,10 @@ fun NavGraph(
                         "batch_ocr" -> navController.navigate(Screen.BatchOcr.route)
                         "batch_pdf" -> navController.navigate(Screen.BatchPdf.route)
                         "markdown_editor" -> navController.navigate(Screen.MarkdownEditor.createRoute(isNew = true))
+                        "watermark_pdf" -> navController.navigate(Screen.PdfWatermark.createRoute())
+                        "page_numbers_pdf" -> navController.navigate(Screen.PdfPageNumbers.createRoute())
+                        "compress_pdf" -> navController.navigate(Screen.PdfCompress.createRoute())
+                        "rotate_pdf" -> navController.navigate(Screen.PdfRotate.createRoute())
                         else -> navController.navigate(Screen.ConversionConfig.createRoute(conversionTypeId))
                     }
                 },
@@ -207,6 +216,70 @@ fun NavGraph(
             MarkdownEditorScreen(
                 uriString = uriString,
                 isNew = isNew,
+                onNavigateBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(
+            route = Screen.PdfWatermark.route,
+            arguments = listOf(
+                navArgument("uri") {
+                    type = NavType.StringType
+                    defaultValue = ""
+                }
+            )
+        ) { backStackEntry ->
+            val uriString = backStackEntry.arguments?.getString("uri")?.takeIf { it.isNotBlank() && it != "{uri}" }
+            PdfWatermarkScreen(
+                initialUri = uriString?.let { Uri.parse(it) },
+                onNavigateBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(
+            route = Screen.PdfPageNumbers.route,
+            arguments = listOf(
+                navArgument("uri") {
+                    type = NavType.StringType
+                    defaultValue = ""
+                }
+            )
+        ) { backStackEntry ->
+            val uriString = backStackEntry.arguments?.getString("uri")?.takeIf { it.isNotBlank() && it != "{uri}" }
+            PdfPageNumbersScreen(
+                initialUri = uriString?.let { Uri.parse(it) },
+                onNavigateBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(
+            route = Screen.PdfCompress.route,
+            arguments = listOf(
+                navArgument("uri") {
+                    type = NavType.StringType
+                    defaultValue = ""
+                }
+            )
+        ) { backStackEntry ->
+            val uriString = backStackEntry.arguments?.getString("uri")?.takeIf { it.isNotBlank() && it != "{uri}" }
+            PdfCompressScreen(
+                initialUri = uriString?.let { Uri.parse(it) },
+                onNavigateBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(
+            route = Screen.PdfRotate.route,
+            arguments = listOf(
+                navArgument("uri") {
+                    type = NavType.StringType
+                    defaultValue = ""
+                }
+            )
+        ) { backStackEntry ->
+            val uriString = backStackEntry.arguments?.getString("uri")?.takeIf { it.isNotBlank() && it != "{uri}" }
+            PdfRotateScreen(
+                initialUri = uriString?.let { Uri.parse(it) },
                 onNavigateBack = { navController.popBackStack() }
             )
         }

@@ -31,4 +31,24 @@ sealed class Screen(val route: String) {
         }
     }
     data object BatchPdf : Screen("batch_pdf")
+    data object PdfWatermark : Screen("pdf_watermark?uri={uri}") {
+        fun createRoute(uri: String? = null): String {
+            return if (uri.isNullOrBlank()) "pdf_watermark" else "pdf_watermark?uri=${Uri.encode(uri)}"
+        }
+    }
+    data object PdfPageNumbers : Screen("pdf_page_numbers?uri={uri}") {
+        fun createRoute(uri: String? = null): String {
+            return if (uri.isNullOrBlank()) "pdf_page_numbers" else "pdf_page_numbers?uri=${Uri.encode(uri)}"
+        }
+    }
+    data object PdfCompress : Screen("pdf_compress?uri={uri}") {
+        fun createRoute(uri: String? = null): String {
+            return if (uri.isNullOrBlank()) "pdf_compress" else "pdf_compress?uri=${Uri.encode(uri)}"
+        }
+    }
+    data object PdfRotate : Screen("pdf_rotate?uri={uri}") {
+        fun createRoute(uri: String? = null): String {
+            return if (uri.isNullOrBlank()) "pdf_rotate" else "pdf_rotate?uri=${Uri.encode(uri)}"
+        }
+    }
 }

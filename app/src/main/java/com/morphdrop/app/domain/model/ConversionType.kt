@@ -4,10 +4,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Article
 import androidx.compose.material.icons.automirrored.outlined.CallSplit
 import androidx.compose.material.icons.automirrored.outlined.MergeType
+import androidx.compose.material.icons.automirrored.outlined.RotateRight
 import androidx.compose.material.icons.outlined.Collections
 import androidx.compose.material.icons.outlined.Compress
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.EditNote
+import androidx.compose.material.icons.outlined.FormatListNumbered
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Layers
 import androidx.compose.material.icons.outlined.Lock
@@ -194,6 +196,36 @@ data class ConversionType(
                 inputType = FileType.PDF,
                 outputType = FileType.PDF,
                 icon = Icons.Outlined.Lock,
+                category = CATEGORY_PDF_TOOLS,
+                isMultiFileAllowed = false
+            ),
+            ConversionType(
+                id = "watermark_pdf",
+                name = "Add Watermark",
+                description = "Stamp custom text or image on all pages",
+                inputType = FileType.PDF,
+                outputType = FileType.PDF,
+                icon = Icons.Outlined.Layers,
+                category = CATEGORY_PDF_TOOLS,
+                isMultiFileAllowed = false
+            ),
+            ConversionType(
+                id = "page_numbers_pdf",
+                name = "Add Page Numbers",
+                description = "Insert formatted page numbers with custom position",
+                inputType = FileType.PDF,
+                outputType = FileType.PDF,
+                icon = Icons.Outlined.FormatListNumbered,
+                category = CATEGORY_PDF_TOOLS,
+                isMultiFileAllowed = false
+            ),
+            ConversionType(
+                id = "rotate_pdf",
+                name = "Rotate PDF",
+                description = "Rotate pages 90°, 180°, or 270° with live preview",
+                inputType = FileType.PDF,
+                outputType = FileType.PDF,
+                icon = Icons.AutoMirrored.Outlined.RotateRight,
                 category = CATEGORY_PDF_TOOLS,
                 isMultiFileAllowed = false
             ),

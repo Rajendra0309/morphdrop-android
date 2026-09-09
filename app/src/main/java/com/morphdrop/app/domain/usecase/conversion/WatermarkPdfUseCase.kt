@@ -87,6 +87,10 @@ class WatermarkPdfUseCase @Inject constructor(
                     continue
                 }
 
+                if (config.targetPages != null && !config.targetPages.contains(pageIndex + 1)) {
+                    continue
+                }
+
                 val page = document.getPage(pageIndex)
                 val mediaBox = page.mediaBox
                 val pageWidth = mediaBox.width

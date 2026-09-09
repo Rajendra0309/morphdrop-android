@@ -50,7 +50,8 @@ data class WatermarkConfig(
     val opacity: Float = 0.35f,
     val rotationDegrees: Float = 45f,
     val position: WatermarkPosition = WatermarkPosition.DIAGONAL,
-    val skipFirstPage: Boolean = false
+    val skipFirstPage: Boolean = false,
+    val targetPages: List<Int>? = null
 )
 
 enum class PageNumberPosition(val label: String) {
@@ -79,8 +80,19 @@ data class PageNumberConfig(
     val startNumber: Int = 1,
     val skipFirstPage: Boolean = false,
     val skipLastPage: Boolean = false,
-    val marginDp: Float = 24f
+    val marginDp: Float = 24f,
+    val targetPages: List<Int>? = null
 )
+
+data class PdfSizeAnalysis(
+    val totalSizeBytes: Long = 0L,
+    val totalImageBytes: Long = 0L,
+    val nonImageOverheadBytes: Long = 0L,
+    val imageCount: Int = 0,
+    val estimatedMinBytes: Long = 0L
+) {
+    val isCompressible: Boolean get() = imageCount > 0 && totalImageBytes > 0
+}
 
 data class BatchCompressConfig(
     val isTargetSizeMode: Boolean = false,

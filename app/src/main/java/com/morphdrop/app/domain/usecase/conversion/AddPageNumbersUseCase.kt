@@ -59,6 +59,9 @@ class AddPageNumbersUseCase @Inject constructor(
                 if (config.skipLastPage && pageIndex == totalPages - 1) {
                     continue
                 }
+                if (config.targetPages != null && !config.targetPages.contains(pageIndex + 1)) {
+                    continue
+                }
 
                 val page = document.getPage(pageIndex)
                 val mediaBox = page.mediaBox
