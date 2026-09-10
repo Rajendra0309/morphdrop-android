@@ -1,6 +1,7 @@
 package com.morphdrop.app
 
 import android.animation.ObjectAnimator
+import android.content.Intent
 import android.os.Bundle
 import android.view.View
 import android.view.animation.AnticipateInterpolator
@@ -40,16 +41,100 @@ import com.morphdrop.app.ui.components.UpdateDialog
 import com.morphdrop.app.ui.navigation.NavGraph
 import com.morphdrop.app.ui.navigation.Screen
 import com.morphdrop.app.ui.theme.MorphDropTheme
+import androidx.lifecycle.lifecycleScope
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     
     private val viewModel: MainViewModel by viewModels()
+    private val pendingMarkdownUri = MutableStateFlow<String?>(null)
+    private val pendingShortcutRoute = MutableStateFlow<String?>(null)
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIncomingIntent(intent)
+    }
+
+    private fun handleIncomingIntent(intent: Intent?) {
+        if (intent == null) return
+
+        val shortcutTarget = intent.getStringExtra("extra_navigate_to")
+        if (!shortcutTarget.isNullOrBlank()) {
+            pendingShortcutRoute.value = resolveShortcutRoute(shortcutTarget)
+        }
+
+        val openMarkdown = intent.getStringExtra("extra_open_markdown")
+        if (!openMarkdown.isNullOrBlank()) {
+            pendingMarkdownUri.value = openMarkdown
+        }
+
+        val openHistoryId = intent.getLongExtra("extra_open_history_id", -1L)
+        if (openHistoryId != -1L) {
+            pendingShortcutRoute.value = Screen.HistoryDetail.createRoute(openHistoryId)
+        }
+
+        extractMarkdownUri(intent)?.let { uriStr ->
+            pendingMarkdownUri.value = uriStr
+        }
+    }
+
+    private fun extractMarkdownUri(intent: Intent?): String? {
+        if (intent == null || intent.action != Intent.ACTION_VIEW) return null
+        val data = intent.data ?: return null
+        
+        val mimeType = intent.type ?: contentResolver.getType(data)
+        val path = data.path ?: ""
+        
+        val isMarkdown = mimeType?.contains("markdown", ignoreCase = true) == true ||
+                mimeType?.contains("text/plain", ignoreCase = true) == true ||
+                path.endsWith(".md", ignoreCase = true) ||
+                data.toString().endsWith(".md", ignoreCase = true)
+                
+        return if (isMarkdown) data.toString() else null
+    }
+
+    private fun resolveShortcutRoute(target: String): String {
+        return when (target.trim()) {
+            "ocr", "ocr_text_extractor" -> Screen.Ocr.route
+            "batch_ocr" -> Screen.BatchOcr.route
+            "batch_pdf" -> Screen.BatchPdf.route
+            "markdown", "markdown_editor" -> Screen.MarkdownEditor.createRoute(isNew = true)
+            "watermark_pdf" -> Screen.PdfWatermark.createRoute()
+            "page_numbers_pdf" -> Screen.PdfPageNumbers.createRoute()
+            "compress_pdf" -> Screen.PdfCompress.createRoute()
+            "rotate_pdf" -> Screen.PdfRotate.createRoute()
+            "settings" -> Screen.Settings.route
+            "history" -> Screen.History.route
+            "config/image_to_pdf", "config/image_pdf", "image_converter" -> Screen.ConversionConfig.createRoute("image_converter")
+            "image_to_pdf", "images_to_pdf" -> Screen.ConversionConfig.createRoute("images_to_pdf")
+            "pdf_to_images", "pdf_to_image" -> Screen.ConversionConfig.createRoute("pdf_to_images")
+            else -> {
+                if (!target.startsWith("config/") && !target.contains("/") && !target.contains("?")) {
+                    Screen.ConversionConfig.createRoute(target)
+                } else {
+                    target
+                }
+            }
+        }
+    }
     
     override fun onCreate(savedInstanceState: Bundle?) {
         val splashScreen = installSplashScreen()
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+        
+        handleIncomingIntent(intent)
+
+        // Background initialization: sync widgets and clean cache off the main thread for instant startup
+        lifecycleScope.launch(Dispatchers.IO) {
+            com.morphdrop.app.ui.widget.WidgetUpdateHelper.updateAllWidgets(applicationContext)
+            cleanCacheIfOverLimit()
+        }
         
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
             val display = windowManager.defaultDisplay
@@ -61,15 +146,7 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        
-        val isLowEnd = (getSystemService(android.content.Context.ACTIVITY_SERVICE) as android.app.ActivityManager).isLowRamDevice
-
-        // Clean app cache on startup if > 100MB
-        cleanCacheIfOverLimit()
-
-        // Removed aggressive ACCESS_MEDIA_LOCATION request on startup
-
-        // Immediate exit for all devices to reduce splash screen delay to zero.
+        // Immediate exit to reduce splash screen delay to zero milliseconds.
         splashScreen.setOnExitAnimationListener { splashScreenView ->
             splashScreenView.remove()
         }
@@ -125,17 +202,74 @@ class MainActivity : ComponentActivity() {
             }
 
             androidx.compose.runtime.DisposableEffect(isDarkMode) {
-                enableEdgeToEdge()
+                enableEdgeToEdge(
+                    statusBarStyle = if (isDarkMode) {
+                        SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
+                    } else {
+                        SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT)
+                    },
+                    navigationBarStyle = if (isDarkMode) {
+                        SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
+                    } else {
+                        SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT)
+                    }
+                )
+
+                val insetsController = androidx.core.view.WindowCompat.getInsetsController(window, window.decorView)
+                insetsController.isAppearanceLightStatusBars = !isDarkMode
+                insetsController.isAppearanceLightNavigationBars = !isDarkMode
+
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                    window.insetsController?.setSystemBarsAppearance(
+                        if (!isDarkMode) {
+                            android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
+                                    android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
+                        } else 0,
+                        android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
+                                android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
+                    )
+                }
+                @Suppress("DEPRECATION")
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                    var flags = window.decorView.systemUiVisibility
+                    flags = if (!isDarkMode) {
+                        flags or android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+                    } else {
+                        flags and android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR.inv()
+                    }
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                        flags = if (!isDarkMode) {
+                            flags or android.view.View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+                        } else {
+                            flags and android.view.View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR.inv()
+                        }
+                    }
+                    window.decorView.systemUiVisibility = flags
+                }
+
+                androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(
+                    if (isDarkMode) androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES
+                    else androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_NO
+                )
+
                 onDispose {}
             }
             val hasSeenWelcome by viewModel.hasSeenWelcome.collectAsState()
             
             val showSearchFab by viewModel.showSearchFab.collectAsState()
             val onSearchFabClick by viewModel.onSearchFabClick.collectAsState()
+            val markdownUriEvent by pendingMarkdownUri.collectAsState()
 
             if (hasSeenWelcome != null) {
                 val initialRoute = remember {
-                    if (hasSeenWelcome == true) Screen.Home.route else Screen.Welcome.route
+                    val initialMarkdown = extractMarkdownUri(intent)
+                    if (initialMarkdown != null) {
+                        Screen.MarkdownViewer.createRoute(initialMarkdown)
+                    } else if (hasSeenWelcome == true) {
+                        Screen.Home.route
+                    } else {
+                        Screen.Welcome.route
+                    }
                 }
                 
                 MorphDropTheme(darkTheme = isDarkMode) {
@@ -144,6 +278,27 @@ class MainActivity : ComponentActivity() {
                     val currentRoute = navBackStackEntry?.destination?.route ?: initialRoute
                     
                     val updateInfo by viewModel.updateInfo.collectAsState()
+
+                    // Handle onNewIntent or dynamic markdown opening
+                    LaunchedEffect(markdownUriEvent) {
+                        markdownUriEvent?.let { uri ->
+                            navController.navigate(Screen.MarkdownViewer.createRoute(uri)) {
+                                launchSingleTop = true
+                            }
+                            pendingMarkdownUri.value = null
+                        }
+                    }
+
+                    // Handle app shortcuts navigation
+                    val shortcutRoute by pendingShortcutRoute.collectAsState()
+                    LaunchedEffect(shortcutRoute) {
+                        shortcutRoute?.let { route ->
+                            navController.navigate(route) {
+                                launchSingleTop = true
+                            }
+                            pendingShortcutRoute.value = null
+                        }
+                    }
 
                     val showBottomNav = currentRoute in listOf(
                         Screen.Home.route,
@@ -161,10 +316,14 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
+                    val downloadProgress by viewModel.downloadProgress.collectAsState()
+
                     if (updateInfo != null) {
                         UpdateDialog(
                             updateInfo = updateInfo!!,
+                            downloadProgress = downloadProgress,
                             onDownload = { viewModel.downloadUpdate(updateInfo!!) },
+                            onSkipVersion = { viewModel.skipVersion(updateInfo!!.versionName) },
                             onDismiss = { viewModel.dismissUpdateDialog() }
                         )
                     }

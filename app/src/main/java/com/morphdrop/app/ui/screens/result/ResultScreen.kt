@@ -139,7 +139,7 @@ fun ResultScreenContent(
             Spacer(modifier = Modifier.height(24.dp))
 
             Text(
-                text = "Conversion Complete!",
+                text = state.title.ifBlank { "Conversion Complete!" },
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center

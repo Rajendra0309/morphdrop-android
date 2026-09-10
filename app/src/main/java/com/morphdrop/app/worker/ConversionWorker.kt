@@ -24,6 +24,10 @@ import com.morphdrop.app.domain.usecase.conversion.ReorderPdfPagesUseCase
 import com.morphdrop.app.domain.usecase.conversion.RotatePdfPagesUseCase
 import com.morphdrop.app.domain.usecase.conversion.SplitPdfUseCase
 import com.morphdrop.app.domain.usecase.conversion.TextToPdfUseCase
+import com.morphdrop.app.domain.usecase.conversion.WatermarkPdfUseCase
+import com.morphdrop.app.domain.usecase.conversion.AddPageNumbersUseCase
+import com.morphdrop.app.domain.model.WatermarkConfig
+import com.morphdrop.app.domain.model.PageNumberConfig
 import com.morphdrop.app.util.FileHelper
 import com.morphdrop.app.util.NotificationHelper
 import dagger.assisted.Assisted
@@ -48,6 +52,8 @@ class ConversionWorker @AssistedInject constructor(
     private val splitPdfUseCase: SplitPdfUseCase,
     private val compressPdfUseCase: CompressPdfUseCase,
     private val rotatePdfPagesUseCase: RotatePdfPagesUseCase,
+    private val watermarkPdfUseCase: WatermarkPdfUseCase,
+    private val addPageNumbersUseCase: AddPageNumbersUseCase,
     private val reorderPdfPagesUseCase: ReorderPdfPagesUseCase,
     private val pdfPasswordUseCase: PdfPasswordUseCase,
     private val pdfPageEditorUseCase: PdfPageEditorUseCase,
@@ -400,8 +406,8 @@ class ConversionWorker @AssistedInject constructor(
                 }
 
                 "compress_pdf" -> {
-                    notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 30, cancelPendingIntent)
-                    setProgress(workDataOf("progress" to 30))
+                    notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 25, cancelPendingIntent)
+                    setProgress(workDataOf("progress" to 25))
                     val uri = Uri.parse(requireNotNull(inputUriString))
                     val quality = inputData.getInt(KEY_QUALITY, 50)
                     val targetSizeKb = if (inputData.getInt(KEY_TARGET_SIZE_KB, -1) != -1) inputData.getInt(KEY_TARGET_SIZE_KB, -1) else null
@@ -415,11 +421,42 @@ class ConversionWorker @AssistedInject constructor(
                         pdfUri = uri, 
                         compressionLevel = level,
                         targetSizeKb = targetSizeKb,
-                        outputFileName = outputFileName
+                        outputFileName = outputFileName,
+                        onProgress = { iter, max, sz ->
+                            checkCancellation()
+                            val prog = 25 + ((iter.toFloat() / max.toFloat()) * 60).toInt()
+                            notificationHelper.showProgressNotification(notificationId, "Compressing... (Pass $iter of $max)", prog, cancelPendingIntent)
+                            kotlinx.coroutines.runBlocking {
+                                setProgress(workDataOf("progress" to prog, "iteration" to iter))
+                            }
+                        }
                     )
-                    notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 85, cancelPendingIntent)
-                    setProgress(workDataOf("progress" to 85))
+                    notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 90, cancelPendingIntent)
+                    setProgress(workDataOf("progress" to 90))
                     listOf(compressResult.outputUri)
+                }
+
+                "watermark_pdf" -> {
+                    notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 30, cancelPendingIntent)
+                    setProgress(workDataOf("progress" to 30))
+                    val uri = Uri.parse(requireNotNull(inputUriString))
+                    val text = inputData.getString("watermark_text") ?: "CONFIDENTIAL"
+                    val config = WatermarkConfig(text = text)
+                    val result = listOf(watermarkPdfUseCase(uri, config = config, outputFileName = outputFileName))
+                    notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 90, cancelPendingIntent)
+                    setProgress(workDataOf("progress" to 90))
+                    result
+                }
+
+                "page_numbers_pdf" -> {
+                    notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 30, cancelPendingIntent)
+                    setProgress(workDataOf("progress" to 30))
+                    val uri = Uri.parse(requireNotNull(inputUriString))
+                    val config = PageNumberConfig()
+                    val result = listOf(addPageNumbersUseCase(uri, config = config, outputFileName = outputFileName))
+                    notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 90, cancelPendingIntent)
+                    setProgress(workDataOf("progress" to 90))
+                    result
                 }
 
                 "rotate_pdf" -> {
@@ -565,6 +602,7 @@ class ConversionWorker @AssistedInject constructor(
                     success = true
                 )
             )
+            com.morphdrop.app.ui.widget.WidgetUpdateHelper.updateAllWidgets(appContext)
 
             val primaryOutputUri = resultUris.firstOrNull()
             notificationHelper.showCompletionNotification(

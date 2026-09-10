@@ -20,7 +20,8 @@ class RotatePdfPagesUseCase @Inject constructor(
         pdfUri: Uri,
         rotationDegrees: Int,
         targetPages: List<Int>? = null,
-        outputFileName: String = "rotated_${System.currentTimeMillis()}.pdf"
+        outputFileName: String = "rotated_${System.currentTimeMillis()}.pdf",
+        subFolder: String? = null
     ): Uri = withContext(Dispatchers.IO) {
         val inputStream = FileHelper.readFileFromUri(context, pdfUri)
         val document = PDDocument.load(inputStream)
@@ -39,7 +40,19 @@ class RotatePdfPagesUseCase @Inject constructor(
 
             val baos = ByteArrayOutputStream()
             document.save(baos)
-            FileHelper.saveToFile(context, settingsRepository, outputFileName, baos.toByteArray())
+            val bytes = baos.toByteArray()
+
+            val sanitizedFileName = if (outputFileName.endsWith(".pdf", ignoreCase = true)) {
+                outputFileName
+            } else {
+                "$outputFileName.pdf"
+            }
+
+            if (!subFolder.isNullOrBlank()) {
+                FileHelper.saveToDirectory(context, subFolder, sanitizedFileName, bytes)
+            } else {
+                FileHelper.saveToFile(context, settingsRepository, sanitizedFileName, bytes)
+            }
         } finally {
             document.close()
             inputStream.close()

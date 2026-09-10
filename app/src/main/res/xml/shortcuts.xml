@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="shortcut_convert_pdf"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_pdf"
+        android:shortcutShortLabel="@string/shortcut_convert_pdf_short"
+        android:shortcutLongLabel="@string/shortcut_convert_pdf_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.morphdrop.app"
+            android:targetClass="com.morphdrop.app.MainActivity">
+            <extra android:name="extra_navigate_to" android:value="config/pdf_to_images" />
+        </intent>
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="shortcut_convert_image"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_image"
+        android:shortcutShortLabel="@string/shortcut_convert_image_short"
+        android:shortcutLongLabel="@string/shortcut_convert_image_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.morphdrop.app"
+            android:targetClass="com.morphdrop.app.MainActivity">
+            <extra android:name="extra_navigate_to" android:value="config/image_converter" />
+        </intent>
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="shortcut_history"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_history"
+        android:shortcutShortLabel="@string/shortcut_history_short"
+        android:shortcutLongLabel="@string/shortcut_history_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.morphdrop.app"
+            android:targetClass="com.morphdrop.app.MainActivity">
+            <extra android:name="extra_navigate_to" android:value="history" />
+        </intent>
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="shortcut_settings"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_settings"
+        android:shortcutShortLabel="@string/shortcut_settings_short"
+        android:shortcutLongLabel="@string/shortcut_settings_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.morphdrop.app"
+            android:targetClass="com.morphdrop.app.MainActivity">
+            <extra android:name="extra_navigate_to" android:value="settings" />
+        </intent>
+    </shortcut>
+</shortcuts>

@@ -1,0 +1,14 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <!-- Brand Red Squircle Background -->
+    <path
+        android:fillColor="#E53935"
+        android:pathData="M13,4 L35,4 A9,9 0 0,1 44,13 L44,35 A9,9 0 0,1 35,44 L13,44 A9,9 0 0,1 4,35 L4,13 A9,9 0 0,1 13,4 Z"/>
+    <!-- Stacked Layers Glyph (White) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M24,14l-11,6 11,6 11,-6L24,14zM13,24.5l11,6 11,-6v3l-11,6 -11,-6v-3zM13,30.5l11,6 11,-6v3l-11,6 -11,-6v-3z"/>
+</vector>

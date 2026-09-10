@@ -21,6 +21,8 @@ import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import javax.inject.Inject
 
+import com.morphdrop.app.domain.model.PdfSizeAnalysis
+
 data class CompressResult(
     val outputUri: Uri,
     val originalSize: Long,
@@ -43,75 +45,205 @@ class CompressPdfUseCase @Inject constructor(
         } catch (_: Exception) {}
     }
 
+    suspend fun analyzePdf(pdfUri: Uri): PdfSizeAnalysis = withContext(Dispatchers.IO) {
+        val totalSize = FileHelper.getFileSize(context, pdfUri)
+        try {
+            val inputStream = FileHelper.readFileFromUri(context, pdfUri)
+            val document = PDDocument.load(inputStream)
+            try {
+                var imageBytes = 0L
+                var imageCount = 0
+                val seenCosObjects = mutableSetOf<COSBase>()
+
+                fun inspectResources(resources: PDResources?) {
+                    if (resources == null) return
+                    for (name in resources.xObjectNames) {
+                        try {
+                            val xObj = resources.getXObject(name)
+                            if (xObj is PDImageXObject) {
+                                val cosObj = xObj.cosObject
+                                if (seenCosObjects.add(cosObj)) {
+                                    imageCount++
+                                    val stream = cosObj as? com.tom_roush.pdfbox.cos.COSStream
+                                    val len = stream?.length?.toLong() ?: 0L
+                                    imageBytes += if (len > 0) len else (xObj.width * xObj.height * 3L / 10L)
+                                }
+                            } else if (xObj is PDFormXObject) {
+                                inspectResources(xObj.resources)
+                            }
+                        } catch (_: Exception) {}
+                    }
+                }
+
+                for (page in document.pages) {
+                    inspectResources(page.resources)
+                }
+
+                val nonImage = (totalSize - imageBytes).coerceAtLeast(0L)
+                val estMin = nonImage + (imageCount * 12 * 1024L)
+
+                PdfSizeAnalysis(
+                    totalSizeBytes = totalSize,
+                    totalImageBytes = imageBytes,
+                    nonImageOverheadBytes = nonImage,
+                    imageCount = imageCount,
+                    estimatedMinBytes = estMin
+                )
+            } finally {
+                document.close()
+                inputStream.close()
+            }
+        } catch (e: Exception) {
+            PdfSizeAnalysis(
+                totalSizeBytes = totalSize,
+                totalImageBytes = 0L,
+                nonImageOverheadBytes = totalSize,
+                imageCount = 0,
+                estimatedMinBytes = totalSize
+            )
+        }
+    }
+
     suspend operator fun invoke(
         pdfUri: Uri,
         compressionLevel: CompressionLevel = CompressionLevel.MEDIUM,
         targetSizeKb: Int? = null,
-        outputFileName: String = "compressed_${System.currentTimeMillis()}.pdf"
+        outputFileName: String = "compressed_${System.currentTimeMillis()}.pdf",
+        subFolder: String? = null,
+        onProgress: ((iteration: Int, maxIterations: Int, currentSize: Long) -> Unit)? = null
     ): CompressResult = withContext(Dispatchers.IO) {
         val originalSize = FileHelper.getFileSize(context, pdfUri)
+        val targetBytes = (targetSizeKb ?: 0) * 1024L
+
+        // If target size mode is requested, use the Heuristic First Jump + Binary Search
+        if (targetSizeKb != null && targetBytes > 0) {
+            val analysis = analyzePdf(pdfUri)
+            val nonImage = analysis.nonImageOverheadBytes
+            val imageBytes = analysis.totalImageBytes
+
+            // Heuristic Step: Calculate starting quality & scale factor
+            val targetImageBytes = (targetBytes - nonImage).coerceAtLeast(1024L)
+            val ratio = if (imageBytes > 0) {
+                (targetImageBytes.toFloat() / imageBytes.toFloat()).coerceIn(0.05f, 1.0f)
+            } else 0.5f
+
+            var quality = (ratio * 0.85f).coerceIn(0.12f, 0.85f)
+            var scale = Math.sqrt(ratio.toDouble()).toFloat().coerceIn(0.28f, 1.0f)
+
+            var bestBytes: ByteArray? = null
+            var bestDistance = Long.MAX_VALUE
+            val maxIterations = 4
+
+            for (iteration in 1..maxIterations) {
+                kotlinx.coroutines.yield()
+
+                val inputStream = FileHelper.readFileFromUri(context, pdfUri)
+                val doc = PDDocument.load(inputStream)
+                val currentBytes: ByteArray
+                try {
+                    doc.documentInformation = PDDocumentInformation().apply {
+                        producer = "MorphDrop PDF"
+                        creator = "MorphDrop"
+                    }
+
+                    val imageMap = mutableMapOf<COSBase, PDImageXObject>()
+                    for (page in doc.pages) {
+                        kotlinx.coroutines.yield()
+                        compressResources(doc, page.resources, quality, scale, imageMap)
+                    }
+
+                    val baos = ByteArrayOutputStream()
+                    doc.save(baos)
+                    currentBytes = baos.toByteArray()
+                } finally {
+                    doc.close()
+                    inputStream.close()
+                }
+
+                onProgress?.invoke(iteration, maxIterations, currentBytes.size.toLong())
+
+                val distance = Math.abs(currentBytes.size - targetBytes)
+                if (distance < bestDistance) {
+                    bestDistance = distance
+                    bestBytes = currentBytes
+                }
+
+                // Stop if within 5% of target size
+                val tolerance = (targetBytes * 0.05).toLong().coerceAtLeast(20 * 1024L)
+                if (distance <= tolerance) {
+                    break
+                }
+
+                // Binary search adjustments
+                if (currentBytes.size > targetBytes) {
+                    // Too large -> compress more aggressively
+                    quality = (quality * 0.65f).coerceIn(0.10f, 0.90f)
+                    scale = (scale * 0.80f).coerceIn(0.25f, 1.0f)
+                } else {
+                    // Too small -> relax compression slightly to preserve visual quality
+                    quality = (quality * 1.25f).coerceIn(0.10f, 0.90f)
+                    scale = (scale * 1.15f).coerceIn(0.25f, 1.0f)
+                }
+            }
+
+            val finalBytes = bestBytes ?: run {
+                val s = FileHelper.readFileFromUri(context, pdfUri)
+                val b = s.readBytes()
+                s.close()
+                b
+            }
+
+            val sanitizedFileName = if (outputFileName.endsWith(".pdf", ignoreCase = true)) {
+                outputFileName
+            } else {
+                "$outputFileName.pdf"
+            }
+
+            val outputUri = if (!subFolder.isNullOrBlank()) {
+                FileHelper.saveToDirectory(context, subFolder, sanitizedFileName, finalBytes)
+            } else {
+                FileHelper.saveToFile(context, settingsRepository, sanitizedFileName, finalBytes)
+            }
+
+            return@withContext CompressResult(
+                outputUri = outputUri,
+                originalSize = originalSize,
+                newSize = finalBytes.size.toLong()
+            )
+        }
+
+        // Standard Quality Level Compression (single pass)
         val inputStream = FileHelper.readFileFromUri(context, pdfUri)
-        
-        // 1. Load the document
         val document = PDDocument.load(inputStream)
 
         try {
-            val targetBytes = (targetSizeKb ?: 0) * 1024L
-            
-            // Wipe metadata to save extra space
             document.documentInformation = PDDocumentInformation().apply {
                 producer = "MorphDrop PDF"
                 creator = "MorphDrop"
             }
 
-            // Mappings to handle shared images correctly
             val imageMap = mutableMapOf<COSBase, PDImageXObject>()
 
-            // First deep pass
             for (page in document.pages) {
                 kotlinx.coroutines.yield()
                 compressResources(document, page.resources, compressionLevel.quality, compressionLevel.scaleFactor, imageMap)
             }
 
-            // Save and verify
             val baos = ByteArrayOutputStream()
             document.save(baos)
-            var bytes = baos.toByteArray()
+            val bytes = baos.toByteArray()
 
-            // 2. Optimization Loop (If Target Size is set)
-            if (targetSizeKb != null && bytes.size > targetBytes) {
-                // If still over, do one super-aggressive pass
-                imageMap.clear()
-                val pass2Quality = 0.15f
-                val pass2Scale = 0.4f
-                
-                for (page in document.pages) {
-                    kotlinx.coroutines.yield()
-                    compressResources(document, page.resources, pass2Quality, pass2Scale, imageMap)
-                }
-                
-                val baos2 = ByteArrayOutputStream()
-                document.save(baos2)
-                bytes = baos2.toByteArray()
+            val sanitizedFileName = if (outputFileName.endsWith(".pdf", ignoreCase = true)) {
+                outputFileName
+            } else {
+                "$outputFileName.pdf"
             }
 
-            // We do NOT use PdfRenderer rasterization fallback here. 
-            // Rasterizing text/vector pages or B&W scans into JPEGs causes extreme blurriness 
-            // and actually INCREASES the file size. Offline compression must strictly rely on 
-            // internal image optimization.
-
-            // 3. Final Size Check
-            // If our optimization attempts made the file larger (e.g. converting 1-bit JBIG2 to 32-bit JPEG),
-            // or if the PDF had no images (text-only), we output the original file to prevent size inflation.
-            if (bytes.size >= originalSize && originalSize > 0) {
-                return@withContext CompressResult(
-                    outputUri = pdfUri, // Return original
-                    originalSize = originalSize,
-                    newSize = originalSize
-                )
+            val outputUri = if (!subFolder.isNullOrBlank()) {
+                FileHelper.saveToDirectory(context, subFolder, sanitizedFileName, bytes)
+            } else {
+                FileHelper.saveToFile(context, settingsRepository, sanitizedFileName, bytes)
             }
-
-            val outputUri = FileHelper.saveToFile(context, settingsRepository, outputFileName, bytes)
 
             CompressResult(
                 outputUri = outputUri,

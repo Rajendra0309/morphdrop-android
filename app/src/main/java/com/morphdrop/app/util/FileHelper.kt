@@ -94,12 +94,22 @@ object FileHelper {
                 put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, fileName)
                 put(android.provider.MediaStore.MediaColumns.MIME_TYPE, mimeType)
                 put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS + "/" + folderName)
+                put(android.provider.MediaStore.MediaColumns.IS_PENDING, 1)
             }
             
             val collection = android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI
             val uri = resolver.insert(collection, contentValues) ?: throw FileNotFoundException("Could not create MediaStore entry")
             
             resolver.openOutputStream(uri)?.use { it.write(data) }
+
+            try {
+                val updateValues = android.content.ContentValues().apply {
+                    put(android.provider.MediaStore.MediaColumns.IS_PENDING, 0)
+                    put(android.provider.MediaStore.MediaColumns.SIZE, data.size.toLong())
+                }
+                resolver.update(uri, updateValues, null, null)
+            } catch (_: Exception) {}
+
             return uri
         } else {
             @Suppress("DEPRECATION")
@@ -145,6 +155,15 @@ object FileHelper {
             val file = File(uri.path!!)
             if (file.exists()) return file.length()
         }
+        // Method 1: Query underlying file descriptor directly for exact byte length
+        try {
+            context.contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
+                val statSize = pfd.statSize
+                if (statSize > 0) return statSize
+            }
+        } catch (_: Exception) {}
+
+        // Method 2: Query OpenableColumns.SIZE
         var size = -1L
         try {
             context.contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { cursor ->
@@ -153,9 +172,19 @@ object FileHelper {
                     if (idx >= 0) size = cursor.getLong(idx)
                 }
             }
-        } catch (_: SecurityException) {
+        } catch (_: Exception) {
             size = -1L
         }
+        if (size > 0) return size
+
+        // Method 3: Stream available bytes fallback
+        try {
+            context.contentResolver.openInputStream(uri)?.use { stream ->
+                val available = stream.available().toLong()
+                if (available > 0) return available
+            }
+        } catch (_: Exception) {}
+
         return size
     }
 

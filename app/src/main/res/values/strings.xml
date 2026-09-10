@@ -1,3 +1,22 @@
 <resources>
     <string name="app_name">MorphDrop</string>
+    <string name="widget_description">Recent conversions and quick conversion actions</string>
+    <string name="widget_combined_name">MorphDrop</string>
+    <string name="widget_combined_description">Recent file conversions and quick actions</string>
+    <string name="widget_history_name">MorphDrop History</string>
+    <string name="widget_history_description">Quick access to recent file conversions</string>
+    <string name="widget_tools_name">MorphDrop Tools</string>
+    <string name="widget_tools_description">Fast launcher for PDF, Image, OCR, and Markdown tools</string>
+    <string name="shortcut_convert_pdf_short">Convert PDF</string>
+    <string name="shortcut_convert_pdf_long">Convert PDF to images or format</string>
+    <string name="shortcut_convert_image_short">Convert Image</string>
+    <string name="shortcut_convert_image_long">Convert image to PDF or other formats</string>
+    <string name="shortcut_extract_text_short">Extract Text</string>
+    <string name="shortcut_extract_text_long">Extract text with ML OCR</string>
+    <string name="shortcut_batch_pdf_short">Batch PDF</string>
+    <string name="shortcut_batch_pdf_long">Process multiple PDFs at once</string>
+    <string name="shortcut_history_short">Conversion History</string>
+    <string name="shortcut_history_long">Conversion History</string>
+    <string name="shortcut_settings_short">Settings</string>
+    <string name="shortcut_settings_long">App Preferences &amp; Settings</string>
 </resources>

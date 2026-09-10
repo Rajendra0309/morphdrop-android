@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Transform
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -246,6 +247,17 @@ fun HistoryDetailScreenContent(
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary
                         )
+                        val matchedType = remember(item.conversionType) {
+                            resolveConversionType(item.conversionType)
+                        }
+
+                        DetailItem(
+                            label = "Conversion Tool",
+                            value = matchedType?.name ?: item.conversionType,
+                            icon = matchedType?.icon ?: Icons.Default.Transform
+                        )
+
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
                         DetailItem(
                             label = "Input File",

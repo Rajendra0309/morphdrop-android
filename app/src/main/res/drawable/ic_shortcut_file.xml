@@ -1,0 +1,18 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <!-- Brand Red Squircle Background -->
+    <path
+        android:fillColor="#E53935"
+        android:pathData="M13,4 L35,4 A9,9 0 0,1 44,13 L44,35 A9,9 0 0,1 35,44 L13,44 A9,9 0 0,1 4,35 L4,13 A9,9 0 0,1 13,4 Z"/>
+    <!-- Folded Document Body (White) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M15,13h11l7,7v15c0,1.1 -0.9,2 -2,2H15c-1.1,0 -2,-0.9 -2,-2V15c0,-1.1 0.9,-2 2,-2zM25,14v6h6L25,14z"/>
+    <!-- Red Cutout Detail Lines -->
+    <path
+        android:fillColor="#E53935"
+        android:pathData="M17,25h14v2.5H17v-2.5zM17,30h9v2.5H17v-2.5z"/>
+</vector>

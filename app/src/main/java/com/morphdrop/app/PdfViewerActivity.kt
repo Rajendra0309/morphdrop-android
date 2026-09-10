@@ -39,11 +39,7 @@ class PdfViewerActivity : ComponentActivity() {
         
         enableEdgeToEdge()
 
-        val pdfUri: Uri? = if (intent.action == android.content.Intent.ACTION_VIEW) {
-            intent.data
-        } else {
-            null
-        }
+        val pdfUri: Uri? = intent.data ?: intent.getParcelableExtra("pdf_uri")
 
         setContent {
             val themeMode by mainViewModel.themeMode.collectAsState()

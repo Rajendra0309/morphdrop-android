@@ -1,0 +1,27 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <!-- Rounded squircle matching MorphDrop design -->
+    <path
+        android:fillColor="#8F4C54"
+        android:pathData="M13,4 L35,4 A9,9 0 0,1 44,13 L44,35 A9,9 0 0,1 35,44 L13,44 A9,9 0 0,1 4,35 L4,13 A9,9 0 0,1 13,4 Z"/>
+    <!-- 4 Square Boxes (Material 3 Grid View / Quick Tools Symbol) -->
+    <!-- Box 1: Top-Left -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M15,15 h6 a2,2 0 0,1 2,2 v6 a2,2 0 0,1 -2,2 h-6 a2,2 0 0,1 -2,-2 v-6 a2,2 0 0,1 2,-2 z"/>
+    <!-- Box 2: Top-Right -->
+    <path
+        android:fillColor="#F2B8B5"
+        android:pathData="M25,15 h6 a2,2 0 0,1 2,2 v6 a2,2 0 0,1 -2,2 h-6 a2,2 0 0,1 -2,-2 v-6 a2,2 0 0,1 2,-2 z"/>
+    <!-- Box 3: Bottom-Left -->
+    <path
+        android:fillColor="#F2B8B5"
+        android:pathData="M15,25 h6 a2,2 0 0,1 2,2 v6 a2,2 0 0,1 -2,2 h-6 a2,2 0 0,1 -2,-2 v-6 a2,2 0 0,1 2,-2 z"/>
+    <!-- Box 4: Bottom-Right -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M25,25 h6 a2,2 0 0,1 2,2 v6 a2,2 0 0,1 -2,2 h-6 a2,2 0 0,1 -2,-2 v-6 a2,2 0 0,1 2,-2 z"/>
+</vector>

@@ -11,11 +11,13 @@ interface SettingsRepository {
     val lastUpdateCheck: Flow<Long>
     val readingMode: Flow<ReadingMode>
     val sepiaIntensity: Flow<Float>
+    val markdownTextSize: Flow<Float>
     val lastImageFormat: Flow<String>
     val lastImageQuality: Flow<Int>
     val lastImageResizeOption: Flow<String>
     val lastStripMetadata: Flow<Boolean>
     val hasSeenOcrDisclaimer: Flow<Boolean>
+    val skippedUpdateVersion: Flow<String>
 
     suspend fun setThemeMode(mode: ThemeMode)
     suspend fun setOutputFolderName(name: String)
@@ -23,9 +25,11 @@ interface SettingsRepository {
     suspend fun setLastUpdateCheck(timestamp: Long)
     suspend fun setReadingMode(mode: ReadingMode)
     suspend fun setSepiaIntensity(intensity: Float)
+    suspend fun setMarkdownTextSize(size: Float)
     suspend fun setLastImageFormat(format: String)
     suspend fun setLastImageQuality(quality: Int)
     suspend fun setLastImageResizeOption(option: String)
     suspend fun setLastStripMetadata(strip: Boolean)
     suspend fun setHasSeenOcrDisclaimer(hasSeen: Boolean)
+    suspend fun setSkippedUpdateVersion(version: String)
 }

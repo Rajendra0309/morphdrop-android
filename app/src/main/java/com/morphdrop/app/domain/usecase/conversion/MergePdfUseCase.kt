@@ -33,7 +33,8 @@ class MergePdfUseCase @Inject constructor(
 
     suspend operator fun invoke(
         items: List<MergePdfItem>,
-        outputFileName: String = "merged_${System.currentTimeMillis()}.pdf"
+        outputFileName: String = "merged_${System.currentTimeMillis()}.pdf",
+        subFolder: String? = null
     ): Uri = withContext(Dispatchers.IO) {
         if (!PDFBoxResourceLoader.isReady()) {
             PDFBoxResourceLoader.init(context)
@@ -89,7 +90,12 @@ class MergePdfUseCase @Inject constructor(
             val baos = ByteArrayOutputStream()
             try {
                 mergedDoc.save(baos)
-                FileHelper.saveToFile(context, settingsRepository, sanitizedFileName, baos.toByteArray())
+                val bytes = baos.toByteArray()
+                if (!subFolder.isNullOrBlank()) {
+                    FileHelper.saveToDirectory(context, subFolder, sanitizedFileName, bytes)
+                } else {
+                    FileHelper.saveToFile(context, settingsRepository, sanitizedFileName, bytes)
+                }
             } catch (e: java.io.IOException) {
                 if (e.message?.contains("ENOSPC", ignoreCase = true) == true) {
                     throw MergeException.DiskFull

@@ -122,7 +122,16 @@ class ConversionConfigViewModel @Inject constructor(
     private val metadataUseCase: com.morphdrop.app.domain.usecase.conversion.MetadataUseCase
 ) : ViewModel() {
 
-    private val conversionTypeId: String = savedStateHandle["conversionTypeId"] ?: ""
+    private val rawConversionTypeId: String = savedStateHandle["conversionTypeId"] ?: ""
+    private val conversionTypeId: String = when (rawConversionTypeId.lowercase()) {
+        "image_to_pdf", "image_pdf" -> "images_to_pdf"
+        "convert_image", "image", "images" -> "image_converter"
+        "pdf_to_image" -> "pdf_to_images"
+        "compress_image" -> "compress_images"
+        "split" -> "split_pdf"
+        "merge" -> "merge_pdf"
+        else -> rawConversionTypeId
+    }
 
     private val _state = MutableStateFlow(
         ConversionConfigState(

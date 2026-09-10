@@ -1,0 +1,18 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <!-- Brand Red Squircle Background -->
+    <path
+        android:fillColor="#E53935"
+        android:pathData="M13,4 L35,4 A9,9 0 0,1 44,13 L44,35 A9,9 0 0,1 35,44 L13,44 A9,9 0 0,1 4,35 L4,13 A9,9 0 0,1 13,4 Z"/>
+    <!-- Photo Landscape Frame (White) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M14,14h20c1.1,0 2,0.9 2,2v16c0,1.1 -0.9,2 -2,2H14c-1.1,0 -2,-0.9 -2,-2V16c0,-1.1 0.9,-2 2,-2zM16,29l4.5,-5.5 3.5,4 4.5,-6 4.5,7.5H16z"/>
+    <!-- Sun Circle (White) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M20,18.5c0,-1.1 0.9,-2 2,-2s2,0.9 2,2s-0.9,2 -2,2s-2,-0.9 -2,-2z"/>
+</vector>

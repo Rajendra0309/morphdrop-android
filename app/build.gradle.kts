@@ -13,8 +13,8 @@ android {
         applicationId = "com.morphdrop.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 6
-        versionName = "1.3.1"
+        versionCode = 7
+        versionName = "1.4.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -52,6 +52,10 @@ android {
     }
 }
 
+configurations.all {
+    exclude(group = "org.jetbrains", module = "annotations-java5")
+}
+
 dependencies {
     // Compose BOM
     implementation(platform(libs.androidx.compose.bom))
@@ -87,6 +91,10 @@ dependencies {
     
     // WorkManager
     implementation(libs.androidx.work.runtime.ktx)
+    
+    // Glance AppWidget
+    implementation(libs.androidx.glance)
+    implementation(libs.androidx.glance.material3)
     
     // DataStore
     implementation(libs.androidx.datastore.preferences)
@@ -132,6 +140,16 @@ dependencies {
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.junit)
+    
+    // Markwon for Markdown Rendering
+    val markwonVersion = "4.6.2"
+    implementation("io.noties.markwon:core:$markwonVersion")
+    implementation("io.noties.markwon:ext-strikethrough:$markwonVersion")
+    implementation("io.noties.markwon:html:$markwonVersion")
+    implementation("io.noties.markwon:ext-tables:$markwonVersion")
+    implementation("io.noties.markwon:syntax-highlight:$markwonVersion")
+    implementation("io.noties.markwon:linkify:$markwonVersion")
+    implementation("io.noties.markwon:image-coil:$markwonVersion")
     
     // Debug
     debugImplementation(libs.androidx.compose.ui.tooling)

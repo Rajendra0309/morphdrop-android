@@ -1,0 +1,14 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <!-- Vibrant Amber Orange Squircle -->
+    <path
+        android:fillColor="#FB8C00"
+        android:pathData="M13,4 L35,4 A9,9 0 0,1 44,13 L44,35 A9,9 0 0,1 35,44 L13,44 A9,9 0 0,1 4,35 L4,13 A9,9 0 0,1 13,4 Z"/>
+    <!-- Compress Inward Arrows (White) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M15,15h18v3H15v-3zm0,15h18v3H15v-3zm9,-8l-4.5,4.5h3.5v3.5h2v-3.5h3.5L24,22z"/>
+</vector>

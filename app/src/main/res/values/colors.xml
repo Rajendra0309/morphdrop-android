@@ -9,4 +9,21 @@
     <color name="white">#FFFFFFFF</color>
     <color name="midnight_blue">#FF05070A</color>
     <color name="premium_off_white">#FFF1F5F9</color>
+
+    <!-- Material 3 Widget Preview Tokens (Light) -->
+    <color name="widget_preview_bg">#FFF8F6</color>
+    <color name="widget_preview_border">#E8D5D5</color>
+    <color name="widget_preview_surface_item">#F3E4E4</color>
+    <color name="widget_preview_card_action">#EFE0DF</color>
+    <color name="widget_preview_primary">#8F4C54</color>
+    <color name="widget_preview_on_primary">#FFFFFF</color>
+    <color name="widget_preview_secondary">#E6D3D4</color>
+    <color name="widget_preview_on_secondary">#534344</color>
+    <color name="widget_preview_text_primary">#1F1A1B</color>
+    <color name="widget_preview_text_secondary">#755659</color>
+    <color name="widget_preview_text_tertiary">#9B7A7D</color>
+
+    <!-- Material 3 App Shortcut Tokens (Red Brand Squircle + White Icons) -->
+    <color name="shortcut_icon_bg">#E53935</color>
+    <color name="shortcut_icon_fg">#FFFFFF</color>
 </resources>

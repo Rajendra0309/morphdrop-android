@@ -80,6 +80,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Devices
 import androidx.compose.ui.tooling.preview.Preview
@@ -95,6 +96,7 @@ import com.morphdrop.app.ui.theme.MorphDropTheme
 @Composable
 fun OcrScreen(
     onNavigateBack: () -> Unit,
+    onNavigateToBatchOcr: () -> Unit = {},
     viewModel: OcrViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -127,6 +129,7 @@ fun OcrScreen(
         state = state,
         scrollBehavior = scrollBehavior,
         onNavigateBack = onNavigateBack,
+        onNavigateToBatchOcr = onNavigateToBatchOcr,
         onPickFileClick = { filePickerLauncher.launch("*/*") },
         onDismissDisclaimer = { viewModel.dismissDisclaimer() },
         onDismissSaveFileNameDialog = { viewModel.dismissSaveFileNameDialog() },
@@ -148,6 +151,7 @@ fun OcrScreenContent(
     state: OcrUiState,
     scrollBehavior: TopAppBarScrollBehavior,
     onNavigateBack: () -> Unit,
+    onNavigateToBatchOcr: () -> Unit = {},
     onPickFileClick: () -> Unit,
     onDismissDisclaimer: () -> Unit,
     onDismissSaveFileNameDialog: () -> Unit,
@@ -234,6 +238,45 @@ fun OcrScreenContent(
                 )
             }
 
+            // Batch OCR Banner
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onNavigateToBatchOcr() },
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+                )
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Batch OCR (Multiple Files)",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        Text(
+                            text = "Extract text from multiple images or receipts at once",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                        )
+                    }
+                    Button(
+                        onClick = onNavigateToBatchOcr,
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("Open")
+                    }
+                }
+            }
+
             // 1. File Selection Card & Live Thumbnail Preview
             Card(
                 modifier = Modifier
@@ -280,13 +323,15 @@ fun OcrScreenContent(
                             Text(
                                 text = "Select Image or PDF Document",
                                 style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.Bold,
+                                textAlign = TextAlign.Center
                             )
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
                                 text = "Tap to choose any image format (PNG, JPG, WEBP, BMP, HEIC) or PDF file",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center
                             )
                         }
                     }

@@ -71,16 +71,48 @@
 
 ## Features
 
-### What's New
+### What's New (v1.4.0)
 
-> - **Professional PDF Viewer (Pro)** - Google Drive-style PDF engine with text search, page jump, immersive mode, bookmarks, and night/sepia reading modes.
-> - **On-Device OCR** - Extract text from any image or scanned PDF completely offline using Google ML Kit.
-> - **Interactive Image Workbench** - A high-end visual grid interface with in-place cropping, rotation, and seamless batch processing support.
-> - **Advanced Metadata Editor** - Inspect, scrub, or spoof hidden EXIF and document metadata for maximum privacy.
-> - **In-App GitHub Updater** - Silent background checks that notify you when a new release is available directly from GitHub.
-> - **Material You Aesthetic** - Zero-flash navigation transitions and dynamic wallpaper theming for Android 12+.
+> - **Home Screen Widgets (Glance Suite)** — 3 responsive, battery-friendly Material 3 widgets for quick actions, recent files, and conversion history with light/dark theme sync.
+> - **Batch OCR Processing** — Extract text from multiple images, receipts, or documents in one go with combined or individual views and export options.
+> - **Native Markdown Viewer & Editor** — Read and edit `.md` documents with live preview, syntax highlighting, formatting toolbar, auto-indent, and word counter.
+> - **Batch PDF Operations** — Apply compression, watermarking, page numbers, passwords, rotation, and merging across multiple PDFs simultaneously with WorkManager foreground notifications.
+> - **Professional PDF Tools** — Dedicated single-file tools for custom watermarking, page numbering (6 positions, customizable formatting), and target-size heuristic compression.
+> - **Launcher App Shortcuts** — Long-press the app icon to access Convert PDF, Convert Image, History, and Settings with crisp white squircle cards and colored glyphs.
+> - **Redesigned In-App Updater** — Modern Material 3 update dialog with progress tracking, formatted release notes, and error retry state.
 
 <br>
+
+<details>
+<summary><b>Home Screen Widgets & Quick Actions</b></summary>
+<br>
+
+- **Glance AppWidget Suite** — Choose between Combined (Actions + History), Quick Tools (Launchpad), or Conversion History widgets.
+- **Event-Driven Sync** — Instant widget updates whenever conversions finish, with zero periodic wakeups for maximum battery life.
+- **Launcher Shortcuts** — Quick static actions available directly from your home screen launcher.
+
+</details>
+
+<details>
+<summary><b>Document & Markdown Tools</b></summary>
+<br>
+
+- **Markdown Viewer** — Clean reader for `.md` files with formatted tables, code blocks, and system-wide "Open With" integration.
+- **Markdown Editor** — Split-pane or full-screen editor with debounced live preview, formatting toolbar, and keyboard shortcuts.
+- **Text to PDF** — Convert plain text files into cleanly formatted PDF documents.
+
+</details>
+
+<details>
+<summary><b>Batch PDF & Advanced Tools</b></summary>
+<br>
+
+- **Batch Operations** — Multi-file processing for compress, watermark, page numbers, password protection, rotate, and merge.
+- **Watermark Tool** — Stamp custom text or image watermarks with adjustable opacity, angle, and position.
+- **Page Numbers** — Add customizable page numbers with multiple formats, positions, and cover page skip.
+- **Target Size Compression** — Smart heuristic image downsampling to compress PDFs to exact target sizes (e.g., 2MB, 5MB).
+
+</details>
 
 <details>
 <summary><b>Privacy & Security Tools</b></summary>
@@ -89,6 +121,7 @@
 - **Metadata Inspector** — View hidden EXIF and GPS data in photos and documents.
 - **Metadata Scrubber** — Remove all tracking data with a single tap for secure sharing.
 - **Metadata Editor** — Modify dates, locations, and author info to protect your identity.
+- **PDF Encryption** — Add or remove passwords and permissions on PDF documents.
 
 </details>
 
@@ -96,51 +129,22 @@
 <summary><b>Image & Text Utilities</b></summary>
 <br>
 
-- **On-Device OCR** — Extract selectable text from images securely and offline. Supports 5 languages (English, Chinese, Devanagari, Japanese, Korean).
+- **On-Device OCR** — Extract selectable text from single images or batch process multiple scans offline using Google ML Kit.
+- **Image Converter** — Convert between PNG, JPG, WebP, and BMP formats with quality controls.
 - **Batch Processing** — Convert hundreds of images simultaneously into organized folders.
 - **Interactive Cropping** — Crop and rotate images directly inside the workbench before saving.
 
 </details>
 
 <details>
-<summary><b>Core & Privacy</b></summary>
+<summary><b>Core & Architecture</b></summary>
 <br>
 
 - **100% Offline** — Zero internet permissions required for conversions. Files never leave your device.
-- **In-App Updater** — Seamlessly check and download the latest updates directly from GitHub without relying on an app store.
+- **In-App Updater** — Seamlessly check and download latest releases directly from GitHub.
 - **Privacy-First** — No data collection and absolutely no analytics tracking.
-- **No Size Limits** — Convert large documents locally (subject to device hardware).
-
-</details>
-
-<details>
-<summary><b>File Management</b></summary>
-<br>
-
-- **Organized Storage** — Converted files are safely stored in your device's `Downloads/MorphDrop` directory.
-- **Background Processing** — Conversions run reliably in the background using `WorkManager`.
-- **History Tracker** — Keep a persistent record of all your past conversions.
-
-</details>
-
-<details>
-<summary><b>Advanced PDF Tools</b></summary>
-<br>
-
-- **Merge & Split** — Combine multiple PDFs or extract specific pages.
-- **Compress & Optimize** — Reduce PDF file sizes for easy sharing.
-- **Rotate & Reorder** — Change page orientation and move pages around.
-- **Password Protection** — Lock sensitive PDFs.
-
-</details>
-
-<details>
-<summary><b>Customization & UI</b></summary>
-<br>
-
-- **Modern Jetpack Compose UI** — Clean, performant, and fast navigation.
-- **System Theme Sync** — Smooth transitioning between Light and Dark mode.
-- **Floating Navigation Pill** — Premium bottom navigation component.
+- **Background Processing** — Long-running conversions run reliably in the background via `WorkManager`.
+- **History Tracker** — Persistent record of past conversions with matched tool icons and output shortcuts.
 
 </details>
 
@@ -157,6 +161,10 @@
 | PDF | Images (PNG, JPG) |
 | Images (PNG, JPG, WebP, BMP) | PDF |
 | Excel (XLSX) | PDF |
+| Text (TXT) | PDF |
+| Markdown (MD) | PDF |
+| Image / Scanned Document | Selectable Text (OCR / Batch OCR) |
+| Multiple PDFs | Batch Compressed, Watermarked, Numbered, Encrypted, Rotated, Merged |
 
 </details>
 
@@ -206,11 +214,14 @@
 | Layer | Technology |
 | :--- | :--- |
 | **UI** | Jetpack Compose + Material 3 (Material You) |
+| **Home Widgets** | Jetpack Glance AppWidget API |
+| **Markdown** | Markwon + Prism4j Syntax Highlighting |
+| **OCR Engine** | Google ML Kit Text Recognition |
 | **Language** | Kotlin 2.0.x |
 | **Architecture** | MVVM + Clean Architecture |
 | **DI** | Hilt (Dagger Hilt) |
 | **Database** | Room (Local History & Favorites) |
-| **Background** | WorkManager |
+| **Background** | WorkManager (Foreground Service Support) |
 | **PDF Engine** | Apache PDFBox Android |
 | **Office Docs** | Apache POI |
 | **Image Proc** | Coil + Android Bitmap API |
