@@ -12,4 +12,8 @@
     <color name="widget_preview_text_primary">#EDE0DF</color>
     <color name="widget_preview_text_secondary">#D6C2C3</color>
     <color name="widget_preview_text_tertiary">#9E8C8D</color>
+
+    <!-- Material 3 App Shortcut Tokens (Red Brand Squircle + White Icons) -->
+    <color name="shortcut_icon_bg">#E53935</color>
+    <color name="shortcut_icon_fg">#FFFFFF</color>
 </resources>

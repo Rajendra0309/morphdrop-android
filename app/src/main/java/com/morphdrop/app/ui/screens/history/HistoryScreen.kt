@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import com.morphdrop.app.domain.model.ConversionType
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Delete
@@ -317,6 +318,12 @@ private fun HistoryItemCard(
         }
     }
 
+    val matchedType = remember(item.conversionType) {
+        resolveConversionType(item.conversionType)
+    }
+    val itemIcon = matchedType?.icon ?: Icons.Default.Description
+    val itemColor = matchedType?.inputType?.color ?: MaterialTheme.colorScheme.primary
+
     OutlinedCard(
         modifier = modifier
             .fillMaxWidth()
@@ -340,25 +347,28 @@ private fun HistoryItemCard(
                         .size(42.dp)
                         .clip(RoundedCornerShape(12.dp))
                         .background(
-                            if (item.success) MaterialTheme.colorScheme.primaryContainer
+                            if (item.success) itemColor.copy(alpha = 0.14f)
                             else MaterialTheme.colorScheme.errorContainer
                         ),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Description,
+                        imageVector = itemIcon,
                         contentDescription = null,
-                        tint = if (item.success) MaterialTheme.colorScheme.onPrimaryContainer
-                               else MaterialTheme.colorScheme.onErrorContainer
+                        tint = if (item.success) itemColor
+                               else MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.size(22.dp)
                     )
                 }
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = item.conversionType.uppercase(),
+                        text = (matchedType?.name ?: item.conversionType).uppercase(),
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
+                        color = if (item.success) itemColor else MaterialTheme.colorScheme.error,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                     Text(
                         text = item.inputFileName,
@@ -426,6 +436,58 @@ private fun HistoryItemCard(
                 }
             }
         }
+    }
+}
+
+internal fun resolveConversionType(typeStr: String): ConversionType? {
+    val normalized = typeStr.trim().lowercase()
+    return ConversionType.defaultList.firstOrNull { 
+        it.id.equals(normalized, ignoreCase = true) ||
+        it.name.equals(typeStr.trim(), ignoreCase = true)
+    } ?: when {
+        normalized.contains("batch ocr") || normalized == "batch_ocr" -> 
+            ConversionType.defaultList.find { it.id == "batch_ocr" }
+        normalized.contains("ocr") || normalized.contains("extract text") -> 
+            ConversionType.defaultList.find { it.id == "ocr_text_extractor" }
+        normalized.contains("pdf to image") || normalized == "pdf_to_images" -> 
+            ConversionType.defaultList.find { it.id == "pdf_to_images" }
+        normalized.contains("images to pdf") || normalized == "images_to_pdf" || normalized == "image_to_pdf" -> 
+            ConversionType.defaultList.find { it.id == "images_to_pdf" }
+        normalized.contains("excel") || normalized == "excel_to_pdf" -> 
+            ConversionType.defaultList.find { it.id == "excel_to_pdf" }
+        normalized.contains("text to pdf") || normalized == "txt_to_pdf" || normalized == "text_to_pdf" -> 
+            ConversionType.defaultList.find { it.id == "txt_to_pdf" }
+        normalized.contains("markdown to pdf") || normalized == "md_to_pdf" -> 
+            ConversionType.defaultList.find { it.id == "md_to_pdf" }
+        normalized.contains("markdown") || normalized == "markdown_editor" -> 
+            ConversionType.defaultList.find { it.id == "markdown_editor" }
+        normalized.contains("batch") || normalized == "batch_pdf" -> 
+            ConversionType.defaultList.find { it.id == "batch_pdf" }
+        normalized.contains("merge") || normalized == "merge_pdf" || normalized == "merge_pdfs" -> 
+            ConversionType.defaultList.find { it.id == "merge_pdf" }
+        normalized.contains("split") || normalized == "split_pdf" -> 
+            ConversionType.defaultList.find { it.id == "split_pdf" }
+        normalized.contains("compress pdf") || normalized == "compress_pdf" -> 
+            ConversionType.defaultList.find { it.id == "compress_pdf" }
+        normalized.contains("compress image") || normalized == "compress_images" -> 
+            ConversionType.defaultList.find { it.id == "compress_images" }
+        normalized.contains("protect") || normalized == "protect_pdf" -> 
+            ConversionType.defaultList.find { it.id == "protect_pdf" }
+        normalized.contains("unlock") || normalized == "unlock_pdf" -> 
+            ConversionType.defaultList.find { it.id == "unlock_pdf" }
+        normalized.contains("organize") || normalized.contains("page_editor") -> 
+            ConversionType.defaultList.find { it.id == "page_editor" }
+        normalized.contains("watermark") || normalized == "watermark_pdf" -> 
+            ConversionType.defaultList.find { it.id == "watermark_pdf" }
+        normalized.contains("page number") || normalized == "page_numbers_pdf" -> 
+            ConversionType.defaultList.find { it.id == "page_numbers_pdf" }
+        normalized.contains("rotate") || normalized == "rotate_pdf" -> 
+            ConversionType.defaultList.find { it.id == "rotate_pdf" }
+        normalized.contains("image converter") || normalized == "image_converter" -> 
+            ConversionType.defaultList.find { it.id == "image_converter" }
+        normalized.contains("meta") || normalized == "metadata_editor" -> 
+            ConversionType.defaultList.find { it.id == "metadata_editor" }
+        else -> null
     }
 }
 

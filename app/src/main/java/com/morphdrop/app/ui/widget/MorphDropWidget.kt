@@ -125,7 +125,7 @@ private fun WidgetContainer(
             Image(
                 provider = ImageProvider(R.drawable.ic_widget_app_icon),
                 contentDescription = "MorphDrop Icon",
-                modifier = GlanceModifier.size(if (isUltraCompact) 18.dp else 20.dp)
+                modifier = GlanceModifier.size(if (isUltraCompact) 18.dp else 22.dp)
             )
             Spacer(modifier = GlanceModifier.width(8.dp))
             Text(
@@ -139,6 +139,14 @@ private fun WidgetContainer(
         }
 
         Spacer(modifier = GlanceModifier.height(spacingBetween))
+
+        // Dynamic row icon size based on widget height:
+        val rowIconSize = when {
+            height < 115.dp -> 22.dp
+            height < 165.dp -> 26.dp
+            height < 225.dp -> 30.dp
+            else -> 34.dp
+        }
 
         // --- Middle Section: Dynamic Recent Files (Never Empty or Blank Void) ---
         Column(
@@ -155,6 +163,7 @@ private fun WidgetContainer(
                         context = context,
                         item = item,
                         isCompact = isUltraCompact || maxItems >= 4,
+                        iconSize = rowIconSize,
                         modifier = GlanceModifier
                             .fillMaxWidth()
                             .defaultWeight()
@@ -182,6 +191,7 @@ private fun RecentFileRow(
     context: Context,
     item: ConversionHistoryEntity,
     isCompact: Boolean,
+    iconSize: androidx.compose.ui.unit.Dp,
     modifier: GlanceModifier = GlanceModifier
 ) {
     val firstUriStr = item.outputUris.split(",").firstOrNull()?.trim() ?: ""
@@ -219,10 +229,10 @@ private fun RecentFileRow(
     }
 
     val iconRes = when {
-        isPdf -> R.drawable.ic_shortcut_pdf
-        isImage -> R.drawable.ic_shortcut_image
-        isOcr -> R.drawable.ic_shortcut_ocr
-        else -> R.drawable.ic_shortcut_file
+        isPdf -> R.drawable.ic_widget_pdf
+        isImage -> R.drawable.ic_widget_image
+        isOcr -> R.drawable.ic_widget_ocr
+        else -> R.drawable.ic_widget_markdown
     }
 
     val displayName = item.displayName.ifBlank {
@@ -240,7 +250,7 @@ private fun RecentFileRow(
         Image(
             provider = ImageProvider(iconRes),
             contentDescription = null,
-            modifier = GlanceModifier.size(if (isCompact) 16.dp else 18.dp)
+            modifier = GlanceModifier.size(iconSize)
         )
         Spacer(modifier = GlanceModifier.width(8.dp))
         Text(

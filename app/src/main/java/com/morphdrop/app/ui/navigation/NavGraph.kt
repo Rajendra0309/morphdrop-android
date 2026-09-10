@@ -73,7 +73,7 @@ fun NavGraph(
                 fadeIn(animationSpec = tween(200, easing = FastOutSlowInEasing))
             } else {
                 slideInHorizontally(
-                    initialOffsetX = { fullWidth -> -(fullWidth * 0.15f).toInt() },
+                    initialOffsetX = { fullWidth -> -(fullWidth * 0.25f).toInt() },
                     animationSpec = tween(300, easing = FastOutSlowInEasing)
                 ) + fadeIn(animationSpec = tween(300, easing = FastOutSlowInEasing))
             }
@@ -84,7 +84,7 @@ fun NavGraph(
                 fadeOut(animationSpec = tween(200, easing = FastOutSlowInEasing))
             } else {
                 slideOutHorizontally(
-                    targetOffsetX = { fullWidth -> (fullWidth * 0.15f).toInt() },
+                    targetOffsetX = { fullWidth -> fullWidth },
                     animationSpec = tween(300, easing = FastOutSlowInEasing)
                 ) + fadeOut(animationSpec = tween(300, easing = FastOutSlowInEasing))
             }

@@ -3,10 +3,12 @@
     android:height="48dp"
     android:viewportWidth="48"
     android:viewportHeight="48">
+    <!-- Vibrant Amber Orange Squircle -->
     <path
         android:fillColor="#FB8C00"
-        android:pathData="M14,6 L34,6 A8,8 0 0,1 42,14 L42,34 A8,8 0 0,1 34,42 L14,42 A8,8 0 0,1 6,34 L6,14 A8,8 0 0,1 14,6 Z"/>
+        android:pathData="M13,4 L35,4 A9,9 0 0,1 44,13 L44,35 A9,9 0 0,1 35,44 L13,44 A9,9 0 0,1 4,35 L4,13 A9,9 0 0,1 13,4 Z"/>
+    <!-- Compress Inward Arrows (White) -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M16,16h7v-3h2v3h7v2H16v-2zm0,14h16v2H16v-2zm8,-10l-4,4h3v4h2v-4h3l-4,-4z"/>
+        android:pathData="M15,15h18v3H15v-3zm0,15h18v3H15v-3zm9,-8l-4.5,4.5h3.5v3.5h2v-3.5h3.5L24,22z"/>
 </vector>

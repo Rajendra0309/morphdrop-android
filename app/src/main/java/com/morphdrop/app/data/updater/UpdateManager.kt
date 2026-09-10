@@ -37,11 +37,15 @@ class UpdateManager @Inject constructor(
     private val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
 
     fun downloadApk(url: String, versionName: String): Long {
+        val cleanVersion = if (versionName.startsWith("v", ignoreCase = true)) versionName else "v$versionName"
+        val formattedName = "MorphDrop-$cleanVersion"
+        val fileName = "$formattedName.apk"
+
         val request = DownloadManager.Request(Uri.parse(url))
-            .setTitle("MorphDrop Update $versionName")
+            .setTitle(formattedName)
             .setDescription("Downloading latest version...")
             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-            .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "morphdrop-$versionName.apk")
+            .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
             .setMimeType("application/vnd.android.package-archive")
 
         return downloadManager.enqueue(request)

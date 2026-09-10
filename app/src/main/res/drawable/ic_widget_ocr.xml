@@ -3,16 +3,12 @@
     android:height="48dp"
     android:viewportWidth="48"
     android:viewportHeight="48">
-    <!-- Brand rounded container matching MorphDrop theme -->
+    <!-- Vibrant Teal Squircle -->
     <path
-        android:fillColor="#8F4C54"
+        android:fillColor="#00897B"
         android:pathData="M13,4 L35,4 A9,9 0 0,1 44,13 L44,35 A9,9 0 0,1 35,44 L13,44 A9,9 0 0,1 4,35 L4,13 A9,9 0 0,1 13,4 Z"/>
-    <!-- Folded Document Page Glyph -->
+    <!-- Document Card / Frame (White) -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M15,13h11l7,7v15c0,1.1 -0.9,2 -2,2H15c-1.1,0 -2,-0.9 -2,-2V15c0,-1.1 0.9,-2 2,-2z"/>
-    <!-- Fold Corner Accent -->
-    <path
-        android:fillColor="#F2B8B5"
-        android:pathData="M26,13v7h7z"/>
+        android:pathData="M15,13h18c1.1,0 2,0.9 2,2v18c0,1.1 -0.9,2 -2,2H15c-1.1,0 -2,-0.9 -2,-2V15c0,-1.1 0.9,-2 2,-2zM17,17v3h14v-3H17zM17,22v3h14v-3H17zM17,27v3h9v-3H17z"/>
 </vector>

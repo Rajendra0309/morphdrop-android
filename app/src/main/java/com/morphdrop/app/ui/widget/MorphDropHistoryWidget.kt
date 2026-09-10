@@ -116,7 +116,7 @@ private fun HistoryWidgetContainer(
             Image(
                 provider = ImageProvider(R.drawable.ic_widget_history),
                 contentDescription = "History Icon",
-                modifier = GlanceModifier.size(if (isUltraCompact) 18.dp else 20.dp)
+                modifier = GlanceModifier.size(if (isUltraCompact) 18.dp else 22.dp)
             )
             Spacer(modifier = GlanceModifier.width(8.dp))
             Text(
@@ -130,6 +130,14 @@ private fun HistoryWidgetContainer(
         }
 
         Spacer(modifier = GlanceModifier.height(if (isUltraCompact) 4.dp else 6.dp))
+
+        // Dynamic row icon size based on widget height:
+        val rowIconSize = when {
+            height < 115.dp -> 22.dp
+            height < 165.dp -> 26.dp
+            height < 225.dp -> 30.dp
+            else -> 34.dp
+        }
 
         // --- File List (Fills full widget area smoothly without void) ---
         Column(
@@ -146,6 +154,7 @@ private fun HistoryWidgetContainer(
                         context = context,
                         item = item,
                         isCompact = isUltraCompact || maxItems >= 5,
+                        iconSize = rowIconSize,
                         modifier = GlanceModifier
                             .fillMaxWidth()
                             .defaultWeight()
@@ -164,6 +173,7 @@ private fun HistoryItemRow(
     context: Context,
     item: ConversionHistoryEntity,
     isCompact: Boolean,
+    iconSize: androidx.compose.ui.unit.Dp,
     modifier: GlanceModifier = GlanceModifier
 ) {
     val firstUriStr = item.outputUris.split(",").firstOrNull()?.trim() ?: ""
@@ -201,10 +211,10 @@ private fun HistoryItemRow(
     }
 
     val iconRes = when {
-        isPdf -> R.drawable.ic_shortcut_pdf
-        isImage -> R.drawable.ic_shortcut_image
-        isOcr -> R.drawable.ic_shortcut_ocr
-        else -> R.drawable.ic_shortcut_file
+        isPdf -> R.drawable.ic_widget_pdf
+        isImage -> R.drawable.ic_widget_image
+        isOcr -> R.drawable.ic_widget_ocr
+        else -> R.drawable.ic_widget_markdown
     }
 
     val displayName = item.displayName.ifBlank {
@@ -222,7 +232,7 @@ private fun HistoryItemRow(
         Image(
             provider = ImageProvider(iconRes),
             contentDescription = null,
-            modifier = GlanceModifier.size(if (isCompact) 16.dp else 18.dp)
+            modifier = GlanceModifier.size(iconSize)
         )
         Spacer(modifier = GlanceModifier.width(8.dp))
         Text(

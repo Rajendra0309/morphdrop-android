@@ -5,9 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.morphdrop.app.BuildConfig
 import com.morphdrop.app.domain.model.ThemeMode
-import com.morphdrop.app.domain.repository.HistoryRepository
 import com.morphdrop.app.domain.repository.SettingsRepository
-import com.morphdrop.app.ui.widget.WidgetUpdateHelper
 import com.morphdrop.app.util.FileHelper
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -30,7 +28,6 @@ data class SettingsUiState(
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
-    private val historyRepository: HistoryRepository,
     private val settingsRepository: SettingsRepository,
     @param:ApplicationContext private val context: Context
 ) : ViewModel() {
@@ -88,13 +85,6 @@ class SettingsViewModel @Inject constructor(
                 }
             }
             calculateCacheSize(context)
-        }
-    }
-
-    fun clearHistory() {
-        viewModelScope.launch {
-            historyRepository.clearAllHistory()
-            WidgetUpdateHelper.updateAllWidgets(context)
         }
     }
 

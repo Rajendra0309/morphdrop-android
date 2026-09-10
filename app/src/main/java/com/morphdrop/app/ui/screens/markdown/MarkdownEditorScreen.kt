@@ -161,12 +161,8 @@ fun MarkdownEditorScreen(
     }
 
     // Back press handling with unsaved changes confirmation
-    BackHandler {
-        if (state.hasUnsavedChanges) {
-            viewModel.setUnsavedDialogVisible(true)
-        } else {
-            onNavigateBack()
-        }
+    BackHandler(enabled = state.hasUnsavedChanges) {
+        viewModel.setUnsavedDialogVisible(true)
     }
 
     // Error toast

@@ -41,8 +41,11 @@ import com.morphdrop.app.ui.components.UpdateDialog
 import com.morphdrop.app.ui.navigation.NavGraph
 import com.morphdrop.app.ui.navigation.Screen
 import com.morphdrop.app.ui.theme.MorphDropTheme
+import androidx.lifecycle.lifecycleScope
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -127,8 +130,11 @@ class MainActivity : ComponentActivity() {
         
         handleIncomingIntent(intent)
 
-        // Sync widgets and dynamic shortcuts on app launch
-        com.morphdrop.app.ui.widget.WidgetUpdateHelper.updateAllWidgets(this)
+        // Background initialization: sync widgets and clean cache off the main thread for instant startup
+        lifecycleScope.launch(Dispatchers.IO) {
+            com.morphdrop.app.ui.widget.WidgetUpdateHelper.updateAllWidgets(applicationContext)
+            cleanCacheIfOverLimit()
+        }
         
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
             val display = windowManager.defaultDisplay
@@ -140,15 +146,7 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        
-        val isLowEnd = (getSystemService(android.content.Context.ACTIVITY_SERVICE) as android.app.ActivityManager).isLowRamDevice
-
-        // Clean app cache on startup if > 100MB
-        cleanCacheIfOverLimit()
-
-        // Removed aggressive ACCESS_MEDIA_LOCATION request on startup
-
-        // Immediate exit for all devices to reduce splash screen delay to zero.
+        // Immediate exit to reduce splash screen delay to zero milliseconds.
         splashScreen.setOnExitAnimationListener { splashScreenView ->
             splashScreenView.remove()
         }
