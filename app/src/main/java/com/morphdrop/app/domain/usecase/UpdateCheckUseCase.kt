@@ -35,6 +35,7 @@ class UpdateCheckUseCase @Inject constructor(
             connection.connectTimeout = 10000
             connection.readTimeout = 10000
             connection.setRequestProperty("Accept", "application/vnd.github.v3+json")
+            connection.setRequestProperty("User-Agent", "MorphDrop-Android/${BuildConfig.VERSION_NAME}")
 
             if (connection.responseCode == HttpURLConnection.HTTP_OK) {
                 val responseBody = connection.inputStream.bufferedReader().use { it.readText() }
@@ -82,5 +83,44 @@ class UpdateCheckUseCase @Inject constructor(
             if (l < c) return false
         }
         return false
+    }
+
+    suspend fun getReleaseNotes(versionName: String): String = withContext(Dispatchers.IO) {
+        try {
+            val cleanVersion = versionName.removePrefix("v").removePrefix("V")
+            val candidateUrls = listOf(
+                "https://api.github.com/repos/Rajendra0309/morphdrop-android/releases/tags/v$cleanVersion",
+                "https://api.github.com/repos/Rajendra0309/morphdrop-android/releases/tags/$cleanVersion",
+                githubApiUrl
+            )
+
+            for (apiUrl in candidateUrls) {
+                try {
+                    val connection = URL(apiUrl).openConnection() as HttpURLConnection
+                    connection.requestMethod = "GET"
+                    connection.connectTimeout = 8000
+                    connection.readTimeout = 8000
+                    connection.setRequestProperty("Accept", "application/vnd.github.v3+json")
+                    connection.setRequestProperty("User-Agent", "MorphDrop-Android/${BuildConfig.VERSION_NAME}")
+
+                    if (connection.responseCode == HttpURLConnection.HTTP_OK) {
+                        val responseBody = connection.inputStream.bufferedReader().use { it.readText() }
+                        val json = Gson().fromJson(responseBody, JsonObject::class.java)
+                        val releaseTag = json.get("tag_name")?.asString?.removePrefix("v")?.removePrefix("V")
+                        if (releaseTag == cleanVersion) {
+                            val body = json.get("body")?.asString
+                            if (!body.isNullOrBlank()) {
+                                return@withContext body
+                            }
+                        }
+                    }
+                } catch (inner: Exception) {
+                    Log.w("UpdateCheckUseCase", "Failed querying $apiUrl", inner)
+                }
+            }
+        } catch (e: Exception) {
+            Log.w("UpdateCheckUseCase", "Failed to fetch release notes from GitHub", e)
+        }
+        return@withContext ""
     }
 }

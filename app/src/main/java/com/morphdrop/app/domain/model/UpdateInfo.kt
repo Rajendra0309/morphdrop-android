@@ -8,4 +8,4 @@ data class UpdateInfo(
     val releaseNotes: String,
     val downloadUrl: String,
     val isUpdateAvailable: Boolean = false
-)
+) : java.io.Serializable

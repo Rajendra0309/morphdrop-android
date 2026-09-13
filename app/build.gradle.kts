@@ -13,8 +13,8 @@ android {
         applicationId = "com.morphdrop.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 7
-        versionName = "1.4.0"
+        versionCode = 8
+        versionName = "1.4.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -23,6 +23,11 @@ android {
     }
 
     buildTypes {
+        debug {
+            ndk {
+                abiFilters.clear()
+            }
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
@@ -30,6 +35,9 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            ndk {
+                abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+            }
         }
     }
     compileOptions {
@@ -48,6 +56,7 @@ android {
             excludes += "META-INF/LICENSE*"
             excludes += "META-INF/NOTICE*"
             excludes += "META-INF/*.kotlin_module"
+            excludes += "org/bouncycastle/pqc/**"
         }
     }
 }
@@ -120,12 +129,9 @@ dependencies {
     // PDF Processing
     implementation(libs.com.tomroush.pdfbox.android)
     
-    // ML Kit Text Recognition
+    // ML Kit Text Recognition (Latin & Devanagari offline models)
     implementation("com.google.mlkit:text-recognition:16.0.1")
-    implementation("com.google.mlkit:text-recognition-chinese:16.0.1")
     implementation("com.google.mlkit:text-recognition-devanagari:16.0.1")
-    implementation("com.google.mlkit:text-recognition-japanese:16.0.1")
-    implementation("com.google.mlkit:text-recognition-korean:16.0.1")
     
     // Office Documents
     implementation(libs.org.apache.poi.poi.ooxml) {

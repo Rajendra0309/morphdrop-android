@@ -18,6 +18,7 @@ interface SettingsRepository {
     val lastStripMetadata: Flow<Boolean>
     val hasSeenOcrDisclaimer: Flow<Boolean>
     val skippedUpdateVersion: Flow<String>
+    val lastSeenAppVersion: Flow<String>
 
     suspend fun setThemeMode(mode: ThemeMode)
     suspend fun setOutputFolderName(name: String)
@@ -32,4 +33,5 @@ interface SettingsRepository {
     suspend fun setLastStripMetadata(strip: Boolean)
     suspend fun setHasSeenOcrDisclaimer(hasSeen: Boolean)
     suspend fun setSkippedUpdateVersion(version: String)
+    suspend fun setLastSeenAppVersion(version: String)
 }

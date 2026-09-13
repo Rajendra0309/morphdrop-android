@@ -31,6 +31,7 @@ class SettingsViewModelTest {
         override val lastStripMetadata: Flow<Boolean> = MutableStateFlow(false)
         override val hasSeenOcrDisclaimer: Flow<Boolean> = MutableStateFlow(true)
         override val skippedUpdateVersion: Flow<String> = MutableStateFlow("")
+        override val lastSeenAppVersion: Flow<String> = MutableStateFlow("")
 
         override suspend fun setThemeMode(mode: ThemeMode) {
             themeFlow.value = mode
@@ -51,6 +52,7 @@ class SettingsViewModelTest {
         override suspend fun setLastStripMetadata(strip: Boolean) {}
         override suspend fun setHasSeenOcrDisclaimer(hasSeen: Boolean) {}
         override suspend fun setSkippedUpdateVersion(version: String) {}
+        override suspend fun setLastSeenAppVersion(version: String) {}
     }
 
     @Test

@@ -131,7 +131,6 @@ fun OcrScreen(
         onNavigateBack = onNavigateBack,
         onNavigateToBatchOcr = onNavigateToBatchOcr,
         onPickFileClick = { filePickerLauncher.launch("*/*") },
-        onDismissDisclaimer = { viewModel.dismissDisclaimer() },
         onDismissSaveFileNameDialog = { viewModel.dismissSaveFileNameDialog() },
         onConfirmSaveAsTxt = { viewModel.confirmSaveAsTxt(context) },
         onCustomFileNameChange = { viewModel.onCustomFileNameChange(it) },
@@ -153,7 +152,6 @@ fun OcrScreenContent(
     onNavigateBack: () -> Unit,
     onNavigateToBatchOcr: () -> Unit = {},
     onPickFileClick: () -> Unit,
-    onDismissDisclaimer: () -> Unit,
     onDismissSaveFileNameDialog: () -> Unit,
     onConfirmSaveAsTxt: () -> Unit,
     onCustomFileNameChange: (String) -> Unit,
@@ -184,24 +182,6 @@ fun OcrScreenContent(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // First time disclaimer modal (Shows ONCE ONLY on first launch)
-            if (state.showDisclaimerDialog) {
-                AlertDialog(
-                    onDismissRequest = onDismissDisclaimer,
-                    icon = { Icon(Icons.Outlined.Info, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
-                    title = { Text(text = "On-Device Text Recognition") },
-                    text = {
-                        Text(
-                            text = "First time OCR use downloads a ~20MB on-device language model. After downloading, text recognition works 100% offline with zero data sent off your device."
-                        )
-                    },
-                    confirmButton = {
-                        TextButton(onClick = onDismissDisclaimer) {
-                            Text("Got it")
-                        }
-                    }
-                )
-            }
 
             // Save Filename Dialog
             if (state.showSaveFileNameDialog) {
@@ -745,7 +725,6 @@ fun OcrScreenLightPreview() {
             scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(),
             onNavigateBack = {},
             onPickFileClick = {},
-            onDismissDisclaimer = {},
             onDismissSaveFileNameDialog = {},
             onConfirmSaveAsTxt = {},
             onCustomFileNameChange = {},
@@ -779,7 +758,6 @@ fun OcrScreenDarkPreview() {
             scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(),
             onNavigateBack = {},
             onPickFileClick = {},
-            onDismissDisclaimer = {},
             onDismissSaveFileNameDialog = {},
             onConfirmSaveAsTxt = {},
             onCustomFileNameChange = {},

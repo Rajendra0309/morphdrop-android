@@ -1,12 +1,11 @@
-# MorphDrop v1.4.0 - Document Productivity Toolkit & Home Screen Widgets
+# MorphDrop v1.4.1 - APK Size Optimization, ChromeOS Support & Dialog Polish
 
 ## 🚀 What's New
-- **Home Screen Widgets:** 3 new Material 3 Glance widgets (Combined, Quick Tools, History) with dark/light mode sync and zero battery drain.
-- **Signature Brand App Shortcuts:** Long-press the MorphDrop icon for quick actions featuring high-contrast brand red squircles and crisp white icons for Convert PDF, Convert Image, Conversion History, and Settings.
-- **Batch OCR Text Extraction:** Scan and extract text from multiple images or receipts simultaneously with unified and per-page export.
-- **Native Markdown Viewer & Editor:** Read and edit `.md` files with real-time live preview, formatting toolbar, syntax highlighting, and OS "Open With" integration.
-- **Batch PDF Operations:** Bulk compress, watermark, add page numbers, password protect, rotate, and merge documents via background WorkManager notifications.
-- **Professional PDF Tools:** Added standalone Add Watermark, Add Page Numbers (6 layout positions), and Target-Size PDF compression (e.g. 2MB, 5MB).
-- **History Screen Polish:** Conversion cards now feature matching tool icons and theme colors for instant recognition.
-- **Settings & Performance Polish:** Material 3 horizontal pill Theme Selector, Hero Brand Header with official logo, refined Privacy Policy & About dialogs, and sub-second instant startup.
-- **Updater & Download Polish:** Clean `MorphDrop-v<version>.apk` download naming and redesigned update dialog with progress tracking.
+- **50% APK Size Reduction (57 MB → 29 MB):** Retained essential high-accuracy Latin (English/European) and Devanagari (Hindi/Marathi) on-device OCR models, excluded unneeded post-quantum crypto lookup tables, and filtered unneeded architectures while preserving full 64-bit and 32-bit ARM support for Android 8.0+.
+- **ChromeOS & Large Screen Compatibility:** Added explicit non-touchscreen and camera-optional declarations in manifest, enabling seamless native installation across Chromebooks, Chromeboxes, and convertibles.
+- **"What's New in MorphDrop" Modal:** Introduced an in-app Material 3 modal that dynamically loads release notes directly from GitHub Releases after onboarding or when a new update is launched.
+- **Polished In-App Update Dialog:** Redesigned the "Update Available" modal with symmetrical action pills ("Later" and "Update Now"), non-wrapping version transition tags, and rich Markdown release note rendering matching "What's New".
+- **Settings & Update Trigger Fix:** Tapping "Check for Updates" in Settings now triggers the update dialog directly without requiring navigation back to the Home screen.
+- **Smart Update Priority:** When an older version is installed, the app now prioritizes the "Update Available" dialog over "What's New", ensuring users always update first.
+- **Dark Mode Settings UI Polish:** Overhauled Settings screen cards and icons with luminous tints, theme-aware translucent glass containers, and high-contrast borders for a sleek dark mode appearance.
+- **Silent Startup Update Checks:** Eliminated duplicate "App is up to date" toasts during app startup and suppressed update prompts during onboarding.

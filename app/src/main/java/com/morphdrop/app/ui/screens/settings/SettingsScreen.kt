@@ -23,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
@@ -247,7 +248,7 @@ fun SettingsScreenContent(
                         color = MaterialTheme.colorScheme.primaryContainer
                     ) {
                         Text(
-                            text = "${state.appVersion} • Build 7",
+                            text = "${state.appVersion} • Build ${state.buildNumber}",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onPrimaryContainer,
                             fontWeight = FontWeight.Bold,
@@ -604,7 +605,7 @@ fun SettingsScreenContent(
                         color = MaterialTheme.colorScheme.primaryContainer
                     ) {
                         Text(
-                            text = "${state.appVersion} • Build 7",
+                            text = "${state.appVersion} • Build ${state.buildNumber}",
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -626,6 +627,13 @@ fun SettingsScreenContent(
                 }
             }
 
+            val isSystemDark = androidx.compose.foundation.isSystemInDarkTheme()
+            val isDark = when (state.themeMode) {
+                ThemeMode.SYSTEM -> isSystemDark
+                ThemeMode.DARK -> true
+                ThemeMode.LIGHT -> false
+            }
+
             // Appearance Section with Material 3 Horizontal Segmented Theme Selector
             SettingsSection(title = "Appearance") {
                 Column(modifier = Modifier.padding(16.dp)) {
@@ -635,8 +643,8 @@ fun SettingsScreenContent(
                     ) {
                         ThemedIconContainer(
                             icon = Icons.Default.Palette,
-                            containerColor = MaterialTheme.colorScheme.primaryContainer,
-                            contentColor = MaterialTheme.colorScheme.primary
+                            containerColor = if (isDark) Color(0xFF7C4DFF).copy(alpha = 0.20f) else Color(0xFFEDE7F6),
+                            contentColor = if (isDark) Color(0xFFB388FF) else Color(0xFF651FFF)
                         )
                         Spacer(modifier = Modifier.width(14.dp))
                         Column {
@@ -671,8 +679,8 @@ fun SettingsScreenContent(
                     title = "Output Folder",
                     description = "Downloads > ${state.defaultOutputDirectory.substringAfterLast("/")}",
                     icon = Icons.Default.Folder,
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                    contentColor = MaterialTheme.colorScheme.secondary,
+                    containerColor = if (isDark) Color(0xFF2196F3).copy(alpha = 0.20f) else Color(0xFFE3F2FD),
+                    contentColor = if (isDark) Color(0xFF64B5F6) else Color(0xFF1976D2),
                     trailingContent = {
                         Icon(
                             imageVector = Icons.Default.ChevronRight,
@@ -697,8 +705,8 @@ fun SettingsScreenContent(
                     title = "Clear Temporary Cache",
                     description = "Free up memory from temporary files",
                     icon = Icons.Default.CleaningServices,
-                    containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                    contentColor = MaterialTheme.colorScheme.tertiary,
+                    containerColor = if (isDark) Color(0xFFFF9800).copy(alpha = 0.20f) else Color(0xFFFFF3E0),
+                    contentColor = if (isDark) Color(0xFFFFB74D) else Color(0xFFF57C00),
                     trailingContent = {
                         Surface(
                             shape = RoundedCornerShape(8.dp),
@@ -725,8 +733,8 @@ fun SettingsScreenContent(
                     title = "Star on GitHub",
                     description = "Support project development",
                     icon = Icons.Default.Star,
-                    containerColor = Color(0xFFFFD54F).copy(alpha = 0.35f),
-                    contentColor = Color(0xFFF57F17),
+                    containerColor = if (isDark) Color(0xFFFFC107).copy(alpha = 0.20f) else Color(0xFFFFF8E1),
+                    contentColor = if (isDark) Color(0xFFFFD54F) else Color(0xFFFFA000),
                     trailingContent = {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.OpenInNew,
@@ -747,8 +755,8 @@ fun SettingsScreenContent(
                     title = "Report an Issue",
                     description = "Send feedback or bug reports",
                     icon = Icons.Default.BugReport,
-                    containerColor = Color(0xFFFFCDD2).copy(alpha = 0.5f),
-                    contentColor = Color(0xFFC62828),
+                    containerColor = if (isDark) Color(0xFFF44336).copy(alpha = 0.20f) else Color(0xFFFFEBEE),
+                    contentColor = if (isDark) Color(0xFFEF5350) else Color(0xFFD32F2F),
                     trailingContent = {
                         Icon(
                             imageVector = Icons.Default.ChevronRight,
@@ -769,8 +777,8 @@ fun SettingsScreenContent(
                     title = "Check for Updates",
                     description = "Current version ${state.appVersion}",
                     icon = Icons.Default.SystemUpdate,
-                    containerColor = Color(0xFFC8E6C9).copy(alpha = 0.6f),
-                    contentColor = Color(0xFF2E7D32),
+                    containerColor = if (isDark) Color(0xFF4CAF50).copy(alpha = 0.20f) else Color(0xFFE8F5E9),
+                    contentColor = if (isDark) Color(0xFF81C784) else Color(0xFF2E7D32),
                     trailingContent = {
                         Icon(
                             imageVector = Icons.Default.ChevronRight,
@@ -791,8 +799,8 @@ fun SettingsScreenContent(
                     title = "Privacy Policy",
                     description = "100% offline document processing",
                     icon = Icons.Default.Shield,
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    contentColor = MaterialTheme.colorScheme.primary,
+                    containerColor = if (isDark) Color(0xFF00E676).copy(alpha = 0.20f) else Color(0xFFE0F2F1),
+                    contentColor = if (isDark) Color(0xFF69F0AE) else Color(0xFF00897B),
                     trailingContent = {
                         Icon(
                             imageVector = Icons.Default.ChevronRight,
@@ -813,8 +821,8 @@ fun SettingsScreenContent(
                     title = "About MorphDrop",
                     description = "${state.appVersion} • Created by Rajendra Guttedar",
                     icon = Icons.Default.Info,
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                    contentColor = MaterialTheme.colorScheme.secondary,
+                    containerColor = if (isDark) Color(0xFF00BCD4).copy(alpha = 0.20f) else Color(0xFFE0F7FA),
+                    contentColor = if (isDark) Color(0xFF4DD0E1) else Color(0xFF0097A7),
                     trailingContent = {
                         Icon(
                             imageVector = Icons.Default.ChevronRight,
@@ -834,17 +842,26 @@ fun SettingsScreenContent(
 
 @Composable
 private fun SettingsSection(title: String, content: @Composable () -> Unit) {
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     Column {
         Text(
             text = title,
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.primary,
             fontWeight = FontWeight.Bold,
+            letterSpacing = 0.4.sp,
             modifier = Modifier.padding(bottom = 8.dp, start = 6.dp)
         )
         Card(
             shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+            colors = CardDefaults.cardColors(
+                containerColor = if (isDark) MaterialTheme.colorScheme.surfaceContainer
+                               else MaterialTheme.colorScheme.surfaceContainerLow
+            ),
+            border = BorderStroke(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = if (isDark) 0.25f else 0.40f)
+            ),
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(modifier = Modifier.padding(vertical = 4.dp)) {
@@ -862,8 +879,8 @@ private fun ThemedIconContainer(
 ) {
     Box(
         modifier = Modifier
-            .size(40.dp)
-            .clip(RoundedCornerShape(12.dp))
+            .size(42.dp)
+            .clip(RoundedCornerShape(13.dp))
             .background(containerColor),
         contentAlignment = Alignment.Center
     ) {
@@ -925,13 +942,15 @@ private fun SegmentedThemeSelector(
     selectedTheme: ThemeMode,
     onSelectTheme: (ThemeMode) -> Unit
 ) {
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     Surface(
         shape = CircleShape,
-        color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.55f),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+        color = if (isDark) MaterialTheme.colorScheme.surfaceContainerLowest
+               else MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.55f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = if (isDark) 0.35f else 0.5f)),
         modifier = Modifier
             .fillMaxWidth()
-            .height(44.dp)
+            .height(46.dp)
     ) {
         Row(
             modifier = Modifier
@@ -973,14 +992,17 @@ private fun ThemeSegmentItem(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     val backgroundColor by animateColorAsState(
-        targetValue = if (isSelected) MaterialTheme.colorScheme.secondaryContainer
-                      else Color.Transparent,
+        targetValue = if (isSelected) {
+            if (isDark) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer
+        } else Color.Transparent,
         label = "segmentBg"
     )
     val contentColor by animateColorAsState(
-        targetValue = if (isSelected) MaterialTheme.colorScheme.onSecondaryContainer
-                      else MaterialTheme.colorScheme.onSurfaceVariant,
+        targetValue = if (isSelected) {
+            if (isDark) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSecondaryContainer
+        } else MaterialTheme.colorScheme.onSurfaceVariant,
         label = "segmentContent"
     )
 
@@ -988,6 +1010,7 @@ private fun ThemeSegmentItem(
         onClick = onClick,
         shape = CircleShape,
         color = backgroundColor,
+        border = if (isSelected && isDark) BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)) else null,
         modifier = modifier.fillMaxHeight()
     ) {
         Row(

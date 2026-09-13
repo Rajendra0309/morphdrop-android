@@ -11,17 +11,7 @@ enum class OcrScript(
     DEVANAGARI(
         displayName = "Devanagari (Hindi, Marathi, Nepali)",
         description = "Supports Hindi, Marathi, Sanskrit, Nepali, Konkani, etc."
-    ),
-    CHINESE(
-        displayName = "Chinese (Simplified / Traditional)",
-        description = "Supports Chinese script text recognition"
-    ),
-    JAPANESE(
-        displayName = "Japanese",
-        description = "Supports Kanji, Hiragana, and Katakana"
-    ),
-    KOREAN(
-        displayName = "Korean",
-        description = "Supports Hangul script text recognition"
-    )
+    );
+
+    // Note: South Indian languages (Kannada, Tamil, Telugu, Malayalam) require Tesseract OCR — planned for future update
 }

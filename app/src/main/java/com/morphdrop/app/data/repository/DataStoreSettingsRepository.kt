@@ -40,6 +40,7 @@ class DataStoreSettingsRepository @Inject constructor(
         val LAST_STRIP_METADATA = booleanPreferencesKey("last_strip_metadata")
         val HAS_SEEN_OCR_DISCLAIMER = booleanPreferencesKey("has_seen_ocr_disclaimer")
         val SKIPPED_UPDATE_VERSION = stringPreferencesKey("skipped_update_version")
+        val LAST_SEEN_APP_VERSION = stringPreferencesKey("last_seen_app_version")
     }
 
     override val themeMode: Flow<ThemeMode> = context.dataStore.data.map { preferences ->
@@ -179,6 +180,16 @@ class DataStoreSettingsRepository @Inject constructor(
     override suspend fun setSkippedUpdateVersion(version: String) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.SKIPPED_UPDATE_VERSION] = version
+        }
+    }
+
+    override val lastSeenAppVersion: Flow<String> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.LAST_SEEN_APP_VERSION] ?: ""
+    }
+
+    override suspend fun setLastSeenAppVersion(version: String) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.LAST_SEEN_APP_VERSION] = version
         }
     }
 }

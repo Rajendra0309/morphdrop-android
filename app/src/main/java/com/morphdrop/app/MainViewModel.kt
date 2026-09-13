@@ -1,12 +1,16 @@
 package com.morphdrop.app
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.morphdrop.app.domain.model.UpdateInfo
+import com.morphdrop.app.domain.model.WhatsNewInfo
+import com.morphdrop.app.BuildConfig
 import com.morphdrop.app.domain.repository.SettingsRepository
 import com.morphdrop.app.domain.usecase.UpdateCheckUseCase
 import com.morphdrop.app.data.updater.UpdateManager
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -16,7 +20,6 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -24,8 +27,10 @@ import javax.inject.Inject
 class MainViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val updateCheckUseCase: UpdateCheckUseCase,
-    private val updateManager: UpdateManager
+    private val updateManager: UpdateManager,
+    private val savedStateHandle: SavedStateHandle
 ) : ViewModel() {
+
     val themeMode: StateFlow<com.morphdrop.app.domain.model.ThemeMode> = settingsRepository.themeMode
         .stateIn(
             scope = viewModelScope,
@@ -51,6 +56,44 @@ class MainViewModel @Inject constructor(
     private val _isSearchFabVisibleByScroll = MutableStateFlow(false)
     val isSearchFabVisibleByScroll = _isSearchFabVisibleByScroll.asStateFlow()
 
+    private val _whatsNewInfo = MutableStateFlow<WhatsNewInfo?>(savedStateHandle.get<WhatsNewInfo?>("whats_new_info"))
+    val whatsNewInfo = _whatsNewInfo.asStateFlow()
+
+    private val _updateInfo = MutableStateFlow<UpdateInfo?>(savedStateHandle.get<UpdateInfo?>("update_info"))
+    val updateInfo = _updateInfo.asStateFlow()
+
+    private var pendingUpdateInfo: UpdateInfo?
+        get() = savedStateHandle.get<UpdateInfo?>("pending_update_info")
+        set(value) { savedStateHandle["pending_update_info"] = value }
+
+    private fun setUpdateInfo(info: UpdateInfo?) {
+        _updateInfo.value = info
+        savedStateHandle["update_info"] = info
+    }
+
+    private fun setWhatsNewInfo(info: WhatsNewInfo?) {
+        _whatsNewInfo.value = info
+        savedStateHandle["whats_new_info"] = info
+    }
+
+    private val _updateEvents = MutableSharedFlow<UpdateEvent>()
+    val updateEvents: SharedFlow<UpdateEvent> = _updateEvents.asSharedFlow()
+
+    private val _downloadProgress = MutableStateFlow(com.morphdrop.app.data.updater.DownloadProgress())
+    val downloadProgress = _downloadProgress.asStateFlow()
+
+    sealed interface UpdateEvent {
+        data class Error(val message: String) : UpdateEvent
+        data object UpToDate : UpdateEvent
+        data object Checking : UpdateEvent
+        data class Generic(val message: String) : UpdateEvent
+    }
+
+    init {
+        checkForUpdates(force = false)
+        checkWhatsNew()
+    }
+
     fun setSearchFabVisibility(show: Boolean) {
         _isSearchFabVisibleByScroll.value = show
         _showSearchFab.value = show
@@ -66,25 +109,65 @@ class MainViewModel @Inject constructor(
         _onSearchFabClick.value = null
     }
 
-    fun completeOnboarding() {
+    fun checkWhatsNew() {
         viewModelScope.launch {
-            settingsRepository.setHasSeenWelcome(true)
+            val hasSeenWelcome = settingsRepository.hasSeenWelcome.first()
+            if (hasSeenWelcome) {
+                // If an update is already available or pending, prioritize update dialog
+                if (_updateInfo.value != null || pendingUpdateInfo != null) return@launch
+
+                val lastSeenVersion = settingsRepository.lastSeenAppVersion.first()
+                if (lastSeenVersion != BuildConfig.VERSION_NAME) {
+                    loadWhatsNewFromGithub()
+                }
+            }
         }
     }
 
-    private val _updateInfo = MutableStateFlow<UpdateInfo?>(null)
-    val updateInfo = _updateInfo.asStateFlow()
-
-    private val _updateEvents = MutableSharedFlow<UpdateEvent>()
-    val updateEvents: SharedFlow<UpdateEvent> = _updateEvents.asSharedFlow()
-
-    sealed interface UpdateEvent {
-        data class Error(val message: String) : UpdateEvent
-        data object UpToDate : UpdateEvent
-        data object Checking : UpdateEvent
-        data class Generic(val message: String) : UpdateEvent
+    fun completeOnboarding() {
+        viewModelScope.launch {
+            settingsRepository.setHasSeenWelcome(true)
+            val pending = pendingUpdateInfo
+            if (pending != null) {
+                // Prioritize update dialog immediately upon reaching home screen
+                setUpdateInfo(pending)
+                pendingUpdateInfo = null
+                setWhatsNewInfo(null)
+            } else {
+                val lastSeenVersion = settingsRepository.lastSeenAppVersion.first()
+                if (lastSeenVersion != BuildConfig.VERSION_NAME) {
+                    loadWhatsNewFromGithub()
+                }
+            }
+        }
     }
 
+    private fun loadWhatsNewFromGithub() {
+        viewModelScope.launch {
+            if (_updateInfo.value != null || pendingUpdateInfo != null) return@launch
+            val notes = updateCheckUseCase.getReleaseNotes(BuildConfig.VERSION_NAME)
+            if (notes.isNotBlank() && _updateInfo.value == null && pendingUpdateInfo == null) {
+                setWhatsNewInfo(
+                    WhatsNewInfo(
+                        versionName = BuildConfig.VERSION_NAME,
+                        releaseNotes = notes
+                    )
+                )
+            }
+        }
+    }
+
+    fun dismissWhatsNewDialog() {
+        viewModelScope.launch {
+            setWhatsNewInfo(null)
+            settingsRepository.setLastSeenAppVersion(BuildConfig.VERSION_NAME)
+            // If an update was discovered while What's New was displaying, show it now
+            pendingUpdateInfo?.let {
+                setUpdateInfo(it)
+                pendingUpdateInfo = null
+            }
+        }
+    }
 
     fun checkForUpdates(force: Boolean = false) {
         viewModelScope.launch {
@@ -99,8 +182,16 @@ class MainViewModel @Inject constructor(
                 }
 
                 if (info.isUpdateAvailable) {
-                    _updateInfo.value = info
-                } else if (force || info.versionName.isNotEmpty()) {
+                    val hasSeenWelcome = settingsRepository.hasSeenWelcome.first()
+                    if (hasSeenWelcome) {
+                        setUpdateInfo(info)
+                        // Suppress what's new for the older version so update dialog shows first
+                        setWhatsNewInfo(null)
+                    } else {
+                        // Queue update to show right after onboarding
+                        pendingUpdateInfo = info
+                    }
+                } else if (force) {
                     _updateEvents.emit(UpdateEvent.UpToDate)
                 }
             }.onFailure {
@@ -113,9 +204,6 @@ class MainViewModel @Inject constructor(
         }
     }
 
-    private val _downloadProgress = MutableStateFlow(com.morphdrop.app.data.updater.DownloadProgress())
-    val downloadProgress = _downloadProgress.asStateFlow()
-
     fun downloadUpdate(info: UpdateInfo) {
         viewModelScope.launch {
             val downloadId = updateManager.downloadApk(info.downloadUrl, info.versionName)
@@ -123,7 +211,7 @@ class MainViewModel @Inject constructor(
                 _downloadProgress.value = progress
                 if (progress.status == com.morphdrop.app.data.updater.DownloadStatus.SUCCESSFUL) {
                     kotlinx.coroutines.delay(1000)
-                    _updateInfo.value = null
+                    setUpdateInfo(null)
                     _downloadProgress.value = com.morphdrop.app.data.updater.DownloadProgress()
                 }
             }
@@ -133,13 +221,13 @@ class MainViewModel @Inject constructor(
     fun skipVersion(versionName: String) {
         viewModelScope.launch {
             settingsRepository.setSkippedUpdateVersion(versionName)
-            _updateInfo.value = null
+            setUpdateInfo(null)
             _downloadProgress.value = com.morphdrop.app.data.updater.DownloadProgress()
         }
     }
 
     fun dismissUpdateDialog() {
-        _updateInfo.value = null
+        setUpdateInfo(null)
         _downloadProgress.value = com.morphdrop.app.data.updater.DownloadProgress()
     }
 }

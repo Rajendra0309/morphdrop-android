@@ -5,51 +5,25 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.scaleIn
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Downloading
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.SystemUpdate
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CheckboxDefaults
-import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -79,6 +53,8 @@ fun UpdateDialog(
     onDismiss: () -> Unit
 ) {
     var skipThisVersionChecked by remember { mutableStateOf(false) }
+    val cleanCurrent = BuildConfig.VERSION_NAME.removePrefix("v").removePrefix("V")
+    val cleanNew = updateInfo.versionName.removePrefix("v").removePrefix("V")
 
     Dialog(
         onDismissRequest = {
@@ -96,17 +72,21 @@ fun UpdateDialog(
             Surface(
                 modifier = Modifier
                     .fillMaxWidth(0.92f)
+                    .fillMaxHeight(0.85f)
                     .clip(RoundedCornerShape(28.dp)),
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                tonalElevation = 6.dp
+                tonalElevation = 6.dp,
+                border = BorderStroke(
+                    width = 1.dp,
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+                )
             ) {
                 Column(
                     modifier = Modifier
+                        .fillMaxSize()
                         .padding(24.dp)
-                        .fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    // Top Icon Header (Circular 48dp Container reflecting state)
+                    // Header Area
                     val isError = downloadProgress.status == DownloadStatus.FAILED
                     val isDownloading = downloadProgress.status == DownloadStatus.DOWNLOADING || downloadProgress.status == DownloadStatus.PENDING
 
@@ -124,120 +104,113 @@ fun UpdateDialog(
                         else -> Icons.Outlined.SystemUpdate
                     }
 
-                    Surface(
-                        shape = CircleShape,
-                        color = headerBgColor,
-                        modifier = Modifier.size(48.dp)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = headerIcon,
-                                contentDescription = null,
-                                tint = headerIconTint,
-                                modifier = Modifier.size(24.dp)
+                        Surface(
+                            shape = CircleShape,
+                            color = headerBgColor,
+                            modifier = Modifier.size(48.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = headerIcon,
+                                    contentDescription = null,
+                                    tint = headerIconTint,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.width(16.dp))
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Update Available",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f))
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "v$cleanCurrent",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Medium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(10.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = "v$cleanNew",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                    }
+                                }
+                                Text(
+                                    text = "ready to install",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Release Notes Container - Spacious 1f weight exactly like WhatsNewDialog
+                    Surface(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerLowest,
+                        border = BorderStroke(
+                            1.dp,
+                            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)
+                        )
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(16.dp)
+                                .verticalScroll(rememberScrollState())
+                        ) {
+                            ReleaseNotesContent(
+                                rawNotes = updateInfo.releaseNotes.ifBlank { "• Performance optimizations and bug fixes for v$cleanNew" }
                             )
                         }
                     }
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // Title
-                    Text(
-                        text = "Update Available",
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        textAlign = TextAlign.Center,
-                        letterSpacing = (-0.5).sp
-                    )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // Unified Version Pill Badge (v1.3.1 -> v2.5.0-preview)
-                    val cleanCurrent = BuildConfig.VERSION_NAME.removePrefix("v").removePrefix("V")
-                    val cleanNew = updateInfo.versionName.removePrefix("v").removePrefix("V")
-
-                    Surface(
-                        shape = RoundedCornerShape(50),
-                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
-                        ) {
-                            Text(
-                                text = "v$cleanCurrent",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Medium,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(12.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "v$cleanNew",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(20.dp))
-
-                    // "What's New" Release Notes Card
-                    Card(
-                        shape = RoundedCornerShape(20.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 40.dp, max = 190.dp)
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp)
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(bottom = 10.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Outlined.AutoAwesome,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = "What's New",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
-
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .verticalScroll(rememberScrollState())
-                            ) {
-                                ReleaseNotesContent(
-                                    rawNotes = updateInfo.releaseNotes.ifBlank { "• Performance optimizations and bug fixes" }
-                                )
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(18.dp))
-
+                    // Bottom Action Controls
                     // State 1: Prompt State (IDLE or SUCCESSFUL)
                     if (downloadProgress.status == DownloadStatus.IDLE || downloadProgress.status == DownloadStatus.SUCCESSFUL) {
                         Row(
@@ -257,8 +230,8 @@ fun UpdateDialog(
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = "Skip this version",
-                                style = MaterialTheme.typography.bodyMedium,
+                                text = "Don't notify me again for this version",
+                                style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
@@ -267,40 +240,50 @@ fun UpdateDialog(
 
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.End,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            TextButton(
+                            OutlinedButton(
                                 onClick = {
                                     if (skipThisVersionChecked) onSkipVersion()
                                     onDismiss()
                                 },
-                                shape = RoundedCornerShape(50),
-                                colors = ButtonDefaults.textButtonColors(
-                                    contentColor = MaterialTheme.colorScheme.primary
-                                ),
-                                modifier = Modifier.padding(end = 8.dp)
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(52.dp),
+                                shape = RoundedCornerShape(26.dp),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                             ) {
                                 Text(
                                     text = "Later",
                                     style = MaterialTheme.typography.labelLarge,
-                                    fontWeight = FontWeight.SemiBold
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
 
                             Button(
                                 onClick = onDownload,
-                                shape = RoundedCornerShape(50),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(52.dp),
+                                shape = RoundedCornerShape(26.dp),
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = MaterialTheme.colorScheme.primary,
                                     contentColor = MaterialTheme.colorScheme.onPrimary
-                                ),
-                                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 10.dp)
+                                )
                             ) {
+                                Icon(
+                                    imageVector = Icons.Default.Download,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
                                 Text(
                                     text = "Update Now",
                                     style = MaterialTheme.typography.labelLarge,
-                                    fontWeight = FontWeight.Bold
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 15.sp
                                 )
                             }
                         }
@@ -333,7 +316,7 @@ fun UpdateDialog(
                                 )
                             }
 
-                            // Full Rounded Pill Progress Bar (height 10dp)
+                            // Rounded Pill Progress Bar
                             if (downloadProgress.percentage > 0) {
                                 LinearProgressIndicator(
                                     progress = { downloadProgress.percentage / 100f },
@@ -378,25 +361,22 @@ fun UpdateDialog(
 
                             Spacer(modifier = Modifier.height(8.dp))
 
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.End
+                            FilledTonalButton(
+                                onClick = onDismiss,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(48.dp),
+                                shape = RoundedCornerShape(24.dp),
+                                colors = ButtonDefaults.filledTonalButtonColors(
+                                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
                             ) {
-                                FilledTonalButton(
-                                    onClick = onDismiss,
-                                    shape = RoundedCornerShape(50),
-                                    colors = ButtonDefaults.filledTonalButtonColors(
-                                        containerColor = MaterialTheme.colorScheme.primaryContainer,
-                                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                                    ),
-                                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp)
-                                ) {
-                                    Text(
-                                        text = "Download in Background",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                }
+                                Text(
+                                    text = "Download in Background",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.SemiBold
+                                )
                             }
                         }
                     }
@@ -405,9 +385,8 @@ fun UpdateDialog(
                     if (downloadProgress.status == DownloadStatus.FAILED) {
                         Column(
                             modifier = Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            // M3 Error Container Callout Box
                             Surface(
                                 shape = RoundedCornerShape(16.dp),
                                 color = MaterialTheme.colorScheme.errorContainer,
@@ -437,48 +416,40 @@ fun UpdateDialog(
                                 }
                             }
 
-                            Spacer(modifier = Modifier.height(4.dp))
-
-                            // Error Action Buttons (Full width stacked pills)
-                            Button(
-                                onClick = onDownload,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(48.dp),
-                                shape = RoundedCornerShape(50),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.primary,
-                                    contentColor = MaterialTheme.colorScheme.onPrimary
-                                )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.Refresh,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = "Retry Download",
-                                    style = MaterialTheme.typography.labelLarge,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
+                                OutlinedButton(
+                                    onClick = onDismiss,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(52.dp),
+                                    shape = RoundedCornerShape(26.dp),
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                                ) {
+                                    Text("Later", fontWeight = FontWeight.SemiBold)
+                                }
 
-                            TextButton(
-                                onClick = onDismiss,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(44.dp),
-                                shape = RoundedCornerShape(50),
-                                colors = ButtonDefaults.textButtonColors(
-                                    contentColor = MaterialTheme.colorScheme.primary
-                                )
-                            ) {
-                                Text(
-                                    text = "Later",
-                                    style = MaterialTheme.typography.labelLarge,
-                                    fontWeight = FontWeight.SemiBold
-                                )
+                                Button(
+                                    onClick = onDownload,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(52.dp),
+                                    shape = RoundedCornerShape(26.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = MaterialTheme.colorScheme.primary,
+                                        contentColor = MaterialTheme.colorScheme.onPrimary
+                                    )
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Refresh,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Retry", fontWeight = FontWeight.Bold)
+                                }
                             }
                         }
                     }
@@ -492,14 +463,14 @@ fun UpdateDialog(
 private fun ReleaseNotesContent(rawNotes: String) {
     val lines = rawNotes.trim().lines().filter { it.isNotBlank() }
 
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         lines.forEach { rawLine ->
             val trimmedLine = rawLine.trim()
 
             when {
                 trimmedLine.startsWith("---") || trimmedLine.startsWith("***") || trimmedLine.startsWith("___") -> {
                     HorizontalDivider(
-                        modifier = Modifier.padding(vertical = 4.dp),
+                        modifier = Modifier.padding(vertical = 6.dp),
                         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
                     )
                 }
@@ -507,10 +478,10 @@ private fun ReleaseNotesContent(rawNotes: String) {
                     val headingText = trimmedLine.replace(Regex("^#+\\s*"), "")
                     Text(
                         text = headingText,
-                        style = MaterialTheme.typography.titleSmall,
+                        style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.padding(top = 4.dp)
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(top = 6.dp, bottom = 2.dp)
                     )
                 }
                 trimmedLine.startsWith("- ") || trimmedLine.startsWith("* ") || trimmedLine.startsWith("• ") -> {
@@ -549,30 +520,53 @@ private fun formatInlineMarkdown(text: String): AnnotatedString {
     return buildAnnotatedString {
         var i = 0
         while (i < text.length) {
-            if (i + 1 < text.length && text[i] == '*' && text[i + 1] == '*') {
-                val end = text.indexOf("**", i + 2)
-                if (end != -1) {
-                    val boldContent = text.substring(i + 2, end)
-                    withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
-                        append(boldContent)
+            when {
+                text.startsWith("**", i) -> {
+                    val end = text.indexOf("**", i + 2)
+                    if (end != -1) {
+                        withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
+                            append(text.substring(i + 2, end))
+                        }
+                        i = end + 2
+                    } else {
+                        append(text[i])
+                        i++
                     }
-                    i = end + 2
-                    continue
                 }
-            } else if (text[i] == '`') {
-                val end = text.indexOf("`", i + 1)
-                if (end != -1) {
-                    val codeContent = text.substring(i + 1, end)
-                    withStyle(SpanStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp)) {
-                        append(codeContent)
+                text.startsWith("`", i) -> {
+                    val end = text.indexOf("`", i + 1)
+                    if (end != -1) {
+                        withStyle(
+                            SpanStyle(
+                                fontFamily = FontFamily.Monospace,
+                                background = Color.Gray.copy(alpha = 0.15f)
+                            )
+                        ) {
+                            append(" ${text.substring(i + 1, end)} ")
+                        }
+                        i = end + 1
+                    } else {
+                        append(text[i])
+                        i++
                     }
-                    i = end + 1
-                    continue
+                }
+                text.startsWith("*", i) -> {
+                    val end = text.indexOf("*", i + 1)
+                    if (end != -1) {
+                        withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) {
+                            append(text.substring(i + 1, end))
+                        }
+                        i = end + 1
+                    } else {
+                        append(text[i])
+                        i++
+                    }
+                }
+                else -> {
+                    append(text[i])
+                    i++
                 }
             }
-
-            append(text[i])
-            i++
         }
     }
 }

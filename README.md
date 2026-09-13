@@ -71,15 +71,14 @@
 
 ## Features
 
-### What's New (v1.4.0)
+### What's New (v1.4.1)
 
-> - **Home Screen Widgets (Glance Suite)** — 3 responsive, battery-friendly Material 3 widgets for quick actions, recent files, and conversion history with light/dark theme sync.
-> - **Batch OCR Processing** — Extract text from multiple images, receipts, or documents in one go with combined or individual views and export options.
-> - **Native Markdown Viewer & Editor** — Read and edit `.md` documents with live preview, syntax highlighting, formatting toolbar, auto-indent, and word counter.
-> - **Batch PDF Operations** — Apply compression, watermarking, page numbers, passwords, rotation, and merging across multiple PDFs simultaneously with WorkManager foreground notifications.
-> - **Professional PDF Tools** — Dedicated single-file tools for custom watermarking, page numbering (6 positions, customizable formatting), and target-size heuristic compression.
-> - **Launcher App Shortcuts** — Long-press the app icon to access Convert PDF, Convert Image, History, and Settings with crisp white squircle cards and colored glyphs.
-> - **Redesigned In-App Updater** — Modern Material 3 update dialog with progress tracking, formatted release notes, and error retry state.
+> - **50% APK Size Reduction** — Optimized OCR ML Kit models (bundled Latin & Devanagari offline core), excluded unneeded cryptographic lookup tables, reducing universal APK size from 57 MB to 29 MB.
+> - **ChromeOS & Large Screen Compatibility** — Full manifest hardware declarations for non-touchscreen Chromebooks, Chromeboxes, and convertibles.
+> - **Dynamic "What's New in MorphDrop" Dialog** — Material 3 modal dynamically fetching release notes from GitHub Releases upon update or onboarding.
+> - **Redesigned In-App Updater** — Symmetrical action pills ("Later" and "Update Now"), non-wrapping version transition tags, and rich Markdown release note rendering.
+> - **Settings & Direct Update Triggers** — In-Settings "Check for Updates" triggers immediately, with smart update dialog priority over What's New.
+> - **Dark Mode Settings UI Polish** — Translucent alpha glass icon badges, luminous tints, and high-contrast card borders for sleek dark mode aesthetics.
 
 <br>
 

@@ -38,6 +38,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.morphdrop.app.ui.components.MorphDropBottomNavigation
 import com.morphdrop.app.ui.components.UpdateDialog
+import com.morphdrop.app.ui.components.WhatsNewDialog
 import com.morphdrop.app.ui.navigation.NavGraph
 import com.morphdrop.app.ui.navigation.Screen
 import com.morphdrop.app.ui.theme.MorphDropTheme
@@ -155,11 +156,6 @@ class MainActivity : ComponentActivity() {
             val themeMode by viewModel.themeMode.collectAsState()
             val isSystemDark = androidx.compose.foundation.isSystemInDarkTheme()
 
-
-            // Check for updates on start
-            LaunchedEffect(Unit) {
-                viewModel.checkForUpdates()
-            }
 
             val context = androidx.compose.ui.platform.LocalContext.current
 
@@ -317,14 +313,20 @@ class MainActivity : ComponentActivity() {
                     }
 
                     val downloadProgress by viewModel.downloadProgress.collectAsState()
+                    val whatsNewInfo by viewModel.whatsNewInfo.collectAsState()
 
-                    if (updateInfo != null) {
+                    if (updateInfo != null && currentRoute != Screen.Welcome.route) {
                         UpdateDialog(
                             updateInfo = updateInfo!!,
                             downloadProgress = downloadProgress,
                             onDownload = { viewModel.downloadUpdate(updateInfo!!) },
                             onSkipVersion = { viewModel.skipVersion(updateInfo!!.versionName) },
                             onDismiss = { viewModel.dismissUpdateDialog() }
+                        )
+                    } else if (whatsNewInfo != null && currentRoute == Screen.Home.route) {
+                        WhatsNewDialog(
+                            whatsNewInfo = whatsNewInfo!!,
+                            onDismiss = { viewModel.dismissWhatsNewDialog() }
                         )
                     }
 

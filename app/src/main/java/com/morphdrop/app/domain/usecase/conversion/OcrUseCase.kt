@@ -16,10 +16,7 @@ import androidx.exifinterface.media.ExifInterface
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.TextRecognizer
-import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
 import com.google.mlkit.vision.text.devanagari.DevanagariTextRecognizerOptions
-import com.google.mlkit.vision.text.japanese.JapaneseTextRecognizerOptions
-import com.google.mlkit.vision.text.korean.KoreanTextRecognizerOptions
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import com.morphdrop.app.domain.model.OcrScript
 import com.morphdrop.app.util.FileHelper
@@ -117,9 +114,6 @@ class OcrUseCase @Inject constructor(
         return when (script) {
             OcrScript.LATIN -> TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
             OcrScript.DEVANAGARI -> TextRecognition.getClient(DevanagariTextRecognizerOptions.Builder().build())
-            OcrScript.CHINESE -> TextRecognition.getClient(ChineseTextRecognizerOptions.Builder().build())
-            OcrScript.JAPANESE -> TextRecognition.getClient(JapaneseTextRecognizerOptions.Builder().build())
-            OcrScript.KOREAN -> TextRecognition.getClient(KoreanTextRecognizerOptions.Builder().build())
         }
     }
 

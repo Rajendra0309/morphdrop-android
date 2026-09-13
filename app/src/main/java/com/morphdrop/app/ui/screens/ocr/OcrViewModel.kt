@@ -48,9 +48,7 @@ data class OcrUiState(
     val charCount: Int = 0,
     val errorMessage: String? = null,
     val infoMessage: String? = null,
-    val savedFileUri: Uri? = null,
-    val showDisclaimerDialog: Boolean = false,
-    val hasAcknowledgedDisclaimer: Boolean = false
+    val savedFileUri: Uri? = null
 )
 
 @HiltViewModel
@@ -63,12 +61,6 @@ class OcrViewModel @Inject constructor(
     private val _state = MutableStateFlow(OcrUiState())
     val state: StateFlow<OcrUiState> = _state.asStateFlow()
 
-    init {
-        viewModelScope.launch {
-            val hasSeen = settingsRepository.hasSeenOcrDisclaimer.first()
-            _state.update { it.copy(hasAcknowledgedDisclaimer = hasSeen) }
-        }
-    }
 
     fun onFileSelected(context: Context, uri: Uri) {
         val name = FileHelper.getFileName(context, uri)
@@ -89,8 +81,6 @@ class OcrViewModel @Inject constructor(
                 1
             }
 
-            val hasSeen = settingsRepository.hasSeenOcrDisclaimer.first()
-
             _state.update {
                 it.copy(
                     selectedUri = uri,
@@ -107,8 +97,7 @@ class OcrViewModel @Inject constructor(
                     charCount = 0,
                     errorMessage = null,
                     infoMessage = null,
-                    savedFileUri = null,
-                    showDisclaimerDialog = !hasSeen
+                    savedFileUri = null
                 )
             }
 
@@ -330,17 +319,6 @@ class OcrViewModel @Inject constructor(
         }
     }
 
-    fun dismissDisclaimer() {
-        viewModelScope.launch {
-            settingsRepository.setHasSeenOcrDisclaimer(true)
-            _state.update {
-                it.copy(
-                    hasAcknowledgedDisclaimer = true,
-                    showDisclaimerDialog = false
-                )
-            }
-        }
-    }
 
     fun clearMessages() {
         _state.update {
