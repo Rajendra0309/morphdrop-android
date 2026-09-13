@@ -13,8 +13,8 @@ android {
         applicationId = "com.morphdrop.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 8
-        versionName = "1.4.1"
+        versionCode = 9
+        versionName = "1.4.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -133,12 +133,7 @@ dependencies {
     implementation("com.google.mlkit:text-recognition:16.0.1")
     implementation("com.google.mlkit:text-recognition-devanagari:16.0.1")
     
-    // Office Documents
-    implementation(libs.org.apache.poi.poi.ooxml) {
-        exclude(group = "org.apache.xmlbeans", module = "xmlbeans")
-        exclude(group = "org.apache.poi", module = "poi-ooxml-lite")
-        exclude(group = "stax", module = "stax-api")
-    }
+
     
     // Testing
     testImplementation(libs.junit)

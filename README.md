@@ -16,7 +16,7 @@
 
 ## Overview
 
-**MorphDrop** is an offline-first utility app that allows you to convert documents and images directly on your device. No internet required, no data collection, and no file size limits. It leverages powerful libraries like Apache PDFBox and Apache POI to handle complex file transformations locally and securely, while ensuring a premium user experience with a modern Material 3 design language.
+**MorphDrop** is an offline-first utility app that allows you to convert documents and images directly on your device. No internet required, no data collection, and no file size limits. It leverages powerful libraries like Apache PDFBox and native document parsers to handle complex file transformations locally and securely, while ensuring a premium user experience with a modern Material 3 design language.
 
 ---
 
@@ -81,7 +81,6 @@
 > - **Dark Mode Settings UI Polish** — Translucent alpha glass icon badges, luminous tints, and high-contrast card borders for sleek dark mode aesthetics.
 
 <br>
-
 <details>
 <summary><b>Home Screen Widgets & Quick Actions</b></summary>
 <br>
@@ -222,12 +221,10 @@
 | **Database** | Room (Local History & Favorites) |
 | **Background** | WorkManager (Foreground Service Support) |
 | **PDF Engine** | Apache PDFBox Android |
-| **Office Docs** | Apache POI |
+| **Office Docs** | Native OOXML & XmlPullParser Engine |
 | **Image Proc** | Coil + Android Bitmap API |
 
 ---
-
-
 
 ## Special Thanks
 
@@ -236,7 +233,6 @@ MorphDrop stands on the shoulders of several excellent open-source projects. Sin
 | Project | Description |
 | :--- | :--- |
 | **[Apache PDFBox](https://pdfbox.apache.org/)** | Core engine for PDF manipulation and processing. |
-| **[Apache POI](https://poi.apache.org/)** | Robust engine for parsing and transforming Excel formats. |
 | **[Jetpack Compose](https://developer.android.com/compose)** | Modern UI toolkit allowing a beautiful, responsive design. |
 
 ---

@@ -11,14 +11,6 @@
 -dontwarn org.apache.**
 -dontwarn com.tom_roush.**
 
-# Apache POI ProGuard Rules
--keep class org.apache.poi.** { *; }
--keep class org.apache.xmlbeans.** { *; }
--keep class org.apache.commons.** { *; }
--keep class schemas.** { *; }
--dontwarn org.apache.**
--dontwarn schemas.**
-
 # Kotlin Coroutines
 -keep class kotlinx.coroutines.** { *; }
 -dontwarn kotlinx.coroutines.**

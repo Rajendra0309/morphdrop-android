@@ -38,9 +38,6 @@ splashscreen = "1.0.1"
 # PDFBox
 pdfboxAndroid = "2.0.27.0"
 
-# Apache POI
-poi = "5.2.5"
-
 # Kotlin Coroutines
 kotlinxCoroutinesCore = "1.11.0"
 
@@ -111,9 +108,6 @@ com-tomroush-pdfbox-android = { group = "com.tom-roush", name = "pdfbox-android"
 
 # AppCompat
 androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
-
-# Office Documents
-org-apache-poi-poi-ooxml = { group = "org.apache.poi", name = "poi-ooxml", version.ref = "poi" }
 
 # Testing
 junit = { group = "junit", name = "junit", version.ref = "junit" }

@@ -1,11 +1,8 @@
-# MorphDrop v1.4.1 - APK Size Optimization, ChromeOS Support & Dialog Polish
+# MorphDrop v1.4.2 - Hotfix: Startup Crash Fix & Performance Optimization
 
 ## 🚀 What's New
-- **50% APK Size Reduction (57 MB → 29 MB):** Retained essential high-accuracy Latin (English/European) and Devanagari (Hindi/Marathi) on-device OCR models, excluded unneeded post-quantum crypto lookup tables, and filtered unneeded architectures while preserving full 64-bit and 32-bit ARM support for Android 8.0+.
-- **ChromeOS & Large Screen Compatibility:** Added explicit non-touchscreen and camera-optional declarations in manifest, enabling seamless native installation across Chromebooks, Chromeboxes, and convertibles.
-- **"What's New in MorphDrop" Modal:** Introduced an in-app Material 3 modal that dynamically loads release notes directly from GitHub Releases after onboarding or when a new update is launched.
-- **Polished In-App Update Dialog:** Redesigned the "Update Available" modal with symmetrical action pills ("Later" and "Update Now"), non-wrapping version transition tags, and rich Markdown release note rendering matching "What's New".
-- **Settings & Update Trigger Fix:** Tapping "Check for Updates" in Settings now triggers the update dialog directly without requiring navigation back to the Home screen.
-- **Smart Update Priority:** When an older version is installed, the app now prioritizes the "Update Available" dialog over "What's New", ensuring users always update first.
-- **Dark Mode Settings UI Polish:** Overhauled Settings screen cards and icons with luminous tints, theme-aware translucent glass containers, and high-contrast borders for a sleek dark mode appearance.
-- **Silent Startup Update Checks:** Eliminated duplicate "App is up to date" toasts during app startup and suppressed update prompts during onboarding.
+- **Critical Hotfix for App Startup Crash:** Resolved `java.lang.VerifyError` caused by legacy Apache POI / XMLBeans classes failing Android ART runtime bytecode verification during application launch.
+- **Native Android Excel Processing:** Replaced heavy Apache POI desktop library with a 100% lightweight, native Android OOXML parser (`XmlPullParser` + `ZipInputStream` + `PdfDocument`), with zero third-party dependencies and no Apache POI or XMLBeans runtime dependency.
+- **Further APK Size Reduction (29 MB → 25.8 MB):** Completely stripped Apache POI and XMLBeans bytecode, shedding another 3.2 MB from the standalone release APK.
+- **ChromeOS & Large Screen Compatibility:** Full compatibility with Chromebooks, Chromeboxes, and non-touchscreen convertibles.
+- **Dynamic "What's New" & Polished Update Dialogs:** Material 3 release notes fetched directly from GitHub Releases, streamlined dialog triggers, and responsive layout polish across dark and light themes.

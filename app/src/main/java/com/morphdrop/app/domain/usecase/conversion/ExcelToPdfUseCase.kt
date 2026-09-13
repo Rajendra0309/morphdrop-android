@@ -16,9 +16,6 @@ import com.morphdrop.app.util.FileHelper
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.apache.poi.ss.usermodel.DataFormatter
-import org.apache.poi.ss.usermodel.Workbook
-import org.apache.poi.ss.usermodel.WorkbookFactory
 import org.xmlpull.v1.XmlPullParser
 import org.xmlpull.v1.XmlPullParserFactory
 import java.io.ByteArrayInputStream
@@ -60,94 +57,37 @@ class ExcelToPdfUseCase @Inject constructor(
 
         val fileName = FileHelper.getFileName(context, xlsxUri).lowercase()
         val isCsv = fileName.endsWith(".csv")
+        val isTsv = fileName.endsWith(".tsv")
 
         if (isCsv) {
-            return@withContext convertCsvToPdf(bytes, sanitizedFileName, onProgress)
+            return@withContext convertCsvToPdf(bytes, sanitizedFileName, onProgress, delimiter = ",")
         }
 
-        // Try POI first
-        val workbook: Workbook? = try {
-            WorkbookFactory.create(ByteArrayInputStream(bytes))
-        } catch (_: Throwable) {
-            null
+        if (isTsv) {
+            return@withContext convertCsvToPdf(bytes, sanitizedFileName, onProgress, delimiter = "\t")
         }
 
-        if (workbook != null) {
-            try {
-                return@withContext convertPoiWorkbookToPdf(workbook, sanitizedFileName, onProgress)
-            } catch (_: Throwable) {
-                // Fall back to native XML/ZIP parser
-            } finally {
-                try { workbook.close() } catch (_: Throwable) {}
-            }
+        if (fileName.endsWith(".xls")) {
+            throw IllegalArgumentException("Legacy binary Excel (.xls) format is not supported. Please convert or save the spreadsheet as modern .xlsx or .csv format.")
         }
 
-        // Try native OOXML ZIP parser for .xlsx
+        // Native OOXML ZIP parser for .xlsx (lightweight, zero external dependencies)
         val table = parseXlsxFromZip(bytes)
         if (table.isNotEmpty()) {
             return@withContext renderTableToPdf(table, sanitizedFileName, onProgress)
         }
 
-        // Fall back to CSV/text parsing
-        return@withContext convertCsvToPdf(bytes, sanitizedFileName, onProgress)
-    }
-
-    private suspend fun convertPoiWorkbookToPdf(workbook: Workbook, outputFileName: String, onProgress: (Int) -> Unit): Uri {
-        val pdfDocument = PdfDocument()
-        val formatter = DataFormatter()
-
-        try {
-            var pageCounter = 1
-            val totalSheets = workbook.numberOfSheets
-            for (sheetIndex in 0 until totalSheets) {
-                val sheet = workbook.getSheetAt(sheetIndex) ?: continue
-                if (sheet.physicalNumberOfRows == 0) continue
-
-                val sheetTable = mutableListOf<List<String>>()
-                var maxColIndex = 0
-                for (row in sheet) {
-                    if (row.lastCellNum > maxColIndex) {
-                        maxColIndex = row.lastCellNum.toInt()
-                    }
-                }
-                if (maxColIndex == 0) continue
-
-                for (row in sheet) {
-                    val rowCells = mutableListOf<String>()
-                    for (colIdx in 0 until maxColIndex) {
-                        val cell = row.getCell(colIdx)
-                        val text = if (cell != null) {
-                            try { formatter.formatCellValue(cell) } catch (_: Exception) { "" }
-                        } else ""
-                        rowCells.add(text)
-                    }
-                    sheetTable.add(rowCells)
-                }
-
-                if (sheetTable.isNotEmpty()) {
-                    pageCounter = renderTableToDoc(pdfDocument, sheetTable, pageCounter)
-                }
-                
-                kotlinx.coroutines.yield() // Allow cancellation during heavy loops
-                
-                val currentProgress = 30 + ((sheetIndex + 1).toFloat() / totalSheets * 50).toInt()
-                onProgress(currentProgress)
-            }
-
-            if (pdfDocument.pages.isEmpty()) {
-                val pageInfo = PdfDocument.PageInfo.Builder(PAGE_WIDTH, PAGE_HEIGHT, 1).create()
-                val page = pdfDocument.startPage(pageInfo)
-                pdfDocument.finishPage(page)
-            }
-
-            val baos = ByteArrayOutputStream()
-            pdfDocument.writeTo(baos)
-            onProgress(95)
-            // Fix: Use sanitized outputFileName (this method receives it from invoke)
-            return FileHelper.saveToFile(context, settingsRepository, outputFileName, baos.toByteArray())
-        } finally {
-            try { pdfDocument.close() } catch (_: Throwable) {}
+        // Fall back to delimited text parsing for .tsv or .txt files
+        if (fileName.endsWith(".tsv")) {
+            return@withContext convertCsvToPdf(bytes, sanitizedFileName, onProgress, delimiter = "\t")
         }
+        if (fileName.endsWith(".txt")) {
+            val sample = String(bytes.take(2048).toByteArray(), Charsets.UTF_8)
+            val delimiter = if (sample.contains("\t")) "\t" else ","
+            return@withContext convertCsvToPdf(bytes, sanitizedFileName, onProgress, delimiter = delimiter)
+        }
+
+        throw IllegalArgumentException("Unable to parse spreadsheet. Please ensure the file is a valid, unencrypted .xlsx document.")
     }
 
     private fun parseXlsxFromZip(bytes: ByteArray): List<List<String>> {
@@ -299,11 +239,16 @@ class ExcelToPdfUseCase @Inject constructor(
         return if (col > 0) col - 1 else 0
     }
 
-    private suspend fun convertCsvToPdf(bytes: ByteArray, outputFileName: String, onProgress: (Int) -> Unit): Uri {
+    private suspend fun convertCsvToPdf(
+        bytes: ByteArray,
+        outputFileName: String,
+        onProgress: (Int) -> Unit,
+        delimiter: String = ","
+    ): Uri {
         val contentStr = String(bytes, Charsets.UTF_8)
         val lines = contentStr.split(Regex("[\\r\\n]+")).filter { it.isNotBlank() }
         val table = lines.map { line ->
-            line.split(",").map { cell -> cell.trim().removeSurrounding("\"") }
+            line.split(delimiter).map { cell -> cell.trim().removeSurrounding("\"") }
         }
         return renderTableToPdf(table, outputFileName, onProgress)
     }
