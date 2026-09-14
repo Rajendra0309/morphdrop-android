@@ -136,59 +136,37 @@ class MetadataUseCase @Inject constructor(
 
         val realPath = getRealFilePathFromUri(context, uri)
 
-        var originalUri = uri
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q && uri.scheme == "content") {
-            try {
-                if (android.provider.DocumentsContract.isDocumentUri(context, uri) && uri.authority == "com.android.providers.media.documents") {
-                    val docId = android.provider.DocumentsContract.getDocumentId(uri)
-                    val split = docId.split(":")
-                    if (split.size >= 2) {
-                        val type = split[0]
-                        val contentUri = when (type) {
-                            "image" -> android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI
-                            "video" -> android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI
-                            "audio" -> android.provider.MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
-                            else -> null
-                        }
-                        if (contentUri != null) {
-                            originalUri = android.content.ContentUris.withAppendedId(contentUri, split[1].toLong())
-                        }
-                    }
-                }
-                originalUri = android.provider.MediaStore.setRequireOriginal(originalUri)
-            } catch (_: Exception) {
-                // If setRequireOriginal fails (e.g. no location permission), originalUri remains the last parsed URI
-            }
-        }
-
         var tempExifFile: File? = null
         try {
             val exif = try {
-                if (!realPath.isNullOrBlank()) {
+                if (!realPath.isNullOrBlank() && File(realPath).canRead()) {
                     ExifInterface(realPath)
                 } else {
-                    throw Exception("No real path")
+                    throw Exception("No readable real path")
                 }
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 try {
-                    context.contentResolver.openFileDescriptor(originalUri, "r")?.use { pfd ->
+                    context.contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
                         ExifInterface(pfd.fileDescriptor)
-                    } ?: throw Exception("Null file descriptor")
-                } catch (e2: Exception) {
+                    } ?: throw Exception("Null pfd")
+                } catch (_: Exception) {
                     try {
-                        FileHelper.readFileFromUri(context, originalUri).use { inputStream ->
-                            ExifInterface(inputStream)
-                        }
-                    } catch (e3: Exception) {
-                        // Fallback to temp file if stream reading fails for EXIF
-                        val ext = "." + (FileHelper.getFileName(context, originalUri).substringAfterLast('.', "jpg"))
-                        tempExifFile = File.createTempFile("exif_temp_", ext, context.cacheDir)
-                        context.contentResolver.openInputStream(originalUri)?.use { input ->
-                            tempExifFile!!.outputStream().use { output ->
+                        // Copy bytes directly from the user's selected URI to a temp file in cacheDir.
+                        // This allows ExifInterface full seekable access to read ALL EXIF directories
+                        // reliably without stream limitations and without requiring MediaStore permissions.
+                        val ext = "." + (extension.ifBlank { "jpg" })
+                        val temp = File.createTempFile("exif_inspect_", ext, context.cacheDir)
+                        tempExifFile = temp
+                        FileHelper.readFileFromUri(context, uri).use { input ->
+                            temp.outputStream().use { output ->
                                 input.copyTo(output)
                             }
                         }
-                        ExifInterface(tempExifFile!!.absolutePath)
+                        ExifInterface(temp.absolutePath)
+                    } catch (_: Exception) {
+                        FileHelper.readFileFromUri(context, uri).use { inputStream ->
+                            ExifInterface(inputStream)
+                        }
                     }
                 }
             }
@@ -207,7 +185,8 @@ class MetadataUseCase @Inject constructor(
                 if (f != null) String.format(Locale.US, "f/%.1f", f) else "f/$it"
             }
             @Suppress("DEPRECATION")
-            isoSpeed = exif.getAttribute(ExifInterface.TAG_ISO_SPEED_RATINGS)?.let { "ISO $it" }
+            isoSpeed = (exif.getAttribute(ExifInterface.TAG_ISO_SPEED_RATINGS) 
+                ?: exif.getAttribute("PhotographicSensitivity"))?.let { "ISO $it" }
             exposureTime = exif.getAttribute(ExifInterface.TAG_EXPOSURE_TIME)?.let { 
                 val sec = parseRational(it)
                 if (sec != null && sec < 1.0 && sec > 0.0) "1/${(1.0 / sec).toInt()}s" else "$it s"
@@ -265,7 +244,7 @@ class MetadataUseCase @Inject constructor(
         if ((lat == null || lng == null || dateCreated == null) && uri.scheme == "content") {
             try {
                 context.contentResolver.query(
-                    originalUri,
+                    uri,
                     arrayOf(
                         android.provider.MediaStore.Images.ImageColumns.LATITUDE,
                         android.provider.MediaStore.Images.ImageColumns.LONGITUDE,

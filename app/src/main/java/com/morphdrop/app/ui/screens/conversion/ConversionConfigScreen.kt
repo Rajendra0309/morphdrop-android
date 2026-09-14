@@ -57,6 +57,9 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.foundation.Canvas
+import androidx.compose.material3.Surface
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
@@ -147,16 +150,7 @@ fun ConversionConfigScreen(
         isAppendingFiles = false
     }
 
-    val locationPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { _ -> } // Result is handled implicitly by OS, no direct action needed
-
     LaunchedEffect(Unit) {
-        if (state.conversionType?.id == "metadata_editor" && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-            if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_MEDIA_LOCATION) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                locationPermissionLauncher.launch(android.Manifest.permission.ACCESS_MEDIA_LOCATION)
-            }
-        }
         if (state.selectedFileUris.isEmpty() && state.workbenchImageItems.isEmpty()) {
             if (isImageConversion) {
                 imagePicker.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
@@ -468,7 +462,15 @@ fun ConversionConfigScreenContent(
                 ) {
                     Column {
                         Box(modifier = Modifier.fillMaxWidth().height(220.dp)) {
-                            if (state.selectedPreviewUri != null) {
+                            val ext = state.selectedFileName.substringAfterLast('.', "").lowercase()
+                            val isExcel = state.conversionType?.id == "excel_to_pdf" || ext in listOf("xlsx", "xls", "csv")
+
+                            if (isExcel && state.selectedFileUris.isNotEmpty()) {
+                                ExcelPreviewCard(
+                                    fileName = state.selectedFileName,
+                                    isExcelToPdf = state.conversionType?.id == "excel_to_pdf"
+                                )
+                            } else if (state.selectedPreviewUri != null) {
                                 AsyncImage(
                                     model = state.selectedPreviewUri,
                                     contentDescription = "Preview",
@@ -483,7 +485,18 @@ fun ConversionConfigScreenContent(
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                                        .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f)),
+                                        .background(
+                                            if (isExcel) {
+                                                Brush.linearGradient(listOf(Color(0xFF0F3E26), Color(0xFF135A37)))
+                                            } else {
+                                                Brush.linearGradient(
+                                                    listOf(
+                                                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f),
+                                                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.1f)
+                                                    )
+                                                )
+                                            }
+                                        ),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -491,7 +504,7 @@ fun ConversionConfigScreenContent(
                                             imageVector = getContentIconForFileName(state.selectedFileName),
                                             contentDescription = null,
                                             modifier = Modifier.size(56.dp),
-                                            tint = MaterialTheme.colorScheme.primary
+                                            tint = if (isExcel) Color(0xFF86EFAC) else MaterialTheme.colorScheme.primary
                                         )
                                         if (state.selectedFileUris.isNotEmpty()) {
                                             Spacer(modifier = Modifier.height(10.dp))
@@ -499,7 +512,15 @@ fun ConversionConfigScreenContent(
                                                 text = getContentLabelForFileName(state.selectedFileName),
                                                 style = MaterialTheme.typography.titleMedium,
                                                 fontWeight = FontWeight.Bold,
-                                                color = MaterialTheme.colorScheme.onSurface
+                                                color = if (isExcel) Color.White else MaterialTheme.colorScheme.onSurface
+                                            )
+                                        } else if (isExcel) {
+                                            Spacer(modifier = Modifier.height(10.dp))
+                                            Text(
+                                                text = "Select Excel Spreadsheet (.xlsx, .xls, .csv)",
+                                                style = MaterialTheme.typography.titleSmall,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = Color.White
                                             )
                                         }
                                     }
@@ -994,6 +1015,114 @@ private fun PermissionToggle(
 private fun isPreviewableImage(fileName: String): Boolean {
     val ext = fileName.substringAfterLast('.', "").lowercase()
     return ext in listOf("jpg", "jpeg", "png", "webp", "bmp", "heic", "gif")
+}
+
+@Composable
+private fun ExcelPreviewCard(
+    fileName: String,
+    isExcelToPdf: Boolean = true,
+    modifier: Modifier = Modifier
+) {
+    val ext = fileName.substringAfterLast('.', "").uppercase().ifBlank { "XLSX" }
+    val isCsv = ext == "CSV"
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+            .background(
+                Brush.linearGradient(
+                    colors = listOf(
+                        Color(0xFF0F3E26),
+                        Color(0xFF135A37),
+                        Color(0xFF1B7A48)
+                    )
+                )
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        // Decorative spreadsheet grid pattern in background
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val step = 28.dp.toPx()
+            var x = 0f
+            while (x < size.width) {
+                drawLine(
+                    color = Color.White.copy(alpha = 0.06f),
+                    start = Offset(x, 0f),
+                    end = Offset(x, size.height),
+                    strokeWidth = 1f
+                )
+                x += step
+            }
+            var y = 0f
+            while (y < size.height) {
+                drawLine(
+                    color = Color.White.copy(alpha = 0.06f),
+                    start = Offset(0f, y),
+                    end = Offset(size.width, y),
+                    strokeWidth = 1f
+                )
+                y += step
+            }
+        }
+
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier.padding(16.dp)
+        ) {
+            // Excel Brand Icon Badge
+            Surface(
+                shape = RoundedCornerShape(18.dp),
+                color = Color(0xFF107C41),
+                shadowElevation = 8.dp,
+                modifier = Modifier.size(72.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Outlined.TableChart,
+                        contentDescription = "Excel Spreadsheet",
+                        tint = Color.White,
+                        modifier = Modifier.size(40.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            Text(
+                text = if (isCsv) "Delimited Data Table" else "Microsoft Excel Spreadsheet",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = Color.White
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = Color.White.copy(alpha = 0.15f)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
+                ) {
+                    Text(
+                        text = ext,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color(0xFF86EFAC)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = if (isExcelToPdf) "• Ready for PDF conversion" else "• Spreadsheet selected",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White.copy(alpha = 0.9f)
+                    )
+                }
+            }
+        }
+    }
 }
 
 private fun getContentIconForFileName(fileName: String): androidx.compose.ui.graphics.vector.ImageVector {

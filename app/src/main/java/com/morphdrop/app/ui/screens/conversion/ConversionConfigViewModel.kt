@@ -244,7 +244,7 @@ class ConversionConfigViewModel @Inject constructor(
                     selectedFileNames = names,
                     selectedFileSize = totalSize,
                     isBatchMode = selectedUris.size > 1,
-                    selectedPreviewUri = selectedUris.firstOrNull(),
+                    selectedPreviewUri = null,
                     isConvertEnabled = false,
                     errorMessage = "Invalid file type: '$invalidFileName'. ${type?.name ?: "This tool"} only accepts $allowedText files."
                 )
@@ -271,6 +271,10 @@ class ConversionConfigViewModel @Inject constructor(
         }
 
         val allImageItems = currentImageItems + newImageItems
+        val firstSelectedUri = selectedUris.firstOrNull()
+        val firstSelectedMime = firstSelectedUri?.let { FileHelper.getMimeType(context, it) } ?: ""
+        val firstSelectedExt = firstFileName.substringAfterLast('.', "").lowercase()
+        val isFirstAnImage = firstSelectedMime.startsWith("image/") || firstSelectedExt in listOf("jpg", "jpeg", "png", "webp", "bmp", "heic", "gif")
 
         _state.update {
             val s = it.copy(
@@ -283,7 +287,7 @@ class ConversionConfigViewModel @Inject constructor(
                 },
                 outputFileName = if (it.outputFileName.isBlank() || !append) outName else it.outputFileName,
                 isBatchMode = selectedUris.size > 1,
-                selectedPreviewUri = selectedUris.firstOrNull(),
+                selectedPreviewUri = if (isFirstAnImage) firstSelectedUri else null,
                 errorMessage = null
             )
             s.copy(isConvertEnabled = isStateValid(s))
