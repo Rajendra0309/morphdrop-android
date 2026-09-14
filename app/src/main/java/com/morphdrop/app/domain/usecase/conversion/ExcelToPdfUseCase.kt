@@ -11,6 +11,7 @@ import android.net.Uri
 import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
+import android.util.Log
 import com.morphdrop.app.domain.repository.SettingsRepository
 import com.morphdrop.app.util.FileHelper
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -30,12 +31,18 @@ class ExcelToPdfUseCase @Inject constructor(
     private val settingsRepository: SettingsRepository
 ) {
     companion object {
-        private const val PAGE_WIDTH = 842 // A4 Landscape Width in points
-        private const val PAGE_HEIGHT = 595 // A4 Landscape Height in points
+        private const val TAG = "ExcelToPdfUseCase"
+        private const val PAGE_WIDTH_PORTRAIT = 595f // A4 Portrait Width in points
+        private const val PAGE_HEIGHT_PORTRAIT = 842f // A4 Portrait Height in points
+        private const val PAGE_WIDTH_LANDSCAPE = 842f // A4 Landscape Width in points
+        private const val PAGE_HEIGHT_LANDSCAPE = 595f // A4 Landscape Height in points
         private const val MARGIN_LEFT = 30f
         private const val MARGIN_RIGHT = 30f
         private const val MARGIN_TOP = 30f
         private const val MARGIN_BOTTOM = 30f
+        private const val MIN_COLUMN_WIDTH = 48f
+        private const val MAX_COLUMN_WIDTH = 200f
+        private const val MAX_PAGE_WIDTH = 14400f // PDF standard maximum page dimension (200 inches)
     }
 
     suspend operator fun invoke(
@@ -167,7 +174,7 @@ class ExcelToPdfUseCase @Inject constructor(
                         XmlPullParser.START_TAG -> {
                             when {
                                 tag == "row" || tag.endsWith(":row") -> {
-                                    val rAttr = parser.getAttributeValue(null, "r")
+                                     val rAttr = parser.getAttributeValue(null, "r")
                                     currentRowIndex = rAttr?.toIntOrNull() ?: (currentRowIndex + 1)
                                 }
                                 tag == "c" || tag.endsWith(":c") -> {
@@ -277,126 +284,194 @@ class ExcelToPdfUseCase @Inject constructor(
     ): Int {
         if (table.isEmpty()) return startPageNum
 
-        val usableWidth = PAGE_WIDTH - MARGIN_LEFT - MARGIN_RIGHT
-        val maxBottom = PAGE_HEIGHT - MARGIN_BOTTOM
         val totalCols = table.maxOfOrNull { it.size } ?: 1
 
-        val colLengths = IntArray(totalCols) { 1 }
-        for (row in table) {
-            for (c in 0 until min(row.size, totalCols)) {
-                val len = row[c].trim().length
-                if (len > colLengths[c]) colLengths[c] = len
-            }
+        // 3. Auto Orientation Detection (>5 cols = Landscape, <=5 cols = Portrait)
+        val isLandscape = totalCols > 5
+        val orientation = if (isLandscape) "Landscape" else "Portrait"
+        Log.d(TAG, "Sheet has $totalCols columns, using $orientation orientation")
+
+        val basePageWidth = if (isLandscape) PAGE_WIDTH_LANDSCAPE else PAGE_WIDTH_PORTRAIT
+        val basePageHeight = if (isLandscape) PAGE_HEIGHT_LANDSCAPE else PAGE_HEIGHT_PORTRAIT
+        val maxBottom = basePageHeight - MARGIN_BOTTOM
+
+        // 6. Font Size (Default: 9pt for data, 10pt bold for header, auto-reduce for very wide sheets)
+        val dataFontSize = when {
+            totalCols >= 20 -> 7f
+            totalCols >= 12 -> 8f
+            else -> 9f
+        }
+        val headerFontSize = (dataFontSize + 1f).coerceAtLeast(8f)
+
+        val headerPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.BLACK
+            textSize = headerFontSize
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
 
-        // Measure text precisely using Paint
-        val basePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-            textSize = 9f // Default point size
+        val dataPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.BLACK
+            textSize = dataFontSize
             typeface = Typeface.DEFAULT
         }
 
-        val rawColWidths = FloatArray(totalCols)
+        // 2. Smart Column Width Bounds (min 48f, max 200f, scan first 10 rows)
+        val sampleRows = table.take(10)
+        val finalColWidths = FloatArray(totalCols)
         var totalTableWidth = 0f
-        for (i in 0 until totalCols) {
-            // Find max text width in this column
-            var maxWidth = 10f
-            for (row in table) {
-                if (i < row.size) {
-                    val w = basePaint.measureText(row[i].trim())
-                    if (w > maxWidth) maxWidth = w
+
+        for (c in 0 until totalCols) {
+            var maxContentWidth = 0f
+            for ((rIdx, row) in sampleRows.withIndex()) {
+                if (c < row.size) {
+                    val text = row[c].trim()
+                    val paint = if (rIdx == 0) headerPaint else dataPaint
+                    val measuredWidth = paint.measureText(text)
+                    if (measuredWidth > maxContentWidth) {
+                        maxContentWidth = measuredWidth
+                    }
                 }
             }
-            rawColWidths[i] = maxWidth + 12f // Add padding
-            totalTableWidth += rawColWidths[i]
+            // Add padding (4f left + 4f right + 4f safety buffer = 12f) and enforce bounds
+            val colWidth = (maxContentWidth + 12f).coerceIn(MIN_COLUMN_WIDTH, MAX_COLUMN_WIDTH)
+            finalColWidths[c] = colWidth
+            totalTableWidth += colWidth
         }
 
-        // Scaling logic: Fit all columns to width
-        val scaleFactor = if (totalTableWidth > usableWidth) {
-            usableWidth / totalTableWidth
-        } else 1.0f
+        // 1. Dynamic Page Width: expand canvas if table exceeds default width (capped at PDF standard limit)
+        val desiredPageWidth = max(basePageWidth, totalTableWidth + MARGIN_LEFT + MARGIN_RIGHT)
+        val actualPageWidth = desiredPageWidth.coerceAtMost(MAX_PAGE_WIDTH)
+        val actualPageHeight = basePageHeight
 
-        val finalColWidths = FloatArray(totalCols) { rawColWidths[it] * scaleFactor }
-        val fontSize = 9f * scaleFactor.coerceAtLeast(0.5f)
-
-        var currentPageNumber = startPageNum
+        if (desiredPageWidth > MAX_PAGE_WIDTH) {
+            val usableWidth = actualPageWidth - MARGIN_LEFT - MARGIN_RIGHT
+            val clampRatio = usableWidth / totalTableWidth
+            for (i in 0 until totalCols) {
+                finalColWidths[i] *= clampRatio
+            }
+        }
 
         val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.parseColor("#999999")
+            color = Color.parseColor("#CCCCCC")
             style = Paint.Style.STROKE
             strokeWidth = 0.5f
         }
 
+        // 4 & 5. Background styling: #E8EAF6 for header, #FFFFFF / #F9F9FB for zebra striping
         val headerBgPaint = Paint().apply {
-            color = Color.parseColor("#EEEEEE")
+            color = Color.parseColor("#E8EAF6")
             style = Paint.Style.FILL
         }
 
-        val titlePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.BLACK
-            textSize = spToPx(13f)
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        val evenRowBgPaint = Paint().apply {
+            color = Color.parseColor("#FFFFFF")
+            style = Paint.Style.FILL
         }
 
-        val cellPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.BLACK
-            textSize = fontSize
-            typeface = Typeface.DEFAULT
+        val oddRowBgPaint = Paint().apply {
+            color = Color.parseColor("#F9F9FB")
+            style = Paint.Style.FILL
         }
 
-        var pageInfo = PdfDocument.PageInfo.Builder(PAGE_WIDTH, PAGE_HEIGHT, currentPageNumber).create()
+        // Helper to draw a row with backgrounds, borders, and cell text
+        fun drawRow(
+            canvas: Canvas,
+            layouts: List<StaticLayout>,
+            rowHeight: Float,
+            y: Float,
+            isHeader: Boolean,
+            dataRowIndex: Int
+        ) {
+            val bgPaint = if (isHeader) {
+                headerBgPaint
+            } else {
+                if (dataRowIndex % 2 == 0) evenRowBgPaint else oddRowBgPaint
+            }
+
+            var xPos = MARGIN_LEFT
+            for (cIndex in 0 until totalCols) {
+                val width = finalColWidths[cIndex]
+                val rect = RectF(xPos, y, xPos + width, y + rowHeight)
+                canvas.drawRect(rect, bgPaint)
+                canvas.drawRect(rect, borderPaint)
+
+                if (cIndex < layouts.size) {
+                    canvas.save()
+                    canvas.translate(xPos + 4f, y + 4f)
+                    layouts[cIndex].draw(canvas)
+                    canvas.restore()
+                }
+                xPos += width
+            }
+        }
+
+        // 4. Header Repetition: Precompute header layouts from row 0
+        val headerRow = table[0]
+        val headerLayouts = mutableListOf<StaticLayout>()
+        var headerRowHeight = 0f
+
+        for (cIndex in 0 until totalCols) {
+            val text = if (cIndex < headerRow.size) headerRow[cIndex].trim() else ""
+            val width = finalColWidths[cIndex]
+            val layout = createStaticLayout(text, headerPaint, (width - 8f).toInt().coerceAtLeast(1))
+            headerLayouts.add(layout)
+            if (layout.height + 8f > headerRowHeight) {
+                headerRowHeight = layout.height + 8f
+            }
+        }
+
+        var currentPageNumber = startPageNum
+        var pageInfo = PdfDocument.PageInfo.Builder(
+            actualPageWidth.toInt(),
+            actualPageHeight.toInt(),
+            currentPageNumber
+        ).create()
         var page = pdfDocument.startPage(pageInfo)
         var canvas = page.canvas
         var yPos = MARGIN_TOP
 
-        // Title line removed as requested
+        // Draw header row on Page 1
+        drawRow(canvas, headerLayouts, headerRowHeight, yPos, isHeader = true, dataRowIndex = 0)
+        yPos += headerRowHeight
 
-        for ((rIndex, row) in table.withIndex()) {
-            kotlinx.coroutines.yield() // Support cancellation
-            val isHeaderRow = rIndex == 0
-            val layoutsForCell = mutableListOf<StaticLayout>()
+        // Render Data Rows (rIndex starting at 1)
+        for (rIndex in 1 until table.size) {
+            kotlinx.coroutines.yield() // Support coroutine cancellation
+            val row = table[rIndex]
+            val cellLayouts = mutableListOf<StaticLayout>()
             var maxRowHeight = 0f
 
-            val currentCellPaint = TextPaint(cellPaint).apply {
-                if (isHeaderRow) typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            }
-
-            // Create layouts for each cell
             for (cIndex in 0 until totalCols) {
                 val text = if (cIndex < row.size) row[cIndex].trim() else ""
                 val width = finalColWidths[cIndex]
-                val layout = createStaticLayout(text, currentCellPaint, (width - 8f).toInt().coerceAtLeast(1))
-                layoutsForCell.add(layout)
+                val layout = createStaticLayout(text, dataPaint, (width - 8f).toInt().coerceAtLeast(1))
+                cellLayouts.add(layout)
                 if (layout.height + 8f > maxRowHeight) {
                     maxRowHeight = layout.height + 8f
                 }
             }
 
-            // Page overflow
+            // Check for page overflow
             if (yPos + maxRowHeight > maxBottom) {
                 pdfDocument.finishPage(page)
                 currentPageNumber++
-                pageInfo = PdfDocument.PageInfo.Builder(PAGE_WIDTH, PAGE_HEIGHT, currentPageNumber).create()
+                pageInfo = PdfDocument.PageInfo.Builder(
+                    actualPageWidth.toInt(),
+                    actualPageHeight.toInt(),
+                    currentPageNumber
+                ).create()
                 page = pdfDocument.startPage(pageInfo)
                 canvas = page.canvas
                 yPos = MARGIN_TOP
+
+                // 4. Re-render header row at top of every new page
+                drawRow(canvas, headerLayouts, headerRowHeight, yPos, isHeader = true, dataRowIndex = 0)
+                yPos += headerRowHeight
             }
 
-            // Draw cells
-            var xPos = MARGIN_LEFT
-            for (cIndex in 0 until totalCols) {
-                val width = finalColWidths[cIndex]
-                val rect = RectF(xPos, yPos, xPos + width, yPos + maxRowHeight)
-
-                if (isHeaderRow) canvas.drawRect(rect, headerBgPaint)
-                canvas.drawRect(rect, borderPaint)
-
-                canvas.save()
-                canvas.translate(xPos + 4f, yPos + 4f)
-                layoutsForCell[cIndex].draw(canvas)
-                canvas.restore()
-
-                xPos += width
-            }
+            // 5. Zebra Striping for data rows (0-indexed: dataRowIndex 0, 2 -> white, 1, 3 -> light gray)
+            val dataRowIndex = rIndex - 1
+            drawRow(canvas, cellLayouts, maxRowHeight, yPos, isHeader = false, dataRowIndex = dataRowIndex)
             yPos += maxRowHeight
         }
 
