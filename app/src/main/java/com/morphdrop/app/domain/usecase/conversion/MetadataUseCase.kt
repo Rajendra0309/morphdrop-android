@@ -136,39 +136,90 @@ class MetadataUseCase @Inject constructor(
 
         val realPath = getRealFilePathFromUri(context, uri)
 
-        var tempExifFile: File? = null
+        val tempExifFiles = mutableListOf<File>()
         try {
-            val exif = try {
+            val exif = run {
+                // 1. Try real file path if readable
                 if (!realPath.isNullOrBlank() && File(realPath).canRead()) {
-                    ExifInterface(realPath)
-                } else {
-                    throw Exception("No readable real path")
+                    return@run ExifInterface(realPath)
                 }
-            } catch (_: Exception) {
-                try {
-                    context.contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
-                        ExifInterface(pfd.fileDescriptor)
-                    } ?: throw Exception("Null pfd")
-                } catch (_: Exception) {
+
+                // 2. Try MediaStore with setRequireOriginal if this is a media document URI
+                if (android.provider.DocumentsContract.isDocumentUri(context, uri)) {
                     try {
-                        // Copy bytes directly from the user's selected URI to a temp file in cacheDir.
-                        // This allows ExifInterface full seekable access to read ALL EXIF directories
-                        // reliably without stream limitations and without requiring MediaStore permissions.
-                        val ext = "." + (extension.ifBlank { "jpg" })
-                        val temp = File.createTempFile("exif_inspect_", ext, context.cacheDir)
-                        tempExifFile = temp
-                        FileHelper.readFileFromUri(context, uri).use { input ->
-                            temp.outputStream().use { output ->
-                                input.copyTo(output)
+                        val isMediaDoc = uri.authority == "com.android.providers.media.documents"
+                        if (isMediaDoc) {
+                            val docId = android.provider.DocumentsContract.getDocumentId(uri)
+                            val id = if (docId.startsWith("image:")) docId.substringAfter(':').toLongOrNull() else null
+                            val mediaUri = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                                runCatching { android.provider.MediaStore.getMediaUri(context, uri) }.getOrNull()
+                                    ?: id?.let { android.content.ContentUris.withAppendedId(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, it) }
+                            } else {
+                                id?.let { android.content.ContentUris.withAppendedId(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, it) }
+                            }
+
+                            if (mediaUri != null) {
+                                val origMediaUri = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                                    android.provider.MediaStore.setRequireOriginal(mediaUri)
+                                } else mediaUri
+                                context.contentResolver.openInputStream(origMediaUri)?.use { input ->
+                                    val temp = File.createTempFile("exif_media_", "." + (extension.ifBlank { "jpg" }), context.cacheDir)
+                                    tempExifFiles.add(temp)
+                                    temp.outputStream().use { output -> input.copyTo(output) }
+                                    val ex = ExifInterface(temp.absolutePath)
+                                    val arr = FloatArray(2)
+                                    if (ex.getLatLong(arr) && (arr[0] != 0f || arr[1] != 0f)) {
+                                        return@run ex
+                                    }
+                                }
                             }
                         }
-                        ExifInterface(temp.absolutePath)
                     } catch (_: Exception) {
-                        FileHelper.readFileFromUri(context, uri).use { inputStream ->
-                            ExifInterface(inputStream)
-                        }
+                        // MediaStore resolution failed, fallback to direct stream
                     }
                 }
+
+                // 3. Try Direct MediaStore URI if it's already a media URI
+                if (uri.authority?.contains("media") == true && !android.provider.DocumentsContract.isDocumentUri(context, uri)) {
+                    try {
+                        val origMediaUri = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                            android.provider.MediaStore.setRequireOriginal(uri)
+                        } else uri
+                        context.contentResolver.openInputStream(origMediaUri)?.use { input ->
+                            val temp = File.createTempFile("exif_media_orig_", "." + (extension.ifBlank { "jpg" }), context.cacheDir)
+                            tempExifFiles.add(temp)
+                            temp.outputStream().use { output -> input.copyTo(output) }
+                            val ex = ExifInterface(temp.absolutePath)
+                            val arr = FloatArray(2)
+                            if (ex.getLatLong(arr) && (arr[0] != 0f || arr[1] != 0f)) {
+                                return@run ex
+                            }
+                        }
+                    } catch (_: Exception) {
+                        // Fallback to direct stream
+                    }
+                }
+
+                // 4. Fallback to standard reading via openFileDescriptor or readFileFromUri
+                val ext = "." + (extension.ifBlank { "jpg" })
+                val temp = File.createTempFile("exif_inspect_", ext, context.cacheDir)
+                tempExifFiles.add(temp)
+                try {
+                    context.contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
+                        java.io.FileInputStream(pfd.fileDescriptor).use { input ->
+                            temp.outputStream().use { output -> input.copyTo(output) }
+                        }
+                    } ?: run {
+                        FileHelper.readFileFromUri(context, uri).use { input ->
+                            temp.outputStream().use { output -> input.copyTo(output) }
+                        }
+                    }
+                } catch (_: Exception) {
+                    FileHelper.readFileFromUri(context, uri).use { input ->
+                        temp.outputStream().use { output -> input.copyTo(output) }
+                    }
+                }
+                ExifInterface(temp.absolutePath)
             }
 
             cameraMake = exif.getAttribute(ExifInterface.TAG_MAKE)?.trim()?.takeIf { it.isNotEmpty() }
@@ -212,32 +263,54 @@ class MetadataUseCase @Inject constructor(
 
             val latLngArray = FloatArray(2)
             if (exif.getLatLong(latLngArray)) {
-                lat = latLngArray[0].toDouble()
-                lng = latLngArray[1].toDouble()
+                if (latLngArray[0] != 0f || latLngArray[1] != 0f) {
+                    lat = latLngArray[0].toDouble()
+                    lng = latLngArray[1].toDouble()
+                }
             } else {
                 exif.latLong?.let {
-                    lat = it[0].toDouble()
-                    lng = it[1].toDouble()
+                    if (it[0] != 0.0 || it[1] != 0.0) {
+                        lat = it[0]
+                        lng = it[1]
+                    }
                 }
             }
 
+            val rawLatDms = exif.getAttribute(ExifInterface.TAG_GPS_LATITUDE)
+            val rawLngDms = exif.getAttribute(ExifInterface.TAG_GPS_LONGITUDE)
+
             if (lat == null || lng == null) {
-                val latDms = exif.getAttribute(ExifInterface.TAG_GPS_LATITUDE)
+                val latDms = rawLatDms
                 val latRef = exif.getAttribute(ExifInterface.TAG_GPS_LATITUDE_REF)
-                val lngDms = exif.getAttribute(ExifInterface.TAG_GPS_LONGITUDE)
+                val lngDms = rawLngDms
                 val lngRef = exif.getAttribute(ExifInterface.TAG_GPS_LONGITUDE_REF)
 
-                if (lat == null) lat = parseDmsToDecimal(latDms, latRef)
-                if (lng == null) lng = parseDmsToDecimal(lngDms, lngRef)
+                val parsedLat = parseDmsToDecimal(latDms, latRef)
+                val parsedLng = parseDmsToDecimal(lngDms, lngRef)
+                if (parsedLat != null && parsedLng != null && (parsedLat != 0.0 || parsedLng != 0.0)) {
+                    lat = parsedLat
+                    lng = parsedLng
+                }
             }
 
-            if (exif.getAttribute(ExifInterface.TAG_GPS_ALTITUDE) != null) {
-                altitude = exif.getAltitude(0.0)
+            // If coordinates are (0.0, 0.0), it's redacted zeros / Null Island, treat as no GPS
+            if (lat != null && lng != null && lat == 0.0 && lng == 0.0) {
+                lat = null
+                lng = null
+            }
+
+            if (lat != null && lng != null) {
+                if (exif.getAttribute(ExifInterface.TAG_GPS_ALTITUDE) != null) {
+                    val alt = exif.getAltitude(0.0)
+                    if (alt != 0.0) {
+                        altitude = alt
+                    }
+                }
             }
         } catch (_: Exception) {
             // Ignore EXIF parsing errors gracefully
         } finally {
-            try { tempExifFile?.delete() } catch (_: Exception) {}
+            tempExifFiles.forEach { runCatching { it.delete() } }
         }
 
         // MediaStore Query Fallback for recently taken photos if EXIF stream attributes were redacted
