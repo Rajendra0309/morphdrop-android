@@ -68,6 +68,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -107,6 +108,7 @@ import java.util.UUID
 
 @Composable
 fun ConversionConfigScreen(
+    initialUri: String? = null,
     onNavigateBack: () -> Unit = {},
     onNavigateToProcessing: (conversionTypeId: String, workId: String) -> Unit = { _, _ -> },
     viewModel: ConversionConfigViewModel = hiltViewModel(),
@@ -114,6 +116,8 @@ fun ConversionConfigScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+
+    var hasAutoLaunchedPicker by rememberSaveable { mutableStateOf(false) }
 
     val mimeFilter = when (state.conversionType?.id) {
         "excel_to_pdf" -> arrayOf("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.ms-excel", "text/csv")
@@ -151,7 +155,9 @@ fun ConversionConfigScreen(
     }
 
     LaunchedEffect(Unit) {
-        if (state.selectedFileUris.isEmpty() && state.workbenchImageItems.isEmpty()) {
+        val hasIncomingUri = !initialUri.isNullOrBlank() || state.hasInitialUri
+        if (!hasAutoLaunchedPicker && !hasIncomingUri && state.selectedFileUris.isEmpty() && state.workbenchImageItems.isEmpty()) {
+            hasAutoLaunchedPicker = true
             if (isImageConversion) {
                 imagePicker.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
             } else {

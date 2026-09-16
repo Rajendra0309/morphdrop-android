@@ -144,8 +144,11 @@ object FileHelper {
                     if (idx >= 0) name = cursor.getString(idx) ?: "unknown"
                 }
             }
-        } catch (_: SecurityException) {
+        } catch (_: Exception) {
             name = "unknown"
+        }
+        if (name == "unknown") {
+            name = uri.lastPathSegment ?: "unknown"
         }
         return name
     }

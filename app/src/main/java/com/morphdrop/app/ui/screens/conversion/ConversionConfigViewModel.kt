@@ -14,6 +14,7 @@ import com.morphdrop.app.util.FileHelper
 import com.morphdrop.app.util.MediaThumbnailHelper
 import com.morphdrop.app.util.PdfThumbnailHelper
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -42,6 +43,7 @@ data class WorkbenchPage(
 
 data class ConversionConfigState(
     val conversionType: ConversionType? = null,
+    val hasInitialUri: Boolean = false,
     val selectedFileUris: List<Uri> = emptyList(),
     val workbenchImageItems: List<WorkbenchImageItem> = emptyList(),
     val expandedImageId: String? = null,
@@ -118,6 +120,7 @@ data class ConversionConfigState(
 @HiltViewModel
 class ConversionConfigViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
+    @param:ApplicationContext private val context: Context,
     private val settingsRepository: SettingsRepository,
     private val metadataUseCase: com.morphdrop.app.domain.usecase.conversion.MetadataUseCase
 ) : ViewModel() {
@@ -130,12 +133,17 @@ class ConversionConfigViewModel @Inject constructor(
         "compress_image" -> "compress_images"
         "split" -> "split_pdf"
         "merge" -> "merge_pdf"
+        "text_to_pdf" -> "txt_to_pdf"
         else -> rawConversionTypeId
     }
 
+    private val initialUriStr: String? = savedStateHandle.get<String>("uri")?.takeIf { it.isNotBlank() && it != "{uri}" }
+    private val hasInitialUri: Boolean = !initialUriStr.isNullOrBlank()
+
     private val _state = MutableStateFlow(
         ConversionConfigState(
-            conversionType = ConversionType.defaultList.find { it.id == conversionTypeId }
+            conversionType = ConversionType.defaultList.find { it.id == conversionTypeId },
+            hasInitialUri = hasInitialUri
         )
     )
     val state: StateFlow<ConversionConfigState> = _state.asStateFlow()
@@ -163,13 +171,33 @@ class ConversionConfigViewModel @Inject constructor(
                 }
             }
         }
+
+        // Auto-stage file if URI parameter was provided via intent / navigation
+        if (!initialUriStr.isNullOrBlank()) {
+            viewModelScope.launch(Dispatchers.IO) {
+                runCatching {
+                    val decodedStr = runCatching { Uri.decode(initialUriStr) }.getOrDefault(initialUriStr)
+                    val rawList = if (decodedStr.contains("|")) {
+                        decodedStr.split("|")
+                    } else {
+                        initialUriStr.split("|")
+                    }
+                    val uris = rawList.mapNotNull { str ->
+                        if (str.isNotBlank()) Uri.parse(str) else null
+                    }
+                    if (uris.isNotEmpty()) {
+                        onFilesSelected(context, uris)
+                    }
+                }
+            }
+        }
     }
 
     fun getAllowedExtensions(type: ConversionType?): List<String> {
         val t = type ?: return emptyList()
         return when (t.id) {
             "excel_to_pdf" -> listOf("xls", "xlsx", "csv")
-            "text_to_pdf" -> listOf("txt")
+            "txt_to_pdf", "text_to_pdf" -> listOf("txt")
             "md_to_pdf" -> listOf("md", "markdown")
             "pdf_to_images", "split_pdf", "compress_pdf", "protect_pdf", "unlock_pdf", "organize_pdf", "merge_pdf" -> listOf("pdf")
             "images_to_pdf", "compress_images", "image_converter" -> listOf("png", "jpg", "jpeg", "webp", "bmp")
@@ -181,15 +209,16 @@ class ConversionConfigViewModel @Inject constructor(
     fun onFilesSelected(context: Context, uris: List<Uri>, append: Boolean = false) {
         if (uris.isEmpty()) return
 
-        val type = _state.value.conversionType
-        val allowedExts = getAllowedExtensions(type)
-        val isMultiAllowed = type?.isMultiFileAllowed == true
+        viewModelScope.launch(Dispatchers.IO) {
+            val type = _state.value.conversionType
+            val allowedExts = getAllowedExtensions(type)
+            val isMultiAllowed = type?.isMultiFileAllowed == true
 
-        val incomingUris = if (!isMultiAllowed && uris.size > 1) {
-            listOf(uris.first())
-        } else {
-            uris
-        }
+            val incomingUris = if (!isMultiAllowed && uris.size > 1) {
+                listOf(uris.first())
+            } else {
+                uris
+            }
 
         val currentUris = if (append) _state.value.selectedFileUris else emptyList()
         val currentNames = if (append) _state.value.selectedFileNames else emptyList()
@@ -213,8 +242,23 @@ class ConversionConfigViewModel @Inject constructor(
             val name = FileHelper.getFileName(context, uri)
             val size = FileHelper.getFileSize(context, uri)
             val ext = name.substringAfterLast('.', "").lowercase()
+            val mime = FileHelper.getMimeType(context, uri)
+            val isMimeAllowed = when (type?.id) {
+                "excel_to_pdf" -> mime in listOf(
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    "application/vnd.ms-excel",
+                    "text/csv",
+                    "application/csv",
+                    "text/comma-separated-values"
+                )
+                "txt_to_pdf", "text_to_pdf" -> mime.startsWith("text/")
+                "md_to_pdf" -> mime.contains("markdown") || mime.startsWith("text/")
+                "images_to_pdf", "compress_images", "image_converter" -> mime.startsWith("image/")
+                "pdf_to_images", "split_pdf", "compress_pdf", "protect_pdf", "unlock_pdf", "organize_pdf", "merge_pdf" -> mime == "application/pdf"
+                else -> false
+            }
 
-            if (allowedExts.isNotEmpty() && ext !in allowedExts) {
+            if (allowedExts.isNotEmpty() && ext !in allowedExts && !isMimeAllowed) {
                 hasInvalidFile = true
                 invalidFileName = name
             }
@@ -249,7 +293,7 @@ class ConversionConfigViewModel @Inject constructor(
                     errorMessage = "Invalid file type: '$invalidFileName'. ${type?.name ?: "This tool"} only accepts $allowedText files."
                 )
             }
-            return
+            return@launch
         }
 
         val firstFileName = names.firstOrNull() ?: "file"
@@ -363,6 +407,7 @@ class ConversionConfigViewModel @Inject constructor(
 
         if (type?.id == "metadata_editor" && selectedUris.isNotEmpty()) {
             loadMetadata(context, selectedUris.first())
+        }
         }
     }
 

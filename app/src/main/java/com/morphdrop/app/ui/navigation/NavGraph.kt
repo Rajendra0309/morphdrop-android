@@ -157,15 +157,24 @@ fun NavGraph(
 
         composable(
             route = Screen.ConversionConfig.route,
-            arguments = listOf(navArgument("conversionTypeId") { type = NavType.StringType })
+            arguments = listOf(
+                navArgument("conversionTypeId") { type = NavType.StringType },
+                navArgument("uri") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                }
+            )
         ) { backStackEntry ->
             val typeId = backStackEntry.arguments?.getString("conversionTypeId") ?: ""
+            val initialUri = backStackEntry.arguments?.getString("uri")?.takeIf { it.isNotBlank() && it != "{uri}" }
             if (typeId == "ocr_text_extractor") {
                 OcrScreen(
                     onNavigateBack = { navController.popBackStack() }
                 )
             } else {
                 ConversionConfigScreen(
+                    initialUri = initialUri,
                     onNavigateBack = { navController.popBackStack() },
                     onNavigateToProcessing = { tId, workId ->
                         navController.navigate(Screen.Processing.createRoute(tId, workId))

@@ -2,6 +2,8 @@ package com.morphdrop.app
 
 import android.animation.ObjectAnimator
 import android.content.Intent
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.view.View
 import android.view.animation.AnticipateInterpolator
@@ -67,36 +69,161 @@ class MainActivity : ComponentActivity() {
         val shortcutTarget = intent.getStringExtra("extra_navigate_to")
         if (!shortcutTarget.isNullOrBlank()) {
             pendingShortcutRoute.value = resolveShortcutRoute(shortcutTarget)
+            return
         }
 
         val openMarkdown = intent.getStringExtra("extra_open_markdown")
         if (!openMarkdown.isNullOrBlank()) {
             pendingMarkdownUri.value = openMarkdown
+            return
         }
 
         val openHistoryId = intent.getLongExtra("extra_open_history_id", -1L)
         if (openHistoryId != -1L) {
             pendingShortcutRoute.value = Screen.HistoryDetail.createRoute(openHistoryId)
+            return
         }
 
-        extractMarkdownUri(intent)?.let { uriStr ->
-            pendingMarkdownUri.value = uriStr
+        resolveIncomingFileRoute(intent)?.let { route ->
+            pendingShortcutRoute.value = route
         }
     }
 
-    private fun extractMarkdownUri(intent: Intent?): String? {
-        if (intent == null || intent.action != Intent.ACTION_VIEW) return null
-        val data = intent.data ?: return null
-        
-        val mimeType = intent.type ?: contentResolver.getType(data)
-        val path = data.path ?: ""
-        
-        val isMarkdown = mimeType?.contains("markdown", ignoreCase = true) == true ||
-                mimeType?.contains("text/plain", ignoreCase = true) == true ||
-                path.endsWith(".md", ignoreCase = true) ||
-                data.toString().endsWith(".md", ignoreCase = true)
-                
-        return if (isMarkdown) data.toString() else null
+    private fun extractIncomingUris(intent: Intent?): List<Uri> {
+        if (intent == null) return emptyList()
+        val action = intent.action
+        val uris = mutableListOf<Uri>()
+
+        if (action == Intent.ACTION_VIEW) {
+            intent.data?.let { uris.add(it) }
+        } else if (action == Intent.ACTION_SEND) {
+            val streamUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                intent.getParcelableExtra(Intent.EXTRA_STREAM)
+            }
+            if (streamUri != null) {
+                uris.add(streamUri)
+            } else {
+                intent.data?.let { uris.add(it) }
+            }
+        } else if (action == Intent.ACTION_SEND_MULTIPLE) {
+            val streamUris = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM, Uri::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM)
+            }
+            if (!streamUris.isNullOrEmpty()) {
+                uris.addAll(streamUris)
+            }
+        }
+
+        // Also check ClipData if available
+        intent.clipData?.let { clipData ->
+            for (i in 0 until clipData.itemCount) {
+                val itemUri = clipData.getItemAt(i).uri
+                if (itemUri != null && itemUri !in uris) {
+                    uris.add(itemUri)
+                }
+            }
+        }
+
+        return uris
+    }
+
+    private fun getUriFileName(uri: Uri): String {
+        var name: String? = null
+        if (uri.scheme == "content") {
+            runCatching {
+                contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        val idx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                        if (idx != -1) name = cursor.getString(idx)
+                    }
+                }
+            }
+        }
+        return name ?: uri.lastPathSegment ?: ""
+    }
+
+    private fun resolveIncomingFileRoute(intent: Intent?): String? {
+        val uris = extractIncomingUris(intent)
+        if (uris.isEmpty()) {
+            val sharedText = intent?.getStringExtra(Intent.EXTRA_TEXT)
+            if (!sharedText.isNullOrBlank()) {
+                val cacheFile = java.io.File(cacheDir, "shared_text_${System.currentTimeMillis()}.md")
+                runCatching {
+                    cacheFile.writeText(sharedText)
+                    val fileUri = androidx.core.content.FileProvider.getUriForFile(
+                        this,
+                        "${packageName}.fileprovider",
+                        cacheFile
+                    )
+                    return Screen.MarkdownViewer.createRoute(fileUri.toString())
+                }
+            }
+            return null
+        }
+
+        for (u in uris) {
+            runCatching {
+                contentResolver.takePersistableUriPermission(u, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+        }
+
+        val firstUri = uris.first()
+        val mimeType = intent?.type ?: runCatching { contentResolver.getType(firstUri) }.getOrNull()
+        val fileName = getUriFileName(firstUri)
+        val ext = fileName.substringAfterLast('.', "").lowercase()
+
+        // 1. PDF -> Launch PdfViewerActivity directly
+        if (mimeType?.equals("application/pdf", ignoreCase = true) == true || ext == "pdf") {
+            val pdfIntent = Intent(this, PdfViewerActivity::class.java).apply {
+                action = Intent.ACTION_VIEW
+                data = firstUri
+                putExtra("pdf_uri", firstUri)
+                clipData = intent?.clipData ?: android.content.ClipData.newRawUri("PDF", firstUri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(pdfIntent)
+            finish()
+            return null
+        }
+
+        // 2. Excel / CSV -> Route to excel_to_pdf conversion
+        if (ext in listOf("xlsx", "xls", "csv") || 
+            mimeType in listOf(
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "application/vnd.ms-excel",
+                "text/csv",
+                "application/csv",
+                "text/comma-separated-values"
+            )
+        ) {
+            return Screen.ConversionConfig.createRoute("excel_to_pdf", firstUri.toString())
+        }
+
+        // 3. Markdown -> Route to MarkdownViewer
+        if (ext in listOf("md", "markdown") || mimeType?.contains("markdown", ignoreCase = true) == true) {
+            return Screen.MarkdownViewer.createRoute(firstUri.toString())
+        }
+
+        // 4. Images -> Route to images_to_pdf conversion (stages all selected images)
+        val imageExtensions = listOf("jpg", "jpeg", "png", "webp", "bmp")
+        if (ext in imageExtensions || (mimeType?.startsWith("image/") == true && ext !in listOf("gif", "heic", "svg"))) {
+            val joinedUris = uris.joinToString("|") { it.toString() }
+            return Screen.ConversionConfig.createRoute("images_to_pdf", joinedUris)
+        }
+
+        // 5. Plain Text
+        if (mimeType?.equals("text/plain", ignoreCase = true) == true || ext == "txt") {
+            return Screen.ConversionConfig.createRoute("txt_to_pdf", firstUri.toString())
+        }
+
+        // 6. Any other file type -> Open in Metadata Editor / Inspector
+        return Screen.ConversionConfig.createRoute("metadata_editor", firstUri.toString())
     }
 
     private fun resolveShortcutRoute(target: String): String {
@@ -258,9 +385,10 @@ class MainActivity : ComponentActivity() {
 
             if (hasSeenWelcome != null) {
                 val initialRoute = remember {
-                    val initialMarkdown = extractMarkdownUri(intent)
-                    if (initialMarkdown != null) {
-                        Screen.MarkdownViewer.createRoute(initialMarkdown)
+                    val incomingRoute = pendingShortcutRoute.value
+                    if (incomingRoute != null) {
+                        pendingShortcutRoute.value = null
+                        incomingRoute
                     } else if (hasSeenWelcome == true) {
                         Screen.Home.route
                     } else {

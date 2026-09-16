@@ -1,5 +1,6 @@
 package com.morphdrop.app
 
+import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -39,7 +40,21 @@ class PdfViewerActivity : ComponentActivity() {
         
         enableEdgeToEdge()
 
-        val pdfUri: Uri? = intent.data ?: intent.getParcelableExtra("pdf_uri")
+        val pdfUri: Uri? = intent.data 
+            ?: intent.getParcelableExtra("pdf_uri")
+            ?: if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                intent.getParcelableExtra(Intent.EXTRA_STREAM)
+            }
+            ?: intent.clipData?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.uri
+
+        pdfUri?.let { uri ->
+            runCatching {
+                contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+        }
 
         setContent {
             val themeMode by mainViewModel.themeMode.collectAsState()

@@ -4,8 +4,10 @@ import android.net.Uri
 
 sealed class Screen(val route: String) {
     data object Home : Screen("home")
-    data object ConversionConfig : Screen("config/{conversionTypeId}") {
-        fun createRoute(conversionTypeId: String) = "config/$conversionTypeId"
+    data object ConversionConfig : Screen("config/{conversionTypeId}?uri={uri}") {
+        fun createRoute(conversionTypeId: String, uri: String? = null): String =
+            if (!uri.isNullOrBlank()) "config/$conversionTypeId?uri=${Uri.encode(uri)}"
+            else "config/$conversionTypeId"
     }
     data object Processing : Screen("processing/{conversionTypeId}/{workId}") {
         fun createRoute(conversionTypeId: String, workId: String) = "processing/$conversionTypeId/$workId"
