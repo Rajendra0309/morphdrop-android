@@ -176,15 +176,10 @@ class ConversionConfigViewModel @Inject constructor(
         if (!initialUriStr.isNullOrBlank()) {
             viewModelScope.launch(Dispatchers.IO) {
                 runCatching {
-                    val decodedStr = runCatching { Uri.decode(initialUriStr) }.getOrDefault(initialUriStr)
-                    val rawList = if (decodedStr.contains("|")) {
-                        decodedStr.split("|")
-                    } else {
-                        initialUriStr.split("|")
-                    }
-                    val uris = rawList.mapNotNull { str ->
-                        if (str.isNotBlank()) Uri.parse(str) else null
-                    }
+                    val uris = initialUriStr.split("|")
+                        .map { it.trim() }
+                        .filter { it.isNotBlank() }
+                        .mapNotNull { str -> runCatching { Uri.parse(str) }.getOrNull() }
                     if (uris.isNotEmpty()) {
                         onFilesSelected(context, uris)
                     }

@@ -346,8 +346,13 @@ class ExcelToPdfUseCase @Inject constructor(
         if (desiredPageWidth > MAX_PAGE_WIDTH) {
             val usableWidth = actualPageWidth - MARGIN_LEFT - MARGIN_RIGHT
             val clampRatio = usableWidth / totalTableWidth
+            val minWidth = if (totalCols * MIN_COLUMN_WIDTH > usableWidth) {
+                usableWidth / totalCols
+            } else {
+                MIN_COLUMN_WIDTH
+            }
             for (i in 0 until totalCols) {
-                finalColWidths[i] *= clampRatio
+                finalColWidths[i] = max(minWidth, finalColWidths[i] * clampRatio)
             }
         }
 
@@ -420,6 +425,10 @@ class ExcelToPdfUseCase @Inject constructor(
             }
         }
 
+        // Split rows that exceed the printable page height
+        val maxPrintableHeight = (maxBottom - MARGIN_TOP - headerRowHeight).coerceAtLeast(50f)
+        val processedTable = splitOversizedRows(table, finalColWidths, maxPrintableHeight, dataPaint)
+
         var currentPageNumber = startPageNum
         var pageInfo = PdfDocument.PageInfo.Builder(
             actualPageWidth.toInt(),
@@ -435,9 +444,9 @@ class ExcelToPdfUseCase @Inject constructor(
         yPos += headerRowHeight
 
         // Render Data Rows (rIndex starting at 1)
-        for (rIndex in 1 until table.size) {
+        for (rIndex in 1 until processedTable.size) {
             kotlinx.coroutines.yield() // Support coroutine cancellation
-            val row = table[rIndex]
+            val row = processedTable[rIndex]
             val cellLayouts = mutableListOf<StaticLayout>()
             var maxRowHeight = 0f
 
@@ -477,6 +486,80 @@ class ExcelToPdfUseCase @Inject constructor(
 
         pdfDocument.finishPage(page)
         return currentPageNumber + 1
+    }
+
+    private fun splitOversizedRows(
+        table: List<List<String>>,
+        finalColWidths: FloatArray,
+        maxAllowedHeight: Float,
+        dataPaint: TextPaint
+    ): List<List<String>> {
+        if (table.size <= 1) return table
+
+        val totalCols = finalColWidths.size
+        val result = ArrayList<List<String>>(table.size)
+        // Header stays as row 0
+        result.add(table[0])
+
+        for (rIndex in 1 until table.size) {
+            val originalRow = table[rIndex]
+            var currentRow = originalRow
+
+            while (true) {
+                var exceeds = false
+                val cellLayouts = ArrayList<StaticLayout>(totalCols)
+                for (cIndex in 0 until totalCols) {
+                    val text = if (cIndex < currentRow.size) currentRow[cIndex].trim() else ""
+                    val width = finalColWidths[cIndex]
+                    val layout = createStaticLayout(text, dataPaint, (width - 8f).toInt().coerceAtLeast(1))
+                    cellLayouts.add(layout)
+                    if (layout.height + 8f > maxAllowedHeight) {
+                        exceeds = true
+                    }
+                }
+
+                if (!exceeds) {
+                    result.add(currentRow)
+                    break
+                }
+
+                // Row exceeds maxAllowedHeight: split into part 1 (fits) and part 2 (remainder)
+                val part1 = ArrayList<String>(totalCols)
+                val part2 = ArrayList<String>(totalCols)
+                var anyRemainder = false
+
+                for (cIndex in 0 until totalCols) {
+                    val text = if (cIndex < currentRow.size) currentRow[cIndex] else ""
+                    val layout = cellLayouts[cIndex]
+                    if (layout.height + 8f > maxAllowedHeight && layout.lineCount > 1) {
+                        var splitLine = 0
+                        while (splitLine < layout.lineCount && layout.getLineBottom(splitLine) + 8f <= maxAllowedHeight) {
+                            splitLine++
+                        }
+                        if (splitLine == 0) splitLine = 1
+
+                        val splitOffset = layout.getLineEnd(splitLine - 1)
+                        val head = text.substring(0, splitOffset).trimEnd()
+                        val tail = text.substring(splitOffset).trimStart()
+
+                        part1.add(head)
+                        part2.add(tail)
+                        if (tail.isNotEmpty()) anyRemainder = true
+                    } else {
+                        part1.add(text)
+                        part2.add("")
+                    }
+                }
+
+                result.add(part1)
+                if (!anyRemainder) {
+                    break
+                }
+                currentRow = part2
+            }
+        }
+
+        return result
     }
 
     private fun createStaticLayout(

@@ -405,35 +405,35 @@ class PdfViewerViewModel @Inject constructor(
     fun saveAnnotations() {
         val uri = currentUri ?: return
         viewModelScope.launch(Dispatchers.IO) {
-            _pendingDeletedAnnotationIds.forEach { id ->
-                annotationDao.deleteAnnotation(id)
-            }
-            _pendingDeletedAnnotationIds.clear()
-
-            _unsavedAnnotations.value.forEach { annotation ->
-                if (annotation is PdfAnnotation.Highlight) {
-                    val entity = PdfAnnotationEntity(
-                        id = annotation.id,
-                        pdfUri = uri.toString(),
-                        pageIndex = annotation.pageIndex,
-                        type = "HIGHLIGHT",
-                        color = annotation.color.toArgb(),
-                        data = gson.toJson(annotation.boundingBoxes)
-                    )
-                    annotationDao.insertAnnotation(entity)
-                } else if (annotation is PdfAnnotation.Drawing) {
-                    val drawingData = DrawingData(annotation.pathPoints, annotation.strokeWidth)
-                    val entity = PdfAnnotationEntity(
-                        id = annotation.id,
-                        pdfUri = uri.toString(),
-                        pageIndex = annotation.pageIndex,
-                        type = "DRAWING",
-                        color = annotation.color.toArgb(),
-                        data = gson.toJson(drawingData)
-                    )
-                    annotationDao.insertAnnotation(entity)
+            val toDelete = _pendingDeletedAnnotationIds.toList()
+            val toInsert = _unsavedAnnotations.value.mapNotNull { annotation ->
+                when (annotation) {
+                    is PdfAnnotation.Highlight -> {
+                        PdfAnnotationEntity(
+                            id = annotation.id,
+                            pdfUri = uri.toString(),
+                            pageIndex = annotation.pageIndex,
+                            type = "HIGHLIGHT",
+                            color = annotation.color.toArgb(),
+                            data = gson.toJson(annotation.boundingBoxes)
+                        )
+                    }
+                    is PdfAnnotation.Drawing -> {
+                        val drawingData = DrawingData(annotation.pathPoints, annotation.strokeWidth)
+                        PdfAnnotationEntity(
+                            id = annotation.id,
+                            pdfUri = uri.toString(),
+                            pageIndex = annotation.pageIndex,
+                            type = "DRAWING",
+                            color = annotation.color.toArgb(),
+                            data = gson.toJson(drawingData)
+                        )
+                    }
                 }
             }
+
+            annotationDao.saveAnnotationsAtomic(toDelete, toInsert)
+            _pendingDeletedAnnotationIds.clear()
             _unsavedAnnotations.value = emptyList()
             _undoStack.value = emptyList()
             _redoStack.value = emptyList()
@@ -656,8 +656,16 @@ class PdfViewerViewModel @Inject constructor(
             val page = renderer.openPage(pageIndex)
             // Use 2.0f density multiplier to give it crisp base resolution before zoom high-res kicks in.
             val density = application.resources.displayMetrics.density * 2.0f
-            val width = (page.width * density).toInt()
-            val height = (page.height * density).toInt()
+            var width = (page.width * density).toInt()
+            var height = (page.height * density).toInt()
+
+            // Guard exclusively against Android Hardware Canvas 100MB limit (100 * 1024 * 1024 bytes)
+            val maxBytes = 95 * 1024 * 1024L
+            if (width.toLong() * height.toLong() * 4L > maxBytes) {
+                val scaleFactor = kotlin.math.sqrt(maxBytes.toDouble() / (width.toLong() * height.toLong() * 4L)).toFloat()
+                width = (width * scaleFactor).toInt().coerceAtLeast(1)
+                height = (height * scaleFactor).toInt().coerceAtLeast(1)
+            }
 
             val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
             bitmap.eraseColor(android.graphics.Color.WHITE)
@@ -718,6 +726,13 @@ class PdfViewerViewModel @Inject constructor(
                     targetH = (targetH * ratio).toInt()
                 }
 
+                val maxBytes = 95 * 1024 * 1024L
+                if (targetW.toLong() * targetH.toLong() * 4L > maxBytes) {
+                    val scaleFactor = kotlin.math.sqrt(maxBytes.toDouble() / (targetW.toLong() * targetH.toLong() * 4L)).toFloat()
+                    targetW = (targetW * scaleFactor).toInt().coerceAtLeast(1)
+                    targetH = (targetH * scaleFactor).toInt().coerceAtLeast(1)
+                }
+
                 bitmap = Bitmap.createBitmap(targetW, targetH, Bitmap.Config.ARGB_8888)
 
                 // Scale to full zoomed size
@@ -738,6 +753,13 @@ class PdfViewerViewModel @Inject constructor(
                     val ratio = maxDim.toFloat() / maxOf(width, height)
                     width = (width * ratio).toInt()
                     height = (height * ratio).toInt()
+                }
+
+                val maxBytes = 95 * 1024 * 1024L
+                if (width.toLong() * height.toLong() * 4L > maxBytes) {
+                    val scaleFactor = kotlin.math.sqrt(maxBytes.toDouble() / (width.toLong() * height.toLong() * 4L)).toFloat()
+                    width = (width * scaleFactor).toInt().coerceAtLeast(1)
+                    height = (height * scaleFactor).toInt().coerceAtLeast(1)
                 }
 
                 bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)

@@ -301,10 +301,7 @@ class MetadataUseCase @Inject constructor(
 
             if (lat != null && lng != null) {
                 if (exif.getAttribute(ExifInterface.TAG_GPS_ALTITUDE) != null) {
-                    val alt = exif.getAltitude(0.0)
-                    if (alt != 0.0) {
-                        altitude = alt
-                    }
+                    altitude = exif.getAltitude(0.0)
                 }
             }
         } catch (_: Exception) {
@@ -316,8 +313,22 @@ class MetadataUseCase @Inject constructor(
         // MediaStore Query Fallback for recently taken photos if EXIF stream attributes were redacted
         if ((lat == null || lng == null || dateCreated == null) && uri.scheme == "content") {
             try {
+                val queryUri: Uri = if (android.provider.DocumentsContract.isDocumentUri(context, uri)) {
+                    val docId = runCatching { android.provider.DocumentsContract.getDocumentId(uri) }.getOrNull()
+                    val id = if (docId?.startsWith("image:") == true) docId.substringAfter(':').toLongOrNull() else null
+                    val mediaUriFromId = id?.let { android.content.ContentUris.withAppendedId(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, it) }
+                    val mediaUriFromApi = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                        runCatching { android.provider.MediaStore.getMediaUri(context, uri) }.getOrNull()
+                    } else {
+                        null
+                    }
+                    mediaUriFromId ?: mediaUriFromApi ?: uri
+                } else {
+                    uri
+                }
+
                 context.contentResolver.query(
-                    uri,
+                    queryUri,
                     arrayOf(
                         android.provider.MediaStore.Images.ImageColumns.LATITUDE,
                         android.provider.MediaStore.Images.ImageColumns.LONGITUDE,

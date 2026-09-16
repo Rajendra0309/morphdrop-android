@@ -214,8 +214,8 @@ class ExcelToPdfLayoutTest {
         val bmp1 = Bitmap.createBitmap(page1.width, page1.height, Bitmap.Config.ARGB_8888)
         page1.render(bmp1, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
 
-        // Sample header at top of Page 1 (x = 30 + 10 = 40, y = 30 + 5 = 35)
-        val p1HeaderPixel = bmp1.getPixel(40, 35)
+        // Sample header in cell padding at top of Page 1 (x = 32, y = 32, outside text glyphs starting at x=34, y=34)
+        val p1HeaderPixel = bmp1.getPixel(32, 32)
         val p1HeaderR = android.graphics.Color.red(p1HeaderPixel)
         val p1HeaderG = android.graphics.Color.green(p1HeaderPixel)
         val p1HeaderB = android.graphics.Color.blue(p1HeaderPixel)
@@ -230,8 +230,8 @@ class ExcelToPdfLayoutTest {
         val bmp2 = Bitmap.createBitmap(page2.width, page2.height, Bitmap.Config.ARGB_8888)
         page2.render(bmp2, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
 
-        // Sample header repeated at top of Page 2 (x = 40, y = 35)
-        val p2HeaderPixel = bmp2.getPixel(40, 35)
+        // Sample header repeated in cell padding at top of Page 2 (x = 32, y = 32, outside text glyphs)
+        val p2HeaderPixel = bmp2.getPixel(32, 32)
         val p2HeaderR = android.graphics.Color.red(p2HeaderPixel)
         val p2HeaderG = android.graphics.Color.green(p2HeaderPixel)
         val p2HeaderB = android.graphics.Color.blue(p2HeaderPixel)

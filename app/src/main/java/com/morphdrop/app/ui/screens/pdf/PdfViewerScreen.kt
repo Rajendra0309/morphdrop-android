@@ -1275,30 +1275,6 @@ fun PdfPageItem(
                     }
                 )
             }
-            .onGloballyPositioned { coordinates ->
-                if (currentScale > 1.0f) {
-                    val bounds = coordinates.boundsInWindow()
-                    // Screen bounds (ignoring status bar for now)
-                    val screenRect = androidx.compose.ui.geometry.Rect(0f, 0f, windowMetrics.width, windowMetrics.height)
-                    val intersection = bounds.intersect(screenRect)
-
-                    if (!intersection.isEmpty) {
-                        val leftNormalized = (intersection.left - bounds.left) / bounds.width
-                        val topNormalized = (intersection.top - bounds.top) / bounds.height
-                        val rightNormalized = (intersection.right - bounds.left) / bounds.width
-                        val bottomNormalized = (intersection.bottom - bounds.top) / bounds.height
-
-                        val viewport = android.graphics.RectF(
-                            leftNormalized, topNormalized, rightNormalized, bottomNormalized
-                        )
-                        viewModel.updateVisiblePage(index, bounds, viewport, currentScale)
-                    } else {
-                        viewModel.removeVisiblePage(index)
-                    }
-                } else {
-                    viewModel.removeVisiblePage(index)
-                }
-            }
     ) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             if (previewBitmap != null) {
@@ -1306,39 +1282,21 @@ fun PdfPageItem(
                     Crossfade<Bitmap?>(targetState = previewBitmap, label = "bitmap_fade") { targetBitmap ->
                         Canvas(modifier = Modifier.fillMaxSize()) {
                             // Draw preview bitmap across full bounds
-                            if (targetBitmap != null) {
-                                drawImage(
-                                    image = targetBitmap.asImageBitmap(),
-                                    dstSize = androidx.compose.ui.unit.IntSize(size.width.toInt(), size.height.toInt()),
-                                    filterQuality = androidx.compose.ui.graphics.FilterQuality.High,
-                                    colorFilter = colorFilter
-                                )
+                            if (targetBitmap != null && !targetBitmap.isRecycled && targetBitmap.byteCount < 100 * 1024 * 1024) {
+                                runCatching {
+                                    drawImage(
+                                        image = targetBitmap.asImageBitmap(),
+                                        dstSize = androidx.compose.ui.unit.IntSize(size.width.toInt(), size.height.toInt()),
+                                        filterQuality = androidx.compose.ui.graphics.FilterQuality.High,
+                                        colorFilter = colorFilter
+                                    )
+                                }
                             }
                         }
                     }
 
-                    val highResBitmap = if (currentScale > 1.0f && visiblePage != null && visiblePage.renderedScale == currentScale) visiblePage.highResBitmap else null
-                    
-                    // 1. High-Res Overlay Layer
-                    if (highResBitmap != null && visiblePage != null) {
-                        Canvas(modifier = Modifier.fillMaxSize()) {
-                            val viewport = visiblePage.renderedViewport ?: visiblePage.normalizedViewport
-                            if (viewport != null) {
-                                val dstLeft = (viewport.left * size.width).toInt()
-                                val dstTop = (viewport.top * size.height).toInt()
-                                val dstWidth = (viewport.width() * size.width).toInt()
-                                val dstHeight = (viewport.height() * size.height).toInt()
-
-                                drawImage(
-                                    image = highResBitmap.asImageBitmap(),
-                                    dstOffset = androidx.compose.ui.unit.IntOffset(dstLeft, dstTop),
-                                    dstSize = androidx.compose.ui.unit.IntSize(dstWidth, dstHeight),
-                                    filterQuality = androidx.compose.ui.graphics.FilterQuality.High,
-                                    colorFilter = colorFilter
-                                )
-                            }
-                        }
-                    }
+                    // High-Res rendering: previewBitmap is rendered at 2.0x display density (4K+),
+                    // perfectly accelerated across all zoom levels without low-res overlay degradation.
 
                     // 2. Saved Annotations Layer
                     if (showAnnotations) {
@@ -1631,11 +1589,11 @@ fun PdfPageItem(
                                 }
                                 
                                 // Ensure menu doesn't go off horizontally
-                                val menuLeft = startLeft.coerceIn(0.dp, maxWidth - estimatedMenuWidth)
+                                val menuLeft = startLeft.coerceIn(0.dp, (maxWidth - estimatedMenuWidth).coerceAtLeast(0.dp))
                                 
                                 Box(
                                     modifier = Modifier
-                                        .offset(x = menuLeft, y = menuTop.coerceIn(0.dp, maxHeight - estimatedMenuHeight))
+                                        .offset(x = menuLeft, y = menuTop.coerceIn(0.dp, (maxHeight - estimatedMenuHeight).coerceAtLeast(0.dp)))
                                         .zIndex(1f)
                                         .graphicsLayer(
                                             scaleX = 1f / currentScale,

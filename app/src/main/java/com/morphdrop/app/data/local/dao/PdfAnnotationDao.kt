@@ -15,6 +15,22 @@ interface PdfAnnotationDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAnnotation(annotation: PdfAnnotationEntity)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAnnotations(annotations: List<PdfAnnotationEntity>)
+
     @Query("DELETE FROM pdf_annotations WHERE id = :id")
     suspend fun deleteAnnotation(id: String)
+
+    @Query("DELETE FROM pdf_annotations WHERE id IN (:ids)")
+    suspend fun deleteAnnotations(ids: List<String>)
+
+    @androidx.room.Transaction
+    suspend fun saveAnnotationsAtomic(toDeleteIds: List<String>, toInsert: List<PdfAnnotationEntity>) {
+        if (toDeleteIds.isNotEmpty()) {
+            deleteAnnotations(toDeleteIds)
+        }
+        if (toInsert.isNotEmpty()) {
+            insertAnnotations(toInsert)
+        }
+    }
 }

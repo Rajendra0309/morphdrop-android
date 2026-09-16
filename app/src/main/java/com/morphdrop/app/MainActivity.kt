@@ -153,13 +153,14 @@ class MainActivity : ComponentActivity() {
         if (uris.isEmpty()) {
             val sharedText = intent?.getStringExtra(Intent.EXTRA_TEXT)
             if (!sharedText.isNullOrBlank()) {
-                val cacheFile = java.io.File(cacheDir, "shared_text_${System.currentTimeMillis()}.md")
+                val sharedDir = java.io.File(filesDir, "shared_text").apply { mkdirs() }
+                val sharedFile = java.io.File(sharedDir, "shared_text_${System.currentTimeMillis()}.md")
                 runCatching {
-                    cacheFile.writeText(sharedText)
+                    sharedFile.writeText(sharedText)
                     val fileUri = androidx.core.content.FileProvider.getUriForFile(
                         this,
                         "${packageName}.fileprovider",
-                        cacheFile
+                        sharedFile
                     )
                     return Screen.MarkdownViewer.createRoute(fileUri.toString())
                 }
@@ -174,7 +175,12 @@ class MainActivity : ComponentActivity() {
         }
 
         val firstUri = uris.first()
-        val mimeType = intent?.type ?: runCatching { contentResolver.getType(firstUri) }.getOrNull()
+        val rawMimeType = intent?.type
+        val mimeType = if (rawMimeType.isNullOrBlank() || rawMimeType == "*/*" || rawMimeType == "application/octet-stream") {
+            runCatching { contentResolver.getType(firstUri) }.getOrNull() ?: rawMimeType
+        } else {
+            rawMimeType
+        }
         val fileName = getUriFileName(firstUri)
         val ext = fileName.substringAfterLast('.', "").lowercase()
 
@@ -188,7 +194,6 @@ class MainActivity : ComponentActivity() {
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
             startActivity(pdfIntent)
-            finish()
             return null
         }
 

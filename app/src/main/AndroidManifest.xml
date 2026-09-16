@@ -62,6 +62,7 @@
                 <data android:scheme="content" />
                 <data android:scheme="file" />
                 <data android:host="*" />
+                <data android:mimeType="*/*" />
                 <data android:pathPattern=".*\\.md" />
                 <data android:pathSuffix=".md" tools:targetApi="31" />
             </intent-filter>
@@ -87,6 +88,7 @@
                 <data android:scheme="content" />
                 <data android:scheme="file" />
                 <data android:host="*" />
+                <data android:mimeType="*/*" />
                 <data android:pathPattern=".*\\.xlsx" />
                 <data android:pathPattern=".*\\.xls" />
                 <data android:pathPattern=".*\\.csv" />
@@ -154,6 +156,7 @@
                 <data android:scheme="content" />
                 <data android:scheme="file" />
                 <data android:host="*" />
+                <data android:mimeType="*/*" />
                 <data android:pathPattern=".*\\.pdf" />
                 <data android:pathSuffix=".pdf" tools:targetApi="31" />
             </intent-filter>
