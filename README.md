@@ -71,14 +71,13 @@
 
 ## Features
 
-### What's New (v1.4.1)
+### Latest Updates (v1.4.3)
 
-> - **50% APK Size Reduction** — Optimized OCR ML Kit models (bundled Latin & Devanagari offline core), excluded unneeded cryptographic lookup tables, reducing universal APK size from 57 MB to 29 MB.
-> - **ChromeOS & Large Screen Compatibility** — Full manifest hardware declarations for non-touchscreen Chromebooks, Chromeboxes, and convertibles.
-> - **Dynamic "What's New in MorphDrop" Dialog** — Material 3 modal dynamically fetching release notes from GitHub Releases upon update or onboarding.
-> - **Redesigned In-App Updater** — Symmetrical action pills ("Later" and "Update Now"), non-wrapping version transition tags, and rich Markdown release note rendering.
-> - **Settings & Direct Update Triggers** — In-Settings "Check for Updates" triggers immediately, with smart update dialog priority over What's New.
-> - **Dark Mode Settings UI Polish** — Translucent alpha glass icon badges, luminous tints, and high-contrast card borders for sleek dark mode aesthetics.
+> - **Unified System Routing** — Single-task activity architecture for seamless external share sheet and "Open With" handling across PDF, Markdown, Excel, CSV, text, and images.
+> - **Wide Excel Layout & Preview** — Dynamic column width clamping, auto-orientation, zebra striping, multi-line row pagination, and interactive spreadsheet preview cards.
+> - **High-Performance PDF Viewer** — Hardware-accelerated 2.0x base density zoom rendering without pixelation, combined with canvas allocation guards preventing out-of-memory crashes on oversized documents.
+> - **Full Annotation Toolkit** — Complete drawing and highlight suite with undo/redo history, swipe-based eraser deduplication, and atomic Room database persistence.
+> - **Image Metadata Inspector** — Scoped storage stream fallback for permission-free EXIF metadata inspection, preserving 0-meter altitude and precision GPS data.
 
 <br>
 <details>

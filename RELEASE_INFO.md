@@ -1,8 +1,15 @@
-# MorphDrop v1.4.2 - Hotfix: Startup Crash Fix & Performance Optimization
+# MorphDrop v1.4.3 - System Routing, PDF Enhancements and Core Stability
 
-## 🚀 What's New
-- **Critical Hotfix for App Startup Crash:** Resolved `java.lang.VerifyError` caused by legacy Apache POI / XMLBeans classes failing Android ART runtime bytecode verification during application launch.
-- **Native Android Excel Processing:** Replaced heavy Apache POI desktop library with a 100% lightweight, native Android OOXML parser (`XmlPullParser` + `ZipInputStream` + `PdfDocument`), with zero third-party dependencies and no Apache POI or XMLBeans runtime dependency.
-- **Further APK Size Reduction (29 MB → 25.8 MB):** Completely stripped Apache POI and XMLBeans bytecode, shedding another 3.2 MB from the standalone release APK.
-- **ChromeOS & Large Screen Compatibility:** Full compatibility with Chromebooks, Chromeboxes, and non-touchscreen convertibles.
-- **Dynamic "What's New" & Polished Update Dialogs:** Material 3 release notes fetched directly from GitHub Releases, streamlined dialog triggers, and responsive layout polish across dark and light themes.
+## New Features
+- **Unified Share Sheet and Open-With Routing:** Direct intent routing via single task activity for seamless document viewing and conversion from external apps across all supported file types (PDF, Markdown, Excel, CSV, Images, and Text).
+- **Excel Spreadsheet Preview Card:** Added dedicated preview card for Excel and CSV files prior to conversion, displaying sheet names, column dimensions, and table stats.
+
+## Improvements
+- **Wide Excel to PDF Layout Engine:** Dynamic page sizing and auto-orientation with zebra striping, proportional column width clamping, and clean multi-line row pagination across page breaks.
+- **Enhanced PDF Annotation Suite:** Added undo and redo capabilities, swipe eraser deduplication, persistent bottom toolbar alignment, and atomic Room database transactions for stroke and highlight persistence.
+- **Image Metadata Inspector:** Enhanced EXIF extraction with direct ContentResolver input stream fallback for scoped storage, preserving 0-meter altitude values and precise GPS coordinates.
+
+## Bug Fixes
+- **PDF Viewer Zoom Rendering and Canvas Safety:** Resolved zoom rendering clarity by rendering base preview at 2.0x display density across all zoom levels without pixelated overlay degradation, while protecting against Android Hardware Canvas 100MB limits on oversized documents.
+- **Text Selection Bounds Crash:** Fixed IllegalArgumentException in PDF viewer text action popup menu by safely enforcing non-negative coordinate boundaries during deep zoom.
+- **MIME Type and Intent Decoding:** Corrected redundant URI decoding in conversion configuration and added wildcard MIME filters in AndroidManifest for reliable system-wide file associations.
