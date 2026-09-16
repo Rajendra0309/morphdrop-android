@@ -128,7 +128,7 @@ class PdfViewerViewModel @Inject constructor(
 
     sealed class AnnotationAction {
         data class Add(val annotation: PdfAnnotation) : AnnotationAction()
-        data class Remove(val annotation: PdfAnnotation) : AnnotationAction()
+        data class Remove(val annotation: PdfAnnotation, val wasDbAnnotation: Boolean = false) : AnnotationAction()
     }
 
     private val _undoStack = MutableStateFlow<List<AnnotationAction>>(emptyList())
@@ -138,6 +138,7 @@ class PdfViewerViewModel @Inject constructor(
 
     private val _hasUnsavedChanges = MutableStateFlow(false)
     val hasUnsavedChanges = _hasUnsavedChanges.asStateFlow()
+    private val _pendingDeletedAnnotationIds = mutableSetOf<String>()
 
     private val gson = Gson()
 
@@ -404,6 +405,11 @@ class PdfViewerViewModel @Inject constructor(
     fun saveAnnotations() {
         val uri = currentUri ?: return
         viewModelScope.launch(Dispatchers.IO) {
+            _pendingDeletedAnnotationIds.forEach { id ->
+                annotationDao.deleteAnnotation(id)
+            }
+            _pendingDeletedAnnotationIds.clear()
+
             _unsavedAnnotations.value.forEach { annotation ->
                 if (annotation is PdfAnnotation.Highlight) {
                     val entity = PdfAnnotationEntity(
@@ -429,6 +435,8 @@ class PdfViewerViewModel @Inject constructor(
                 }
             }
             _unsavedAnnotations.value = emptyList()
+            _undoStack.value = emptyList()
+            _redoStack.value = emptyList()
             _hasUnsavedChanges.value = false
             loadAnnotations(uri)
             showToast("Annotations saved")
@@ -436,17 +444,42 @@ class PdfViewerViewModel @Inject constructor(
     }
 
     fun discardAnnotations() {
+        val uri = currentUri
+        _pendingDeletedAnnotationIds.clear()
         _unsavedAnnotations.value = emptyList()
+        _undoStack.value = emptyList()
+        _redoStack.value = emptyList()
         _hasUnsavedChanges.value = false
+        if (uri != null) {
+            loadAnnotations(uri)
+        }
         showToast("Changes discarded")
     }
 
     fun removeAnnotation(id: String) {
-        viewModelScope.launch(Dispatchers.IO) {
-            annotationDao.deleteAnnotation(id)
-            _unsavedAnnotations.value = _unsavedAnnotations.value.filter { it.id != id }
-            loadAnnotations(currentUri ?: return@launch)
+        val target = annotations.value.find { it.id == id } ?: return
+        val wasDb = _dbAnnotations.value.any { it.id == id }
+        _pendingDeletedAnnotationIds.add(id)
+        _unsavedAnnotations.value = _unsavedAnnotations.value.filter { it.id != id }
+        _dbAnnotations.value = _dbAnnotations.value.filter { it.id != id }
+        _undoStack.value = _undoStack.value + AnnotationAction.Remove(target, wasDb)
+        _redoStack.value = emptyList()
+        _hasUnsavedChanges.value = true
+    }
+
+    fun clearAllAnnotations() {
+        val allAnnotations = annotations.value
+        if (allAnnotations.isEmpty()) return
+        allAnnotations.forEach { ann ->
+            val wasDb = _dbAnnotations.value.any { it.id == ann.id }
+            _pendingDeletedAnnotationIds.add(ann.id)
+            _undoStack.value = _undoStack.value + AnnotationAction.Remove(ann, wasDb)
         }
+        _unsavedAnnotations.value = emptyList()
+        _dbAnnotations.value = emptyList()
+        _redoStack.value = emptyList()
+        _hasUnsavedChanges.value = true
+        showToast("All annotations cleared")
     }
 
     fun toggleAnnotationMode() {
@@ -487,10 +520,15 @@ class PdfViewerViewModel @Inject constructor(
                 _unsavedAnnotations.value = _unsavedAnnotations.value.filter { it.id != lastAction.annotation.id }
             }
             is AnnotationAction.Remove -> {
-                _unsavedAnnotations.value = _unsavedAnnotations.value + lastAction.annotation
+                _pendingDeletedAnnotationIds.remove(lastAction.annotation.id)
+                if (lastAction.wasDbAnnotation) {
+                    _dbAnnotations.value = _dbAnnotations.value + lastAction.annotation
+                } else {
+                    _unsavedAnnotations.value = _unsavedAnnotations.value + lastAction.annotation
+                }
             }
         }
-        _hasUnsavedChanges.value = _unsavedAnnotations.value.isNotEmpty()
+        _hasUnsavedChanges.value = _unsavedAnnotations.value.isNotEmpty() || _pendingDeletedAnnotationIds.isNotEmpty()
     }
 
     fun redo() {
@@ -506,7 +544,12 @@ class PdfViewerViewModel @Inject constructor(
                 _unsavedAnnotations.value = _unsavedAnnotations.value + lastAction.annotation
             }
             is AnnotationAction.Remove -> {
-                _unsavedAnnotations.value = _unsavedAnnotations.value.filter { it.id != lastAction.annotation.id }
+                _pendingDeletedAnnotationIds.add(lastAction.annotation.id)
+                if (lastAction.wasDbAnnotation) {
+                    _dbAnnotations.value = _dbAnnotations.value.filter { it.id != lastAction.annotation.id }
+                } else {
+                    _unsavedAnnotations.value = _unsavedAnnotations.value.filter { it.id != lastAction.annotation.id }
+                }
             }
         }
         _hasUnsavedChanges.value = true

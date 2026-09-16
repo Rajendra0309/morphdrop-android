@@ -1,7 +1,8 @@
-﻿package com.morphdrop.app.ui.screens.pdf
+package com.morphdrop.app.ui.screens.pdf
 
 import android.content.res.Configuration
 import androidx.compose.animation.*
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.ui.tooling.preview.Preview
 import com.morphdrop.app.ui.theme.MorphDropTheme
@@ -68,7 +69,7 @@ fun AnnotationBottomBar(
         visible = isVisible,
         enter = slideInVertically { it } + fadeIn(),
         exit = slideOutVertically { it } + fadeOut(),
-        modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 32.dp)
+        modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 8.dp)
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -88,11 +89,19 @@ fun AnnotationBottomBar(
                     modifier = Modifier.padding(bottom = 8.dp)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        val chunkedColors = colors.chunked(5)
-                        chunkedColors.forEach { rowColors ->
+                        Text(
+                            "Choose Color", 
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(bottom = 12.dp)
+                        )
+                        
+                        // 4 columns grid of colors
+                        val rows = colors.chunked(5)
+                        rows.forEach { rowColors ->
                             Row(
-                                modifier = Modifier.padding(bottom = if (rowColors != chunkedColors.last()) 12.dp else 0.dp),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                modifier = Modifier.padding(vertical = 4.dp)
                             ) {
                                 rowColors.forEach { color ->
                                     ColorDot(
@@ -123,17 +132,47 @@ fun AnnotationBottomBar(
                     shadowElevation = 8.dp
                 ) {
                     Column(
-                        modifier = Modifier.padding(16.dp).width(IntrinsicSize.Min),
+                        modifier = Modifier.padding(16.dp).widthIn(min = 260.dp, max = 320.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        // Stroke Size Selection
+                        // Brush Size Slider with Live Circular Dot Preview
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                        ) {
+                            Slider(
+                                value = currentStrokeWidth,
+                                onValueChange = { onStrokeWidthSelected(it) },
+                                valueRange = 1f..24f,
+                                modifier = Modifier.weight(1f)
+                            )
+
+                            // Live circular dot preview
+                            Box(
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Canvas(modifier = Modifier.size(28.dp)) {
+                                    val radiusPx = (currentStrokeWidth.dp.toPx() / 2f).coerceIn(1.5f, size.minDimension / 2f)
+                                    drawCircle(
+                                        color = currentColor,
+                                        radius = radiusPx,
+                                        center = center
+                                    )
+                                }
+                            }
+                        }
+
+                        // Quick Stroke Presets
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(16.dp),
                             modifier = Modifier.padding(bottom = 16.dp)
                         ) {
-                            Icon(Icons.Default.Menu, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                            
                             strokeWidths.forEach { width ->
                                 Box(
                                     modifier = Modifier

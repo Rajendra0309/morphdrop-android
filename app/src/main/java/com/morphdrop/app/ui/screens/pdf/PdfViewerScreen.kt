@@ -526,26 +526,6 @@ fun PdfViewerScreen(
                                     }
                                 }
                             }
-
-                            AnnotationBottomBar(
-                                isVisible = pdfUiState.isAnnotationMode,
-                                currentTool = pdfUiState.annotationTool,
-                                currentColor = pdfUiState.brushColor,
-                                currentStrokeWidth = pdfUiState.brushSize,
-                                showAnnotations = pdfUiState.showAnnotations,
-                                canUndo = canUndo,
-                                canRedo = canRedo,
-                                onUndo = { viewModel.undo() },
-                                onRedo = { viewModel.redo() },
-                                onToolSelected = { viewModel.setAnnotationTool(it) },
-                                onColorSelected = { viewModel.setBrushColor(it) },
-                                onStrokeWidthSelected = { viewModel.setBrushSize(it) },
-                                onHide = { viewModel.toggleAnnotationVisibility() },
-                                modifier = Modifier
-                                    .align(Alignment.BottomCenter)
-                                    .padding(bottom = 16.dp) // Added padding to float more
-                                    .navigationBarsPadding()
-                            )
                         }
                     }
                 }
@@ -745,7 +725,6 @@ fun PdfViewerScreen(
                                 onHide = { viewModel.toggleAnnotationVisibility() },
                                 modifier = Modifier
                                     .align(Alignment.BottomCenter)
-                                    .padding(bottom = 16.dp) // Added padding to float more
                                     .navigationBarsPadding()
                             )
                         }
@@ -1196,6 +1175,7 @@ fun PdfPageItem(
 
                             val scaleX = size.width.toFloat()
                             val scaleY = size.height.toFloat()
+                            val erasedIdsInGesture = mutableSetOf<String>()
 
                             if (annotationTool == AnnotationTool.DRAW || annotationTool == AnnotationTool.HIGHLIGHT) {
                                 activeDrawingPath = listOf(com.morphdrop.app.domain.model.PdfAnnotation.Drawing.Point(down.position.x / scaleX, down.position.y / scaleY))
@@ -1204,11 +1184,14 @@ fun PdfPageItem(
                                 val tapY = down.position.y / scaleY
                                 val threshold = 30f / scaleX
                                 val toRemove = annotations.firstOrNull { ann ->
-                                    if (ann is com.morphdrop.app.domain.model.PdfAnnotation.Drawing) {
+                                    if (ann.id !in erasedIdsInGesture && ann is com.morphdrop.app.domain.model.PdfAnnotation.Drawing) {
                                         ann.pathPoints.any { pt -> ((pt.x - tapX) * (pt.x - tapX) + (pt.y - tapY) * (pt.y - tapY)) < (threshold * threshold) }
                                     } else false
                                 }
-                                if (toRemove != null) viewModel.removeAnnotation(toRemove.id)
+                                if (toRemove != null) {
+                                    erasedIdsInGesture.add(toRemove.id)
+                                    viewModel.removeAnnotation(toRemove.id)
+                                }
                             }
 
                             // Consume the down event to prevent parent from panning if it's 1-finger
@@ -1219,6 +1202,7 @@ fun PdfPageItem(
                                 // If at any point we have more than 1 finger, stop drawing/erasing
                                 if (event.changes.size > 1) {
                                     activeDrawingPath = null
+                                    erasedIdsInGesture.clear()
                                     break
                                 }
 
@@ -1233,11 +1217,14 @@ fun PdfPageItem(
                                         val tapY = currentPos.y / scaleY
                                         val threshold = 30f / scaleX
                                         val toRemove = annotations.firstOrNull { ann ->
-                                            if (ann is com.morphdrop.app.domain.model.PdfAnnotation.Drawing) {
+                                            if (ann.id !in erasedIdsInGesture && ann is com.morphdrop.app.domain.model.PdfAnnotation.Drawing) {
                                                 ann.pathPoints.any { pt -> ((pt.x - tapX) * (pt.x - tapX) + (pt.y - tapY) * (pt.y - tapY)) < (threshold * threshold) }
                                             } else false
                                         }
-                                        if (toRemove != null) viewModel.removeAnnotation(toRemove.id)
+                                        if (toRemove != null) {
+                                            erasedIdsInGesture.add(toRemove.id)
+                                            viewModel.removeAnnotation(toRemove.id)
+                                        }
                                     }
                                 } else {
                                     // Finger up - finalize drawing
@@ -1246,13 +1233,14 @@ fun PdfPageItem(
                                         if (finalPath.size > 1) {
                                             viewModel.addDrawingAnnotation(
                                                 pageIndex = index,
-                                                color = brushColor.copy(alpha = if (annotationTool == AnnotationTool.HIGHLIGHT) 0.5f else 1f),
+                                                color = brushColor.copy(alpha = if (annotationTool == AnnotationTool.HIGHLIGHT) 0.40f else 1f),
                                                 strokeWidth = brushSize,
                                                 pathPoints = finalPath
                                             )
                                         }
                                     }
                                     activeDrawingPath = null
+                                    erasedIdsInGesture.clear()
                                     break
                                 }
                             }
@@ -1401,7 +1389,7 @@ fun PdfPageItem(
                             }
                             drawPath(
                                 path = path,
-                                color = brushColor.copy(alpha = if (annotationTool == AnnotationTool.HIGHLIGHT) 0.5f else 1f),
+                                color = brushColor.copy(alpha = if (annotationTool == AnnotationTool.HIGHLIGHT) 0.40f else 1f),
                                 style = androidx.compose.ui.graphics.drawscope.Stroke(
                                     width = brushSize.dp.toPx(), 
                                     cap = androidx.compose.ui.graphics.StrokeCap.Round, 
