@@ -83,6 +83,8 @@ class ConversionWorker @AssistedInject constructor(
         const val KEY_OUTPUT_URI = "output_uri"
         const val KEY_OUTPUT_URIS = "output_uris"
         const val KEY_ERROR = "error"
+        /** Total input size in bytes, for before/after size display on Result. */
+        const val KEY_INPUT_SIZE_BYTES = "input_size_bytes"
         
         // Advanced Image Tool Keys
         const val KEY_TARGET_WIDTH = "target_width"
@@ -107,6 +109,12 @@ class ConversionWorker @AssistedInject constructor(
         const val KEY_LONGITUDE = "longitude"
         const val KEY_CAMERA_MAKE = "camera_make"
         const val KEY_CAMERA_MODEL = "camera_model"
+
+        // Merge payload conventions: the enqueue side may write a large merge
+        // payload JSON to a temp file and pass its URI here instead of inline.
+        const val KEY_MERGE_PAYLOAD = "merge_payload"
+        const val KEY_MERGE_PAYLOAD_FILE = "merge_payload_file"
+        const val MAX_INLINE_MERGE_PAYLOAD_BYTES = 10 * 1024
     }
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
@@ -133,6 +141,17 @@ class ConversionWorker @AssistedInject constructor(
             "Input File"
         }
 
+        // Total input size in bytes, surfaced on the Result screen for
+        // before/after comparison. Best-effort: unreadable inputs count as 0.
+        val totalInputBytes = (inputUrisArray?.toList() ?: listOfNotNull(inputUriString))
+            .sumOf { uriStr ->
+                runCatching {
+                    appContext.contentResolver.openFileDescriptor(Uri.parse(uriStr), "r")
+                        ?.use { pfd -> pfd.statSize.takeIf { it >= 0 } ?: 0L }
+                        ?: 0L
+                }.getOrDefault(0L)
+            }
+
         val outputFileNameInput = inputData.getString(KEY_OUTPUT_FILE_NAME) ?: "Converted_File"
         val outputFileName = if (!outputFileNameInput.contains(".")) {
             val inputExt = inputFileName.substringAfterLast('.', "").lowercase()
@@ -147,6 +166,8 @@ class ConversionWorker @AssistedInject constructor(
         } else outputFileNameInput
 
         val generatedFileNames = mutableListOf<String>()
+        // Every branch's output URIs/files, so partials can be deleted on cancel.
+        val outputsToCleanup = mutableListOf<Uri>()
 
         try {
             try {
@@ -157,8 +178,11 @@ class ConversionWorker @AssistedInject constructor(
                     cancelPendingIntent
                 )
                 setForeground(foregroundInfo)
-            } catch (_: Throwable) {
-                // Foreground service may be constrained by OS policy
+            } catch (e: Throwable) {
+                // Log and explicitly continue without a foreground notification:
+                // the OS may constrain foreground-service starts, but the
+                // conversion itself can still run to completion.
+                android.util.Log.w("ConversionWorker", "setForeground failed; continuing without foreground service", e)
             }
 
             notificationHelper.showProgressNotification(
@@ -189,6 +213,7 @@ class ConversionWorker @AssistedInject constructor(
                         pageRange = pageRange,
                         outputFolderName = outputFileName
                     )
+                    outputsToCleanup.addAll(result)
                     checkCancellation()
                     notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 80, cancelPendingIntent)
                     setProgress(workDataOf("progress" to 80))
@@ -218,7 +243,7 @@ class ConversionWorker @AssistedInject constructor(
                             checkCancellation()
                             val mappedProgress = 20 + (p * 0.7).toInt()
                             notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), mappedProgress, cancelPendingIntent)
-                            kotlinx.coroutines.runBlocking { setProgress(workDataOf("progress" to mappedProgress)) }
+                            setProgressAsync(workDataOf("progress" to mappedProgress))
                         }
                     ))
                     result
@@ -231,10 +256,10 @@ class ConversionWorker @AssistedInject constructor(
                         txtUri = uri, 
                         outputFileName = outputFileName,
                         onProgress = { p ->
-                            if (isStopped) return@textToPdfUseCase
+                            checkCancellation()
                             val mappedProgress = 20 + (p * 0.7).toInt()
                             notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), mappedProgress, cancelPendingIntent)
-                            kotlinx.coroutines.runBlocking { setProgress(workDataOf("progress" to mappedProgress)) }
+                            setProgressAsync(workDataOf("progress" to mappedProgress))
                         }
                     ))
                     result
@@ -336,6 +361,7 @@ class ConversionWorker @AssistedInject constructor(
                         )
 
                         convertedUris.add(convertedUri)
+                        outputsToCleanup.add(convertedUri)
                         convertedCount++
                     }
 
@@ -349,7 +375,9 @@ class ConversionWorker @AssistedInject constructor(
                     notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 30, cancelPendingIntent)
                     setProgress(workDataOf("progress" to 30))
                     
-                    val payload = inputData.getString("merge_payload")
+                    // Read side of the merge-payload convention: prefer a temp JSON file
+                    // URI ("merge_payload_file") when provided; fall back to inline.
+                    val payload = resolveMergePayload(inputData)
                     val result = if (payload != null) {
                         val type = object : com.google.gson.reflect.TypeToken<List<Map<String, String>>>() {}.type
                         val mergeItems: List<Map<String, String>> = com.google.gson.Gson().fromJson(payload, type)
@@ -357,8 +385,8 @@ class ConversionWorker @AssistedInject constructor(
                         val pdfItems = mergeItems.map { item ->
                             MergePdfItem(
                                 uri = Uri.parse(item["uri"]),
-                                pageIndex = item["index"]?.toInt() ?: 0,
-                                rotation = item["rotation"]?.toInt() ?: 0
+                                pageIndex = item["index"]?.toIntOrNull() ?: 0,
+                                rotation = item["rotation"]?.toIntOrNull() ?: 0
                             )
                         }
                         
@@ -400,6 +428,7 @@ class ConversionWorker @AssistedInject constructor(
                         splitEveryN = everyN,
                         outputFolderName = outName
                     )
+                    outputsToCleanup.addAll(result)
                     notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 85, cancelPendingIntent)
                     setProgress(workDataOf("progress" to 85))
                     result
@@ -426,9 +455,7 @@ class ConversionWorker @AssistedInject constructor(
                             checkCancellation()
                             val prog = 25 + ((iter.toFloat() / max.toFloat()) * 60).toInt()
                             notificationHelper.showProgressNotification(notificationId, "Compressing... (Pass $iter of $max)", prog, cancelPendingIntent)
-                            kotlinx.coroutines.runBlocking {
-                                setProgress(workDataOf("progress" to prog, "iteration" to iter))
-                            }
+                            setProgressAsync(workDataOf("progress" to prog, "iteration" to iter))
                         }
                     )
                     notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 90, cancelPendingIntent)
@@ -475,7 +502,7 @@ class ConversionWorker @AssistedInject constructor(
                     setProgress(workDataOf("progress" to 30))
                     val uri = Uri.parse(requireNotNull(inputUriString))
                     val pageOrderStr = requireNotNull(inputData.getString(KEY_PAGE_ORDER))
-                    val orderList = pageOrderStr.split(",").map { it.trim().toInt() }
+                    val orderList = pageOrderStr.split(",").mapNotNull { it.trim().toIntOrNull() }
                     val result = listOf(reorderPdfPagesUseCase(uri, newOrder = orderList, outputFileName = outputFileName))
                     notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 85, cancelPendingIntent)
                     setProgress(workDataOf("progress" to 85))
@@ -518,14 +545,8 @@ class ConversionWorker @AssistedInject constructor(
                     setProgress(workDataOf("progress" to 30))
                     val uri = Uri.parse(requireNotNull(inputUriString))
                     val pageOrderStr = requireNotNull(inputData.getString(KEY_PAGE_ORDER))
-                    val orderList = pageOrderStr.split(",").map { it.trim().toInt() }
-                    val rotationsStr = inputData.getString("page_rotations") ?: ""
-                    val rotationsMap = rotationsStr.split(",")
-                        .filter { it.isNotBlank() }
-                        .associate { 
-                            val parts = it.split(":")
-                            parts[0].toInt() to parts[1].toInt()
-                        }
+                    val orderList = pageOrderStr.split(",").mapNotNull { it.trim().toIntOrNull() }
+                    val rotationsMap = parseRotations(inputData.getString("page_rotations"))
                     val result = listOf(pdfPageEditorUseCase(uri, newOrder = orderList, rotations = rotationsMap, outputFileName = outputFileName))
                     notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 85, cancelPendingIntent)
                     setProgress(workDataOf("progress" to 85))
@@ -574,6 +595,9 @@ class ConversionWorker @AssistedInject constructor(
                 else -> throw IllegalArgumentException("Unsupported conversion type: $conversionType")
             }
 
+            // Track every branch's outputs so cancellation cleanup can delete partial files.
+            outputsToCleanup.addAll(resultUris)
+
             notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 100, cancelPendingIntent)
             setProgress(workDataOf("progress" to 100))
 
@@ -614,7 +638,8 @@ class ConversionWorker @AssistedInject constructor(
             Result.success(
                 workDataOf(
                     KEY_OUTPUT_URI to primaryOutputUri.toString(),
-                    KEY_OUTPUT_URIS to outUrisString
+                    KEY_OUTPUT_URIS to outUrisString,
+                    KEY_INPUT_SIZE_BYTES to totalInputBytes
                 )
             )
         } catch (e: Exception) {
@@ -640,6 +665,14 @@ class ConversionWorker @AssistedInject constructor(
                 // If single file cancelled, clean up generated incomplete files
                 generatedFileNames.forEach { name ->
                     FileHelper.deleteFileByName(appContext, "MorphDrop", name)
+                }
+                // Also delete any partially written output URIs tracked by the worker.
+                outputsToCleanup.forEach { uri ->
+                    try {
+                        appContext.contentResolver.delete(uri, null, null)
+                    } catch (_: Exception) {
+                        // Best-effort cleanup; a failed delete must not mask cancellation.
+                    }
                 }
                 
                 notificationHelper.showCancelledNotification(
@@ -710,15 +743,48 @@ class ConversionWorker @AssistedInject constructor(
 
     private fun parseRotations(rotationsStr: String?): Map<Int, Int> {
         if (rotationsStr.isNullOrBlank()) return emptyMap()
-        return try {
-            rotationsStr.split(",")
-                .filter { it.isNotBlank() }
-                .associate { 
-                    val parts = it.split(":")
-                    parts[0].toInt() to parts[1].toInt()
-                }
-        } catch (e: Exception) {
-            emptyMap()
+        return rotationsStr.split(",")
+            .mapNotNull { entry ->
+                val trimmed = entry.trim()
+                if (trimmed.isEmpty()) return@mapNotNull null
+                val parts = trimmed.split(":")
+                if (parts.size == 2) {
+                    val page = parts[0].trim().toIntOrNull()
+                    val rotation = parts[1].trim().toIntOrNull()
+                    if (page != null && rotation != null) page to rotation else null
+                } else null
+            }
+            .toMap()
+    }
+
+    /**
+     * Read side of the merge-payload convention shared with the enqueue side:
+     *
+     * - If input Data carries [KEY_MERGE_PAYLOAD_FILE], read the payload JSON
+     *   from that temp-file URI (used for large payloads).
+     * - Otherwise fall back to the inline [KEY_MERGE_PAYLOAD] string, guarded
+     *   so oversized inline payloads fail fast with a clear error instead of
+     *   silently blowing the WorkManager Data size limit.
+     */
+    private fun resolveMergePayload(inputData: androidx.work.Data): String? {
+        val payloadFileString = inputData.getString(KEY_MERGE_PAYLOAD_FILE)
+        if (!payloadFileString.isNullOrBlank()) {
+            return try {
+                val uri = Uri.parse(payloadFileString)
+                val stream = appContext.contentResolver.openInputStream(uri)
+                    ?: throw IllegalArgumentException("Cannot open stream for merge payload file: $payloadFileString")
+                stream.use { it.readBytes().decodeToString() }
+            } catch (e: Exception) {
+                throw IllegalArgumentException("Failed to read merge payload from file", e)
+            }
         }
+        val inlinePayload = inputData.getString(KEY_MERGE_PAYLOAD)
+        if (inlinePayload != null && inlinePayload.toByteArray().size > MAX_INLINE_MERGE_PAYLOAD_BYTES) {
+            throw IllegalArgumentException(
+                "Inline merge payload exceeds ${MAX_INLINE_MERGE_PAYLOAD_BYTES / 1024}KB; " +
+                    "enqueue side must write it to a temp file and pass '$KEY_MERGE_PAYLOAD_FILE' instead"
+            )
+        }
+        return inlinePayload
     }
 }

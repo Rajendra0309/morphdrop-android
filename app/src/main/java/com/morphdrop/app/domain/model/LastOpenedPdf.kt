@@ -5,8 +5,8 @@ package com.morphdrop.app.domain.model
  * Powers the Home "Pick up where you left off" card. The URI stored is the
  * one the viewer actually opened (already resolved to a readable URI by
  * PdfViewerActivity), so it stays valid across app restarts.
- *
- * @param uri page is 0-based; [page] is the 0-based page index.
+ * @param uri The readable URI of the PDF opened by the viewer.
+ * @param page The 0-based page index the user left off on.
  */
 data class LastOpenedPdf(
     val uri: String,
