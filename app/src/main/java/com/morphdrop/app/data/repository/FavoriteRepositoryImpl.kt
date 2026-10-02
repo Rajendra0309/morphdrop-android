@@ -16,12 +16,7 @@ class FavoriteRepositoryImpl @Inject constructor(
     }
 
     override suspend fun toggleFavorite(conversionTypeId: String) {
-        val isFav = favoriteDao.isFavoriteDirect(conversionTypeId)
-        if (isFav) {
-            favoriteDao.deleteFavoriteByTypeId(conversionTypeId)
-        } else {
-            favoriteDao.insertFavorite(FavoriteEntity(conversionTypeId = conversionTypeId))
-        }
+        favoriteDao.toggleFavorite(conversionTypeId)
     }
 
     override fun isFavorite(conversionTypeId: String): Flow<Boolean> {
