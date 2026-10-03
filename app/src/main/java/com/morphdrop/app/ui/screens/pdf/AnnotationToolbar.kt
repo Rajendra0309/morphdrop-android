@@ -21,10 +21,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.morphdrop.app.R
 
 @Composable
 fun AnnotationBottomBar(
@@ -343,13 +345,23 @@ private fun ColorDot(
     isSelected: Boolean,
     onClick: () -> Unit
 ) {
+    val description = if (name.isNotBlank()) {
+        stringResource(R.string.pdf_color_description, name)
+    } else {
+        stringResource(R.string.pdf_color_generic)
+    }
+    val clickLabel = if (name.isNotBlank()) {
+        stringResource(R.string.pdf_color_select_label, name)
+    } else {
+        stringResource(R.string.pdf_color_select_generic)
+    }
     Box(
         modifier = Modifier
             .size(48.dp)
             .clip(CircleShape)
             .background(if (isSelected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
-            .semantics { contentDescription = "$name color" }
-            .clickable(onClickLabel = "Select $name color") { onClick() },
+            .semantics { contentDescription = description }
+            .clickable(onClickLabel = clickLabel) { onClick() },
         contentAlignment = Alignment.Center
     ) {
         Box(

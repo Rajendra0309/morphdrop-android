@@ -1051,7 +1051,7 @@ private fun WatermarkLivePreviewCard(config: WatermarkConfig) {
             .fillMaxWidth()
             .height(170.dp),
         shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLowest,
+        color = Color.White,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
     ) {
         val alignment = when (config.position) {
@@ -1242,7 +1242,7 @@ private fun PageNumberLivePreviewCard(config: PageNumberConfig) {
             .fillMaxWidth()
             .height(150.dp),
         shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLowest,
+        color = Color.White,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
     ) {
         val alignment = when (config.position) {

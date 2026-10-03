@@ -204,12 +204,11 @@ class DataStoreSettingsRepository @Inject constructor(
     }
 
     /**
-     * "Match wallpaper" dynamic color. Defaults to true on Android 12+ (the
-     * theme layer ignores it on older versions); the user can turn it off in
-     * Settings > Appearance.
+     * "Match wallpaper" dynamic color. Defaults to false (the user can turn
+     * it on in Settings > Appearance).
      */
     override val dynamicColorEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
-        preferences[PreferencesKeys.DYNAMIC_COLOR_ENABLED] ?: true
+        preferences[PreferencesKeys.DYNAMIC_COLOR_ENABLED] ?: false
     }
 
     override suspend fun setDynamicColorEnabled(enabled: Boolean) {

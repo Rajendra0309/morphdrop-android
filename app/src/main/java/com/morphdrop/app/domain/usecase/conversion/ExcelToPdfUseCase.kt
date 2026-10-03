@@ -322,8 +322,12 @@ class ExcelToPdfUseCase @Inject constructor(
                     if (inQuotes && i + 1 < content.length && content[i + 1] == '"') {
                         field.append('"')
                         i++ // consume the escaped quote
+                    } else if (inQuotes) {
+                        inQuotes = false
+                    } else if (field.isBlank()) {
+                        inQuotes = true
                     } else {
-                        inQuotes = !inQuotes
+                        field.append(c) // literal quote inside an unquoted field
                     }
                 }
                 c == delimiter && !inQuotes -> {

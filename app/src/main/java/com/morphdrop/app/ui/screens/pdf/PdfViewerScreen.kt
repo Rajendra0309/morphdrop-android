@@ -775,27 +775,21 @@ fun PdfViewerScreen(
                         }
                     }
                 }
-            }
-        }
 
-        // Slim reading progress bar pinned to the top of the content area.
-        // Wrapped in its own Box so TopCenter alignment resolves regardless
-        // of the enclosing layout scope.
-        if (!pdfUiState.isLoading && pdfUiState.error == null &&
-            !pdfUiState.isPasswordProtected && pdfUiState.totalPages > 1
-        ) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.TopCenter
-            ) {
-                LinearProgressIndicator(
-                    progress = { smoothProgress },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(3.dp),
-                    color = MaterialTheme.colorScheme.primary,
-                    trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
-                )
+                // Slim reading progress bar pinned to the top of the content area.
+                if (!pdfUiState.isLoading && pdfUiState.error == null &&
+                    !pdfUiState.isPasswordProtected && pdfUiState.totalPages > 1
+                ) {
+                    LinearProgressIndicator(
+                        progress = { smoothProgress },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(3.dp)
+                            .align(Alignment.TopCenter),
+                        color = MaterialTheme.colorScheme.primary,
+                        trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                    )
+                }
             }
         }
     }

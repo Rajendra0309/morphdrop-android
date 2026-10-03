@@ -139,6 +139,7 @@ fun NavGraph(
                         )
                     }
                 },
+                onOpenRoute = { route -> navController.navigate(route) },
                 onNavigate = { route ->
                     navController.navigate(route) {
                         popUpTo(navController.graph.findStartDestination().id) {

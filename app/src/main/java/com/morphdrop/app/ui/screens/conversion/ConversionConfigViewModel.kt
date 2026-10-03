@@ -470,6 +470,12 @@ class ConversionConfigViewModel @Inject constructor(
                     isConvertEnabled = true
                 )
             }
+            val hash = metadataUseCase.computeFileHash(context, uri)
+            _state.update { current ->
+                if (current.fileMetadata?.fileName == meta.fileName) {
+                    current.copy(fileMetadata = current.fileMetadata?.copy(fileHash = hash))
+                } else current
+            }
         }
     }
 
@@ -1106,7 +1112,9 @@ class ConversionConfigViewModel @Inject constructor(
                     )
                 }
                 val json = com.google.gson.Gson().toJson(mergeData)
-                if (json.toByteArray(Charsets.UTF_8).size > 8 * 1024) {
+                // Leave headroom for input_uris and the other keys in the same Data.
+                val otherBytes = uriStrings.sumOf { it?.length ?: 0 } + 1024
+                if (json.toByteArray(Charsets.UTF_8).size + otherBytes > 8 * 1024) {
                     // WorkManager Data is capped at 10KB: spill an oversized merge
                     // payload to a temp file and pass its URI under "merge_payload_file"
                     // instead of inline "merge_payload" (the worker reads this key).

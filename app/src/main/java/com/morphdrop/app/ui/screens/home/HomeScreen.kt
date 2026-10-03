@@ -103,6 +103,7 @@ fun HomeScreen(
     onNavigateToConfig: (conversionTypeId: String) -> Unit = {},
     /** Long-press on a tool card: quick conversion with the tool's saved preset. */
     onQuickConvert: (conversionTypeId: String) -> Unit = {},
+    onOpenRoute: (String) -> Unit = {},
     onNavigate: (String) -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel(),
     mainViewModel: MainViewModel,
@@ -138,6 +139,7 @@ fun HomeScreen(
         onToggleFavorite = viewModel::onToggleFavorite,
         onNavigateToConfig = onNavigateToConfig,
         onQuickConvert = onQuickConvert,
+        onOpenRoute = onOpenRoute,
         onNavigate = onNavigate,
         gridColumns = gridColumns,
         hasNavigationRail = hasNavigationRail
@@ -159,6 +161,7 @@ fun HomeScreenContent(
     onNavigateToConfig: (String) -> Unit,
     /** Long-press on a tool card: quick conversion with the tool's saved preset. */
     onQuickConvert: (String) -> Unit = {},
+    onOpenRoute: (String) -> Unit = {},
     onNavigate: (String) -> Unit,
     setSearchFabVisibility: (Boolean) -> Unit = {},
     setOnSearchFabClick: ((() -> Unit)?) -> Unit = {},
@@ -221,7 +224,7 @@ fun HomeScreenContent(
                     FileHelper.getFileName(context, uri)
                 }
                 if (candidates.size == 1) {
-                    onNavigate(routeForToolWithUri(candidates.first().id, uri))
+                    onOpenRoute(routeForToolWithUri(candidates.first().id, uri))
                 } else {
                     pendingUri = uri
                     pendingFileName = name
@@ -239,7 +242,7 @@ fun HomeScreenContent(
             onDismiss = { showToolPicker = false },
             onPick = { tool ->
                 showToolPicker = false
-                onNavigate(routeForToolWithUri(tool.id, pendingUri!!))
+                onOpenRoute(routeForToolWithUri(tool.id, pendingUri!!))
             }
         )
     }

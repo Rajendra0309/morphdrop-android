@@ -62,12 +62,12 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxState
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -76,6 +76,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -564,18 +565,31 @@ private fun LazyItemScope.SwipeableHistoryItem(
     modifier: Modifier = Modifier
 ) {
     val currentOnDelete by rememberUpdatedState(onDelete)
+    val density = LocalDensity.current
     var isDismissing by remember(item.id) { mutableStateOf(false) }
-    val dismissState = rememberSwipeToDismissBoxState(
-        confirmValueChange = { value ->
-            if (value == SwipeToDismissBoxValue.EndToStart && !isDismissing) {
-                isDismissing = true
-                currentOnDelete()
-                true
-            } else {
-                false
-            }
+    val dismissState = remember(item.id) {
+        SwipeToDismissBoxState(
+            initialValue = SwipeToDismissBoxValue.Settled,
+            density = density,
+            confirmValueChange = { value: SwipeToDismissBoxValue ->
+                if (value == SwipeToDismissBoxValue.EndToStart && !isDismissing) {
+                    isDismissing = true
+                    currentOnDelete()
+                    true
+                } else {
+                    false
+                }
+            },
+            positionalThreshold = { distance: Float -> distance * 0.5f }
+        )
+    }
+
+    LaunchedEffect(item.id) {
+        if (dismissState.currentValue != SwipeToDismissBoxValue.Settled) {
+            dismissState.snapTo(SwipeToDismissBoxValue.Settled)
         }
-    )
+        isDismissing = false
+    }
 
     // In selection mode swipe is disabled so gestures don't fight; the card
     // is rendered directly with its selection highlight.

@@ -118,11 +118,9 @@ class ResultViewModel @Inject constructor(
 
                             val isMultiple = uriList.size > 1
                             val folderName = if (isMultiple) {
-                                uriList.firstOrNull()?.path
-                                    ?.split("/")
-                                    ?.filter { it.isNotBlank() }
-                                    ?.let { if (it.size > 1) it[it.size - 2] else "MorphDrop" }
-                                    ?: "MorphDrop"
+                                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                    resolveFolderName(uriList.first())
+                                } ?: "MorphDrop"
                             } else null
 
                             // Before/after size comparison with savings percentage.
@@ -245,5 +243,26 @@ class ResultViewModel @Inject constructor(
             context.startActivity(Intent.createChooser(intent, "Share Files"))
         } catch (_: Exception) {
         }
+    }
+
+    private fun resolveFolderName(uri: Uri): String? = when (uri.scheme) {
+        "content" -> runCatching {
+            context.contentResolver.query(
+                uri,
+                arrayOf(android.provider.MediaStore.MediaColumns.RELATIVE_PATH),
+                null,
+                null,
+                null
+            )?.use { c ->
+                if (c.moveToFirst()) {
+                    c.getString(0)
+                        ?.trim('/')
+                        ?.removePrefix(android.os.Environment.DIRECTORY_DOWNLOADS)
+                        ?.trim('/')
+                        ?.ifBlank { "MorphDrop" }
+                } else null
+            }
+        }.getOrNull()
+        else -> uri.path?.let { File(it).parentFile?.name }
     }
 }

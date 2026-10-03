@@ -86,8 +86,10 @@ class HistoryDetailViewModel @Inject constructor(
                                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                             }
-                            context.startActivity(Intent.createChooser(intent, "Open Folder"))
-                            return
+                            if (intent.resolveActivity(context.packageManager) != null) {
+                                context.startActivity(Intent.createChooser(intent, "Open Folder"))
+                                return
+                            }
                         }
                     }
                 } catch (_: Exception) {}

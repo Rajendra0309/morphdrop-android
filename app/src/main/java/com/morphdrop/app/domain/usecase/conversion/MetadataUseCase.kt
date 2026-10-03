@@ -44,9 +44,6 @@ class MetadataUseCase @Inject constructor(
             it.extension.equals(extension, ignoreCase = true) 
         }
 
-        // Calculate file hash (SHA-256 preview)
-        val fileHash = calculateFileHash(context, uri)
-
         val isImage = mimeType.startsWith("image/") || extension in listOf("jpg", "jpeg", "png", "webp", "tiff", "tif", "heic", "heif", "dng", "bmp")
         val isPdf = mimeType.equals("application/pdf", ignoreCase = true) || extension == "pdf"
         val isMedia = mimeType.startsWith("video/") || mimeType.startsWith("audio/") || extension in listOf("mp4", "mkv", "avi", "mov", "3gp", "webm", "m4v", "mp3", "flac", "wav", "aac", "ogg")
@@ -61,7 +58,7 @@ class MetadataUseCase @Inject constructor(
                 mimeType = mimeType,
                 extension = extension,
                 fileType = matchingFileType,
-                fileHash = fileHash
+                fileHash = null
             )
         } else if (isPdf) {
             inspectPdfMetadata(
@@ -73,7 +70,7 @@ class MetadataUseCase @Inject constructor(
                 mimeType = mimeType,
                 extension = extension,
                 fileType = matchingFileType,
-                fileHash = fileHash
+                fileHash = null
             )
         } else if (isMedia) {
             inspectMediaMetadata(
@@ -85,7 +82,7 @@ class MetadataUseCase @Inject constructor(
                 mimeType = mimeType,
                 extension = extension,
                 fileType = matchingFileType,
-                fileHash = fileHash
+                fileHash = null
             )
         } else {
             // Generic file inspection
@@ -96,7 +93,7 @@ class MetadataUseCase @Inject constructor(
                 mimeType = mimeType,
                 fileExtension = extension,
                 fileType = matchingFileType,
-                fileHash = fileHash,
+                fileHash = null,
                 hasMetadata = false,
                 isScrubbable = false,
                 isEditable = false
@@ -1031,6 +1028,10 @@ class MetadataUseCase @Inject constructor(
         } catch (_: Exception) {
             null
         }
+    }
+
+    suspend fun computeFileHash(context: Context, uri: Uri): String? = withContext(Dispatchers.IO) {
+        calculateFileHash(context, uri)
     }
 
     private suspend fun calculateFileHash(context: Context, uri: Uri): String? {

@@ -237,6 +237,7 @@ class PdfViewerViewModel @Inject constructor(
     private var currentUri: Uri? = null
     /** One-shot continue-reading target, consumed on the next successful load. */
     private var initialPageRequest: Int = 0
+    private var pendingRestorePage: Int = -1
 
     private var bookmarkJob: Job? = null
 
@@ -281,6 +282,7 @@ class PdfViewerViewModel @Inject constructor(
 
     fun loadPdf(uri: Uri, password: String? = null, initialPage: Int = 0) {
         currentUri = uri
+        pendingRestorePage = -1
         // A continue-reading request: jump to this page once the document loads.
         if (initialPage > 0) initialPageRequest = initialPage
         highResJobs.values.forEach { it.cancel() }
@@ -1142,6 +1144,10 @@ class PdfViewerViewModel @Inject constructor(
             currentPage = pageNum,
             isBookmarked = it.bookmarks.any { bookmark -> bookmark.pageNumber == pageNum }
         ) }
+        if (pendingRestorePage >= 0) {
+            if (page != pendingRestorePage) return
+            pendingRestorePage = -1
+        }
         // Remember where the user left off for the Home continue-reading card.
         // Fires only when the visible page index actually changes.
         currentUri?.let { uri ->
@@ -1178,6 +1184,7 @@ class PdfViewerViewModel @Inject constructor(
             Log.e("PdfViewerViewModel", "Failed to save last opened PDF state", e)
         }
         if (targetPage > 0) {
+            pendingRestorePage = targetPage
             scrollToPage(targetPage)
         }
     }

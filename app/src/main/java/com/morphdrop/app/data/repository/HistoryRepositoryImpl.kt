@@ -32,7 +32,7 @@ class HistoryRepositoryImpl @Inject constructor(
     }
 
     override suspend fun deleteHistoryByIds(ids: List<Long>) {
-        if (ids.isNotEmpty()) historyDao.deleteHistoryByIds(ids)
+        ids.chunked(500).forEach { historyDao.deleteHistoryByIds(it) }
     }
 
     override suspend fun setPinned(id: Long, pinned: Boolean) {

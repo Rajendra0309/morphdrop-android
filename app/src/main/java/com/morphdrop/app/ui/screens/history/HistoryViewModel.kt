@@ -86,6 +86,7 @@ class HistoryViewModel @Inject constructor(
 
     fun onSearchQueryChange(query: String) {
         _searchQuery.value = query
+        clearSelection()
     }
 
     fun onFilterChange(filter: HistoryFilter) {

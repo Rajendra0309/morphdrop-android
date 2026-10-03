@@ -670,7 +670,7 @@ class MainActivity : ComponentActivity() {
 
             val targetBytes = 80 * 1024 * 1024L // 80 MB
             val inFlightCutoff = System.currentTimeMillis() - 15 * 60 * 1000L
-            val sharedIncomingCutoff = System.currentTimeMillis() - 6 * 60 * 60 * 1000L // 6 hours
+            val sharedIncomingCutoff = System.currentTimeMillis() - 48 * 60 * 60 * 1000L // 48 hours to match worker retry window
             val sharedIncomingDir = java.io.File(cache, "shared_incoming")
             val sharedIncomingCanonical = runCatching {
                 sharedIncomingDir.canonicalPath.let { if (it.endsWith(java.io.File.separator)) it else it + java.io.File.separator }

@@ -727,7 +727,7 @@ private fun PageNumberOverlayLayer(
     ) {
         Surface(
             shape = RoundedCornerShape(4.dp),
-            color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.85f),
+            color = Color.White.copy(alpha = 0.85f),
             modifier = Modifier.padding(2.dp)
         ) {
             Text(

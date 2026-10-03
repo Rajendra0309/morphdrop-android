@@ -21,7 +21,7 @@ import javax.inject.Inject
 
 data class SettingsUiState(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
-    val dynamicColorEnabled: Boolean = true,
+    val dynamicColorEnabled: Boolean = false,
     val defaultOutputDirectory: String = "Downloads/MorphDrop",
     val cacheSizeFormatted: String = "0 B",
     val appVersion: String = "v${BuildConfig.VERSION_NAME}",

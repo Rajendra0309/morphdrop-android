@@ -20,7 +20,9 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 @HiltViewModel
@@ -42,7 +44,7 @@ class MainViewModel @Inject constructor(
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.Eagerly,
-            initialValue = true
+            initialValue = false
         )
 
     /** Last PDF opened in the viewer + page, for the Home continue-reading card. */
@@ -71,10 +73,12 @@ class MainViewModel @Inject constructor(
         } catch (_: Exception) {
             null
         }
-        val readable = uri != null && try {
-            context.contentResolver.openInputStream(uri)?.use { true } ?: false
-        } catch (_: Exception) {
-            false
+        val readable = uri != null && withContext(Dispatchers.IO) {
+            try {
+                context.contentResolver.openInputStream(uri)?.use { true } ?: false
+            } catch (_: Exception) {
+                false
+            }
         }
         if (!readable) {
             settingsRepository.clearLastOpenedPdf()

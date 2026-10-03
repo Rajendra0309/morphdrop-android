@@ -19,4 +19,8 @@
     <string name="shortcut_history_long">Conversion History</string>
     <string name="shortcut_settings_short">Settings</string>
     <string name="shortcut_settings_long">App Preferences &amp; Settings</string>
+    <string name="pdf_color_description">%1$s color</string>
+    <string name="pdf_color_select_label">Select %1$s color</string>
+    <string name="pdf_color_generic">Color</string>
+    <string name="pdf_color_select_generic">Select color</string>
 </resources>

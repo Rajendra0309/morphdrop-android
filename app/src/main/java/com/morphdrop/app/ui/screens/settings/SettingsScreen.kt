@@ -574,8 +574,8 @@ fun SettingsScreenContent(
             val isExpanded = maxWidth >= 840.dp
             Column(
                 modifier = Modifier
-                    .fillMaxSize()
                     .widthIn(max = 840.dp)
+                    .fillMaxSize()
                     .imePadding()
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp)
