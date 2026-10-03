@@ -32,6 +32,11 @@ class SettingsViewModelTest {
         override val hasSeenOcrDisclaimer: Flow<Boolean> = MutableStateFlow(true)
         override val skippedUpdateVersion: Flow<String> = MutableStateFlow("")
         override val lastSeenAppVersion: Flow<String> = MutableStateFlow("")
+        override val dynamicColorEnabled: Flow<Boolean> = MutableStateFlow(true)
+        override val lastOpenedPdf: Flow<com.morphdrop.app.domain.model.LastOpenedPdf?> = MutableStateFlow(null)
+
+        override fun toolPreset(toolId: String): Flow<com.morphdrop.app.domain.model.ToolPreset?> =
+            MutableStateFlow(null)
 
         override suspend fun setThemeMode(mode: ThemeMode) {
             themeFlow.value = mode
@@ -53,6 +58,18 @@ class SettingsViewModelTest {
         override suspend fun setHasSeenOcrDisclaimer(hasSeen: Boolean) {}
         override suspend fun setSkippedUpdateVersion(version: String) {}
         override suspend fun setLastSeenAppVersion(version: String) {}
+        override suspend fun setDynamicColorEnabled(enabled: Boolean) {}
+        override suspend fun saveLastOpenedPdf(
+            uri: String,
+            page: Int,
+            displayName: String,
+            totalPages: Int
+        ) {}
+        override suspend fun clearLastOpenedPdf() {}
+        override suspend fun saveToolPreset(
+            toolId: String,
+            preset: com.morphdrop.app.domain.model.ToolPreset
+        ) {}
     }
 
     @Test
