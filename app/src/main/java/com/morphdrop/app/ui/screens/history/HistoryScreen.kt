@@ -39,6 +39,9 @@ import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.outlined.PushPin
+import androidx.compose.ui.draw.rotate
+import kotlinx.coroutines.Job
 import androidx.compose.material.icons.filled.SearchOff
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material3.AlertDialog
@@ -210,6 +213,7 @@ fun HistoryScreenContent(
     var showClearDialog by remember { mutableStateOf(false) }
     var showOverflowMenu by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
+    var snackbarJob by remember { mutableStateOf<Job?>(null) }
 
     /** Non-empty selection = selection mode (multi-select bulk delete). */
     val selectionMode = selectedIds.isNotEmpty()
@@ -313,6 +317,11 @@ fun HistoryScreenContent(
                                         )
                                         if (result == SnackbarResult.ActionPerformed) {
                                             onRestoreItems(deleted)
+                                            snackbarHostState.currentSnackbarData?.dismiss()
+                                            snackbarHostState.showSnackbar(
+                                                message = "Items restored",
+                                                duration = SnackbarDuration.Short
+                                            )
                                         }
                                     }
                                 }
@@ -470,7 +479,9 @@ fun HistoryScreenContent(
                                 onTogglePin = { onTogglePin(item) },
                                 onDelete = {
                                     onDeleteItem(item)
-                                    coroutineScope.launch {
+                                    snackbarJob?.cancel()
+                                    snackbarHostState.currentSnackbarData?.dismiss()
+                                    snackbarJob = coroutineScope.launch {
                                         val result = snackbarHostState.showSnackbar(
                                             message = "History deleted",
                                             actionLabel = "Undo",
@@ -478,6 +489,11 @@ fun HistoryScreenContent(
                                         )
                                         if (result == SnackbarResult.ActionPerformed) {
                                             onRestoreItem(item)
+                                            snackbarHostState.currentSnackbarData?.dismiss()
+                                            snackbarHostState.showSnackbar(
+                                                message = "Item restored",
+                                                duration = SnackbarDuration.Short
+                                            )
                                         }
                                     }
                                 },
@@ -520,12 +536,16 @@ private fun LazyItemScope.SwipeableHistoryItem(
     modifier: Modifier = Modifier
 ) {
     val currentOnDelete by rememberUpdatedState(onDelete)
+    var isDismissing by remember(item.id) { mutableStateOf(false) }
     val dismissState = rememberSwipeToDismissBoxState(
         confirmValueChange = { value ->
-            if (value == SwipeToDismissBoxValue.EndToStart) {
+            if (value == SwipeToDismissBoxValue.EndToStart && !isDismissing) {
+                isDismissing = true
                 currentOnDelete()
+                true
+            } else {
+                false
             }
-            false
         }
     )
 
@@ -680,24 +700,11 @@ private fun HistoryItemCard(
                     horizontalAlignment = Alignment.End,
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        if (item.isPinned) {
-                            Icon(
-                                imageVector = Icons.Default.PushPin,
-                                contentDescription = "Pinned",
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(14.dp)
-                            )
-                        }
-                        Text(
-                            text = relativeTime,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                    Text(
+                        text = relativeTime,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                     HistoryStatusChip(success = item.success)
                 }
             }
@@ -721,13 +728,23 @@ private fun HistoryItemCard(
                     onClick = onTogglePin,
                     modifier = Modifier.size(36.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.PushPin,
-                        contentDescription = if (item.isPinned) "Unpin" else "Pin",
-                        tint = if (item.isPinned) MaterialTheme.colorScheme.primary
-                               else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(18.dp)
-                    )
+                    if (item.isPinned) {
+                        Icon(
+                            imageVector = Icons.Filled.PushPin,
+                            contentDescription = "Unpin conversion",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Outlined.PushPin,
+                            contentDescription = "Pin conversion",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
+                            modifier = Modifier
+                                .size(18.dp)
+                                .rotate(-45f)
+                        )
+                    }
                 }
                 Icon(
                     imageVector = Icons.Default.ChevronRight,

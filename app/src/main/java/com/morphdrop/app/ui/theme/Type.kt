@@ -41,7 +41,7 @@ val Typography = Typography(
         letterSpacing = 0.5.sp
     ),
     labelMedium = TextStyle(
-        fontFamily = JetBrainsMono,
+        fontFamily = GoogleSans,
         fontWeight = FontWeight.Medium,
         fontSize = 12.sp,
         lineHeight = 16.sp,

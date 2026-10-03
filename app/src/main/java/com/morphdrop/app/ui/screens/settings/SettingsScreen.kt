@@ -581,7 +581,7 @@ fun SettingsScreenContent(
                     .padding(horizontal = 16.dp)
                     .padding(
                         top = 8.dp,
-                        bottom = if (isExpanded) 24.dp else 88.dp
+                        bottom = if (isExpanded) 32.dp else 128.dp
                     ),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
@@ -652,7 +652,11 @@ fun SettingsScreenContent(
 
             // Appearance Section with Material 3 Horizontal Segmented Theme Selector
             SettingsSection(title = "Appearance") {
-                Column(modifier = Modifier.padding(16.dp)) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.padding(bottom = 14.dp)
@@ -686,27 +690,30 @@ fun SettingsScreenContent(
                         selectedTheme = state.themeMode,
                         onSelectTheme = onSetThemeMode
                     )
+                }
 
-                    // Wallpaper colors (dynamic color) — shown only on supported
-                    // Android versions; the version check stays internal, no
-                    // version text is shown to the user.
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        SettingsItem(
-                            title = "Wallpaper colors",
-                            description = "Match app colors to your wallpaper",
-                            icon = Icons.Default.Wallpaper,
-                            containerColor = if (isDark) Color(0xFF00BCD4).copy(alpha = 0.20f) else Color(0xFFE0F7FA),
-                            contentColor = if (isDark) Color(0xFF4DD0E1) else Color(0xFF00838F),
-                            trailingContent = {
-                                Switch(
-                                    checked = state.dynamicColorEnabled,
-                                    onCheckedChange = onSetDynamicColorEnabled
-                                )
-                            },
-                            onClick = { onSetDynamicColorEnabled(!state.dynamicColorEnabled) }
-                        )
-                    }
+                // Wallpaper colors (dynamic color) — shown only on supported
+                // Android versions; the version check stays internal, no
+                // version text is shown to the user.
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                    )
+                    SettingsItem(
+                        title = "Wallpaper colors",
+                        description = "Match app colors to your wallpaper",
+                        icon = Icons.Default.Wallpaper,
+                        containerColor = if (isDark) Color(0xFF00BCD4).copy(alpha = 0.20f) else Color(0xFFE0F7FA),
+                        contentColor = if (isDark) Color(0xFF4DD0E1) else Color(0xFF00838F),
+                        trailingContent = {
+                            Switch(
+                                checked = state.dynamicColorEnabled,
+                                onCheckedChange = onSetDynamicColorEnabled
+                            )
+                        },
+                        onClick = { onSetDynamicColorEnabled(!state.dynamicColorEnabled) }
+                    )
                 }
             }
 
