@@ -44,6 +44,7 @@ import androidx.compose.ui.draw.rotate
 import kotlinx.coroutines.Job
 import androidx.compose.material.icons.filled.SearchOff
 import androidx.compose.material.icons.filled.SelectAll
+import androidx.activity.compose.BackHandler
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
@@ -64,6 +65,7 @@ import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.material3.rememberTopAppBarState
@@ -273,8 +275,12 @@ fun HistoryScreenContent(
 
     val groupedHistory = remember(historyList) { groupHistoryByDay(historyList) }
 
+    BackHandler(enabled = selectionMode) {
+        onClearSelection()
+    }
+
     Scaffold(
-        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+        modifier = if (selectionMode) Modifier else Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         // Lift the snackbar above the floating bottom navbar (rendered by
         // MainActivity): otherwise the message hides behind the pill and the
         // Undo action is untappable. No lift needed when the rail is used.
@@ -287,13 +293,29 @@ fun HistoryScreenContent(
             )
         },
         topBar = {
-            MorphDropTopAppBar(
-                title = if (selectionMode) "${selectedIds.size} selected" else "History",
-                scrollBehavior = scrollBehavior,
-                showBackArrow = false,
-                hasActions = hasActions || selectionMode,
-                actions = {
-                    if (selectionMode) {
+            if (selectionMode) {
+                TopAppBar(
+                    title = {
+                        Text(
+                            text = "${selectedIds.size} selected",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                    },
+                    navigationIcon = {
+                        IconButton(
+                            onClick = onClearSelection,
+                            modifier = Modifier.size(48.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Clear selection",
+                                tint = MaterialTheme.colorScheme.onBackground
+                            )
+                        }
+                    },
+                    actions = {
                         // Select all visible
                         IconButton(
                             onClick = onSelectAll,
@@ -301,7 +323,8 @@ fun HistoryScreenContent(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.SelectAll,
-                                contentDescription = "Select all"
+                                contentDescription = "Select all",
+                                tint = MaterialTheme.colorScheme.onBackground
                             )
                         }
                         // Delete selected
@@ -334,50 +357,55 @@ fun HistoryScreenContent(
                                 tint = MaterialTheme.colorScheme.error
                             )
                         }
-                        // Exit selection mode
-                        IconButton(
-                            onClick = onClearSelection,
-                            modifier = Modifier.size(48.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Close,
-                                contentDescription = "Clear selection"
-                            )
-                        }
-                    } else if (hasActions) {
-                        Box {
-                            IconButton(
-                                onClick = { showOverflowMenu = true },
-                                modifier = Modifier.size(48.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.MoreVert,
-                                    contentDescription = "More options"
-                                )
-                            }
-                            DropdownMenu(
-                                expanded = showOverflowMenu,
-                                onDismissRequest = { showOverflowMenu = false }
-                            ) {
-                                DropdownMenuItem(
-                                    text = { Text("Clear all history") },
-                                    leadingIcon = {
-                                        Icon(
-                                            imageVector = Icons.Default.DeleteSweep,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.error
-                                        )
-                                    },
-                                    onClick = {
-                                        showOverflowMenu = false
-                                        showClearDialog = true
-                                    }
-                                )
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.background,
+                        scrolledContainerColor = MaterialTheme.colorScheme.background,
+                        titleContentColor = MaterialTheme.colorScheme.onBackground
+                    )
+                )
+            } else {
+                MorphDropTopAppBar(
+                    title = "History",
+                    scrollBehavior = scrollBehavior,
+                    showBackArrow = false,
+                    hasActions = hasActions,
+                    actions = {
+                        if (hasActions) {
+                            Box {
+                                IconButton(
+                                    onClick = { showOverflowMenu = true },
+                                    modifier = Modifier.size(48.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.MoreVert,
+                                        contentDescription = "More options"
+                                    )
+                                }
+                                DropdownMenu(
+                                    expanded = showOverflowMenu,
+                                    onDismissRequest = { showOverflowMenu = false }
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text("Clear all history") },
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector = Icons.Default.DeleteSweep,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.error
+                                            )
+                                        },
+                                        onClick = {
+                                            showOverflowMenu = false
+                                            showClearDialog = true
+                                        }
+                                    )
+                                }
                             }
                         }
                     }
-                }
-            )
+                )
+            }
         }
     ) { innerPadding ->
         Box(
