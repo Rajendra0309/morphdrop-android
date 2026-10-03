@@ -79,7 +79,7 @@ class ExcelToPdfUseCase @Inject constructor(
         }
 
         // Native OOXML ZIP parser for .xlsx (lightweight, zero external dependencies)
-        val table = parseXlsxFromZip(bytes)
+        val (table, parseError) = parseXlsxFromZip(bytes)
         if (table.isNotEmpty()) {
             return@withContext renderTableToPdf(table, sanitizedFileName, onProgress)
         }
@@ -94,12 +94,16 @@ class ExcelToPdfUseCase @Inject constructor(
             return@withContext convertCsvToPdf(bytes, sanitizedFileName, onProgress, delimiter = delimiter)
         }
 
-        throw IllegalArgumentException("Unable to parse spreadsheet. Please ensure the file is a valid, unencrypted .xlsx document.")
+        throw IllegalArgumentException(
+            "Unable to parse spreadsheet. Please ensure the file is a valid, unencrypted .xlsx document.",
+            parseError
+        )
     }
 
-    private fun parseXlsxFromZip(bytes: ByteArray): List<List<String>> {
+    private fun parseXlsxFromZip(bytes: ByteArray): Pair<List<List<String>>, Throwable?> {
         val sharedStrings = mutableListOf<String>()
         val rowsMap = mutableMapOf<Int, MutableMap<Int, String>>()
+        var parseError: Throwable? = null
 
         try {
             val zipInputStream = ZipInputStream(ByteArrayInputStream(bytes))
@@ -126,27 +130,53 @@ class ExcelToPdfUseCase @Inject constructor(
                 parser.setInput(ByteArrayInputStream(sBytes), "UTF-8")
 
                 var eventType = parser.eventType
-                var currentText = StringBuilder()
+                // A shared string (<si>) may contain several <r> runs, each with its
+                // own <t>. Accumulate ALL runs into one entry and add it once on </si>;
+                // adding on every </t> corrupted multi-run strings.
+                var insideSi = false
+                var insideRPh = false
+                var currentItem = StringBuilder()
                 var insideT = false
+                var currentRun = StringBuilder()
 
                 while (eventType != XmlPullParser.END_DOCUMENT) {
                     val tag = parser.name?.lowercase() ?: ""
                     when (eventType) {
                         XmlPullParser.START_TAG -> {
-                            if (tag == "t" || tag.endsWith(":t")) {
-                                insideT = true
-                                currentText = StringBuilder()
+                            when {
+                                tag == "si" || tag.endsWith(":si") -> {
+                                    insideSi = true
+                                    insideRPh = false
+                                    currentItem = StringBuilder()
+                                }
+                                tag == "rph" || tag.endsWith(":rph") -> {
+                                    insideRPh = true
+                                }
+                                (tag == "t" || tag.endsWith(":t")) && insideSi && !insideRPh -> {
+                                    insideT = true
+                                    currentRun = StringBuilder()
+                                }
                             }
                         }
                         XmlPullParser.TEXT -> {
                             if (insideT) {
-                                currentText.append(parser.text)
+                                currentRun.append(parser.text)
                             }
                         }
                         XmlPullParser.END_TAG -> {
-                            if (tag == "t" || tag.endsWith(":t")) {
-                                insideT = false
-                                sharedStrings.add(currentText.toString())
+                            when {
+                                tag == "rph" || tag.endsWith(":rph") -> {
+                                    insideRPh = false
+                                }
+                                (tag == "t" || tag.endsWith(":t")) && insideT -> {
+                                    insideT = false
+                                    currentItem.append(currentRun)
+                                }
+                                (tag == "si" || tag.endsWith(":si")) && insideSi -> {
+                                    insideSi = false
+                                    insideRPh = false
+                                    sharedStrings.add(currentItem.toString())
+                                }
                             }
                         }
                     }
@@ -154,7 +184,10 @@ class ExcelToPdfUseCase @Inject constructor(
                 }
             }
 
-            val firstSheetBytes = sheetBytesMap.entries.sortedBy { it.key }.firstOrNull()?.value
+            // Numeric-aware sheet order: "sheet10" must come after "sheet2".
+            val firstSheetBytes = sheetBytesMap.entries
+                .sortedWith(compareBy({ sheetOrderKey(it.key) }, { it.key }))
+                .firstOrNull()?.value
             if (firstSheetBytes != null) {
                 val factory = XmlPullParserFactory.newInstance()
                 factory.isNamespaceAware = true
@@ -217,9 +250,14 @@ class ExcelToPdfUseCase @Inject constructor(
                     eventType = parser.next()
                 }
             }
-        } catch (_: Throwable) {}
+        } catch (t: Throwable) {
+            // Keep the failure so the final error can chain it as its cause
+            // instead of swallowing it silently.
+            parseError = t
+            Log.w(TAG, "Native xlsx parse failed; falling back to delimited-text parsing", t)
+        }
 
-        if (rowsMap.isEmpty()) return emptyList()
+        if (rowsMap.isEmpty()) return emptyList<List<String>>() to parseError
 
         val sortedRowKeys = rowsMap.keys.sorted()
         val table = mutableListOf<List<String>>()
@@ -234,7 +272,14 @@ class ExcelToPdfUseCase @Inject constructor(
             table.add(rowList)
         }
 
-        return table
+        return table to parseError
+    }
+
+    /**
+     * Numeric-aware sheet key: "xl/worksheets/sheet10.xml" sorts after "sheet2.xml".
+     */
+    private fun sheetOrderKey(name: String): Int {
+        return Regex("""sheet(\d+)""").find(name)?.groupValues?.get(1)?.toIntOrNull() ?: Int.MAX_VALUE
     }
 
     private fun getColumnIndexFromRef(ref: String): Int {
@@ -252,12 +297,57 @@ class ExcelToPdfUseCase @Inject constructor(
         onProgress: (Int) -> Unit,
         delimiter: String = ","
     ): Uri {
-        val contentStr = String(bytes, Charsets.UTF_8)
-        val lines = contentStr.split(Regex("[\\r\\n]+")).filter { it.isNotBlank() }
-        val table = lines.map { line ->
-            line.split(delimiter).map { cell -> cell.trim().removeSurrounding("\"") }
-        }
+        // Strip a BOM so it never becomes part of the first cell, then parse with a
+        // proper quoted-field parser: handles "Smith, John",42, embedded newlines in
+        // quoted fields, and "" escaped quotes. Intentional blank rows are preserved.
+        val contentStr = String(bytes, Charsets.UTF_8).removePrefix("\uFEFF")
+        val table = parseDelimitedText(contentStr, delimiter.firstOrNull() ?: ',')
         return renderTableToPdf(table, outputFileName, onProgress)
+    }
+
+    /**
+     * Parses delimited text honoring RFC-4180-style quoting: a field wrapped in
+     * double quotes may contain the delimiter, line breaks, and "" escapes.
+     */
+    private fun parseDelimitedText(content: String, delimiter: Char): List<List<String>> {
+        val rows = mutableListOf<List<String>>()
+        val currentRow = mutableListOf<String>()
+        val field = StringBuilder()
+        var inQuotes = false
+        var i = 0
+        while (i < content.length) {
+            val c = content[i]
+            when {
+                c == '"' -> {
+                    if (inQuotes && i + 1 < content.length && content[i + 1] == '"') {
+                        field.append('"')
+                        i++ // consume the escaped quote
+                    } else {
+                        inQuotes = !inQuotes
+                    }
+                }
+                c == delimiter && !inQuotes -> {
+                    currentRow.add(field.toString().trim())
+                    field.clear()
+                }
+                (c == '\n' || c == '\r') && !inQuotes -> {
+                    if (c == '\r' && i + 1 < content.length && content[i + 1] == '\n') i++
+                    currentRow.add(field.toString().trim())
+                    field.clear()
+                    rows.add(currentRow.toList())
+                    currentRow.clear()
+                }
+                else -> field.append(c)
+            }
+            i++
+        }
+        // Trailing field/row without a line terminator (but not a phantom row for
+        // content that simply ends with a newline).
+        if (field.isNotEmpty() || currentRow.isNotEmpty()) {
+            currentRow.add(field.toString().trim())
+            rows.add(currentRow.toList())
+        }
+        return rows
     }
 
     private suspend fun renderTableToPdf(
@@ -271,7 +361,9 @@ class ExcelToPdfUseCase @Inject constructor(
             val baos = ByteArrayOutputStream()
             pdfDocument.writeTo(baos)
             onProgress(95)
-            return FileHelper.saveToFile(context, settingsRepository, outputFileName, baos.toByteArray())
+            val uri = FileHelper.saveToFile(context, settingsRepository, outputFileName, baos.toByteArray())
+            onProgress(100)
+            return uri
         } finally {
             try { pdfDocument.close() } catch (_: Throwable) {}
         }

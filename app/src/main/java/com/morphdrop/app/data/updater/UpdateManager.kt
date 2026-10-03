@@ -137,26 +137,34 @@ class UpdateManager @Inject constructor(
             }
             val archiveInfo = pm.getPackageArchiveInfo(apkFile.absolutePath, archiveFlags)
                 ?: return false
-            val archiveCerts = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                val signingInfo = archiveInfo.signingInfo ?: return false
-                if (signingInfo.hasMultipleSigners()) signingInfo.apkContentsSigners else signingInfo.signingCertificateHistory
-            } else {
-                @Suppress("DEPRECATION")
-                archiveInfo.signatures
-            } ?: return false
-
             val installedInfo = pm.getPackageInfo(context.packageName, archiveFlags)
-            val installedCerts = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                val signingInfo = installedInfo.signingInfo ?: return false
-                if (signingInfo.hasMultipleSigners()) signingInfo.apkContentsSigners else signingInfo.signingCertificateHistory
+                ?: return false
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                val archiveSigning = archiveInfo.signingInfo ?: return false
+                val installedSigning = installedInfo.signingInfo ?: return false
+
+                if (archiveSigning.hasMultipleSigners() || installedSigning.hasMultipleSigners()) {
+                    val archiveSigners = archiveSigning.apkContentsSigners.map { it.toCharsString() }.toSet()
+                    val installedSigners = installedSigning.apkContentsSigners.map { it.toCharsString() }.toSet()
+                    archiveSigners == installedSigners
+                } else {
+                    val archiveCurrent = archiveSigning.apkContentsSigners.firstOrNull()?.toCharsString() ?: return false
+                    val installedCurrent = installedSigning.apkContentsSigners.firstOrNull()?.toCharsString() ?: return false
+                    val archiveHistory = archiveSigning.signingCertificateHistory.map { it.toCharsString() }.toSet()
+                    val installedHistory = installedSigning.signingCertificateHistory.map { it.toCharsString() }.toSet()
+
+                    archiveCurrent == installedCurrent ||
+                        archiveHistory.contains(installedCurrent) ||
+                        installedHistory.contains(archiveCurrent)
+                }
             } else {
                 @Suppress("DEPRECATION")
-                installedInfo.signatures
-            } ?: return false
-
-            val archiveDigests = archiveCerts.map { it.toCharsString() }.toSet()
-            val installedDigests = installedCerts.map { it.toCharsString() }.toSet()
-            archiveDigests == installedDigests
+                val archiveSigners = archiveInfo.signatures?.map { it.toCharsString() }?.toSet() ?: return false
+                @Suppress("DEPRECATION")
+                val installedSigners = installedInfo.signatures?.map { it.toCharsString() }?.toSet() ?: return false
+                archiveSigners == installedSigners
+            }
         } catch (e: Exception) {
             Log.w("UpdateManager", "APK signature verification failed", e)
             false

@@ -32,6 +32,12 @@ class SplitPdfUseCase @Inject constructor(
         splitEveryN: Int = 1,
         outputFolderName: String? = null
     ): List<Uri> = withContext(Dispatchers.IO) {
+        if (!PDFBoxResourceLoader.isReady()) {
+            PDFBoxResourceLoader.init(context)
+        }
+
+        val safeSplitEveryN = splitEveryN.coerceAtLeast(1)
+
         val inputStream = try {
             FileHelper.readFileFromUri(context, pdfUri)
         } catch (e: Exception) {
@@ -58,14 +64,16 @@ class SplitPdfUseCase @Inject constructor(
             val folderName = "$baseFolder/$chosenFolder"
             FileHelper.createOutputDirectory(folderName)
 
-            // Step 1: Filter and prepare the virtual pages based on workbench state
-            val activePages = pageOrder.filter { selectedPages.contains(it) }
+            // Step 1: Filter and prepare the virtual pages based on workbench state.
+            // Out-of-range indices are dropped here; if nothing valid remains the
+            // InvalidRange below reports it instead of producing empty files.
+            val activePages = pageOrder.filter { it in 0 until sourceDoc.numberOfPages && selectedPages.contains(it) }
             if (activePages.isEmpty()) throw SplitException.InvalidRange()
 
             // Step 2: Determine groups of pages for each output file
             val pageGroups = when (splitMode) {
                 "selection" -> listOf(activePages) // All selected pages go into ONE file
-                "every_n" -> activePages.chunked(splitEveryN) // Split every N pages
+                "every_n" -> activePages.chunked(safeSplitEveryN) // Split every N pages
                 "all" -> activePages.chunked(1) // Every page is a separate file
                 else -> listOf(activePages)
             }
@@ -77,12 +85,15 @@ class SplitPdfUseCase @Inject constructor(
                 try {
                     for (pageIndex in group) {
                         kotlinx.coroutines.yield()
+                        if (pageIndex !in 0 until sourceDoc.numberOfPages) continue
                         val page = sourceDoc.getPage(pageIndex)
                         val rotation = rotations[pageIndex] ?: 0
+                        // Rotate the imported copy so the cached source page is never
+                        // mutated (duplicated indices would otherwise compound).
+                        val importedPage = splitDoc.importPage(page)
                         if (rotation != 0) {
-                            page.rotation = (page.rotation + rotation) % 360
+                            importedPage.rotation = Math.floorMod(importedPage.rotation + rotation, 360)
                         }
-                        splitDoc.importPage(page)
                     }
                     
                     val baos = ByteArrayOutputStream()

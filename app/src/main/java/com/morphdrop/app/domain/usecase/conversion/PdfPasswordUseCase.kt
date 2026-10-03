@@ -39,6 +39,10 @@ class PdfPasswordUseCase @Inject constructor(
     ): Uri = withContext(Dispatchers.IO) {
         if (password.isEmpty()) throw PasswordException.InvalidAction()
 
+        if (!PDFBoxResourceLoader.isReady()) {
+            PDFBoxResourceLoader.init(context)
+        }
+
         val inputStream = FileHelper.readFileFromUri(context, pdfUri)
 
         val document = try {
@@ -47,8 +51,11 @@ class PdfPasswordUseCase @Inject constructor(
             } else {
                 PDDocument.load(inputStream)
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            try { inputStream.close() } catch (_: Exception) {}
+            throw e
         } catch (e: Exception) {
-            inputStream.close()
+            try { inputStream.close() } catch (_: Exception) {}
             if (e.message?.contains("password", ignoreCase = true) == true) {
                 throw PasswordException.WrongPassword()
             }
@@ -69,7 +76,8 @@ class PdfPasswordUseCase @Inject constructor(
                     // to open it as a "User", thereby enforcing the restrictions securely.
                     val ownerPassword = java.util.UUID.randomUUID().toString()
                     val spp = StandardProtectionPolicy(ownerPassword, password, accessPermission)
-                    spp.encryptionKeyLength = 128
+                    spp.encryptionKeyLength = 256
+                    spp.setPreferAES(true)
                     spp.permissions = accessPermission
                     document.protect(spp)
                 }

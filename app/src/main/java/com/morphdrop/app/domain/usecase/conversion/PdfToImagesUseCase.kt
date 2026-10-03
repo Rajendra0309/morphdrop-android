@@ -48,25 +48,40 @@ class PdfToImagesUseCase @Inject constructor(
         FileHelper.createOutputDirectory(outputDir)
         val results = mutableListOf<Uri>()
 
+        // Tracks the fallback cache copy (only created when the content resolver
+        // cannot hand us a descriptor directly) so it is deleted in the finally.
+        var cacheFile: java.io.File? = null
         val fileDescriptor = try {
             context.contentResolver.openFileDescriptor(pdfUri, "r")
                 ?: throw PdfException.CorruptPdf()
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
-            val cacheFile = java.io.File(context.cacheDir, "temp_pdf_${System.currentTimeMillis()}.pdf")
+            val tmp = java.io.File.createTempFile("pdf_to_images_", ".pdf", context.cacheDir)
+            cacheFile = tmp
             try {
                 FileHelper.readFileFromUri(context, pdfUri).use { input ->
-                    cacheFile.outputStream().use { output -> input.copyTo(output) }
+                    tmp.outputStream().use { output -> input.copyTo(output) }
                 }
-                android.os.ParcelFileDescriptor.open(cacheFile, android.os.ParcelFileDescriptor.MODE_READ_ONLY)
+                android.os.ParcelFileDescriptor.open(tmp, android.os.ParcelFileDescriptor.MODE_READ_ONLY)
             } catch (ex: Exception) {
+                runCatching { tmp.delete() }
+                cacheFile = null
                 throw PdfException.CorruptPdf()
             }
         }
 
         val renderer = try {
             PdfRenderer(fileDescriptor)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            fileDescriptor.close()
+            cacheFile?.let { runCatching { it.delete() } }
+            cacheFile = null
+            throw e
         } catch (e: Exception) {
             fileDescriptor.close()
+            cacheFile?.let { runCatching { it.delete() } }
+            cacheFile = null
             throw PdfException.CorruptPdf()
         }
 
@@ -75,6 +90,7 @@ class PdfToImagesUseCase @Inject constructor(
             if (pageCount == 0) throw PdfException.EmptyPdf()
 
             val range = pageRange?.let {
+                require(it.first <= it.last) { "Invalid page range: start must be <= end" }
                 val start = (it.first - 1).coerceAtLeast(0)
                 val end = (it.last - 1).coerceAtMost(pageCount - 1)
                 start..end
@@ -85,47 +101,60 @@ class PdfToImagesUseCase @Inject constructor(
             for (i in range) {
                 kotlinx.coroutines.yield()
                 val page = renderer.openPage(i)
-                val width = page.width * 2
-                val height = page.height * 2
-                val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-                val canvas = android.graphics.Canvas(bitmap)
-                canvas.drawColor(android.graphics.Color.WHITE)
+                try {
+                    // Cap the render scale by total pixels so a huge page cannot
+                    // OOM the device: scale = min(2, sqrt(24MP / (w*h))).
+                    val rawW = page.width.toFloat()
+                    val rawH = page.height.toFloat()
+                    val pixelBudget = 24_000_000f
+                    val cappedScale = minOf(2f, kotlin.math.sqrt(pixelBudget / (rawW * rawH).coerceAtLeast(1f)))
+                    val width = (rawW * cappedScale).toInt().coerceAtLeast(1)
+                    val height = (rawH * cappedScale).toInt().coerceAtLeast(1)
+                    val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                    try {
+                        val canvas = android.graphics.Canvas(bitmap)
+                        canvas.drawColor(android.graphics.Color.WHITE)
 
-                page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                page.close()
+                        page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
 
-                val baos = ByteArrayOutputStream()
-                val compressFormat = if (outputFormat.equals("jpg", ignoreCase = true) ||
-                    outputFormat.equals("jpeg", ignoreCase = true)
-                ) {
-                    Bitmap.CompressFormat.JPEG
-                } else {
-                    Bitmap.CompressFormat.PNG
-                }
-                bitmap.compress(compressFormat, quality, baos)
-                bitmap.recycle()
+                        val baos = ByteArrayOutputStream()
+                        val compressFormat = if (outputFormat.equals("jpg", ignoreCase = true) ||
+                            outputFormat.equals("jpeg", ignoreCase = true)
+                        ) {
+                            Bitmap.CompressFormat.JPEG
+                        } else {
+                            Bitmap.CompressFormat.PNG
+                        }
+                        bitmap.compress(compressFormat, quality, baos)
 
-                val ext = if (compressFormat == Bitmap.CompressFormat.JPEG) "jpg" else "png"
-                
-                val savedUri = if (isSinglePage) {
-                    // Save as a single file instead of folder if it's 1 page and a folder name was given
-                    val finalFileName = if (chosenFolder.isNotBlank()) {
-                        if (chosenFolder.lowercase().endsWith(".$ext")) chosenFolder else "$chosenFolder.$ext"
-                    } else {
-                        "page_${i + 1}.$ext"
+                        val ext = if (compressFormat == Bitmap.CompressFormat.JPEG) "jpg" else "png"
+
+                        val savedUri = if (isSinglePage) {
+                            // Save as a single file instead of folder if it's 1 page and a folder name was given
+                            val finalFileName = if (chosenFolder.isNotBlank()) {
+                                if (chosenFolder.lowercase().endsWith(".$ext")) chosenFolder else "$chosenFolder.$ext"
+                            } else {
+                                "page_${i + 1}.$ext"
+                            }
+                            FileHelper.saveToFile(context, baseFolder, finalFileName, baos.toByteArray())
+                        } else {
+                            val fileName = "page_${i + 1}.$ext"
+                            FileHelper.saveToDirectory(context, outputDir, fileName, baos.toByteArray())
+                        }
+
+                        results.add(savedUri)
+                        baos.close()
+                    } finally {
+                        bitmap.recycle()
                     }
-                    FileHelper.saveToFile(context, baseFolder, finalFileName, baos.toByteArray())
-                } else {
-                    val fileName = "page_${i + 1}.$ext"
-                    FileHelper.saveToDirectory(context, outputDir, fileName, baos.toByteArray())
+                } finally {
+                    page.close()
                 }
-                
-                results.add(savedUri)
-                baos.close()
             }
         } finally {
             renderer.close()
             fileDescriptor.close()
+            cacheFile?.let { runCatching { it.delete() } }
         }
 
         results

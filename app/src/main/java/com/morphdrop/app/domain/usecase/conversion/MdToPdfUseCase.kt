@@ -23,9 +23,9 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.BufferedReader
-import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.InputStreamReader
+import java.nio.charset.Charset
 import javax.inject.Inject
 
 class MdToPdfUseCase @Inject constructor(
@@ -62,13 +62,7 @@ class MdToPdfUseCase @Inject constructor(
             "$outputFileName.pdf"
         }
 
-        val inputStream = FileHelper.readFileFromUri(context, mdUri)
-        val bytes = inputStream.readBytes()
-        try { inputStream.close() } catch (_: Exception) {}
-
-        val reader = BufferedReader(InputStreamReader(ByteArrayInputStream(bytes), Charsets.UTF_8))
-        val rawLines = reader.readLines()
-        try { reader.close() } catch (_: Exception) {}
+        val rawLines = readTextLines(mdUri)
 
         val elements = parseMarkdown(rawLines)
         val pdfDocument = PdfDocument()
@@ -91,6 +85,140 @@ class MdToPdfUseCase @Inject constructor(
                     currentPage = pdfDocument.startPage(pageInfo)
                     canvas = currentPage.canvas
                     yPos = MARGIN_TOP
+                }
+            }
+
+            fun newPage() {
+                pdfDocument.finishPage(currentPage)
+                pageNumber++
+                pageInfo = PdfDocument.PageInfo.Builder(PAGE_WIDTH, PAGE_HEIGHT, pageNumber).create()
+                currentPage = pdfDocument.startPage(pageInfo)
+                canvas = currentPage.canvas
+                yPos = MARGIN_TOP
+            }
+
+            /**
+             * Draws [layout] at a horizontal offset of [xOffset] from the left margin,
+             * splitting it across pages by text lines when it is too tall to fit on one
+             * page (instead of clipping). [blockTopPadding]/[blockBottomPadding] reserve
+             * decoration space (e.g. code-block background) around every page chunk;
+             * [onChunk] draws per-chunk decorations and receives the chunk's block
+             * bounds plus whether it is the first chunk.
+             */
+            fun drawLayoutMaybeSplit(
+                layout: StaticLayout,
+                xOffset: Float = 0f,
+                blockTopPadding: Float = 0f,
+                blockBottomPadding: Float = 0f,
+                spacingAfter: Float = 0f,
+                onChunk: ((blockTopY: Float, blockBottomY: Float, isFirstChunk: Boolean) -> Unit)? = null
+            ) {
+                val totalLines = layout.lineCount
+                if (totalLines == 0) {
+                    yPos += spacingAfter
+                    return
+                }
+                var firstLine = 0
+                var isFirstChunk = true
+                while (firstLine < totalLines) {
+                    val available = maxBottom - yPos
+                    var lastLine = firstLine
+                    while (lastLine < totalLines &&
+                        (layout.getLineBottom(lastLine) - layout.getLineTop(firstLine)).toFloat() +
+                                blockTopPadding + blockBottomPadding <= available
+                    ) {
+                        lastLine++
+                    }
+                    if (lastLine == firstLine) {
+                        // Not even one line fits in the remaining space: move to a fresh
+                        // page, unless already at the top (then draw the line anyway so
+                        // we never stall).
+                        if (yPos > MARGIN_TOP) {
+                            newPage()
+                            continue
+                        }
+                        lastLine = firstLine + 1
+                    }
+                    val chunkTop = layout.getLineTop(firstLine).toFloat()
+                    val chunkHeight = layout.getLineBottom(lastLine - 1).toFloat() - chunkTop
+                    val blockTopY = yPos
+                    val blockBottomY = yPos + blockTopPadding + chunkHeight + blockBottomPadding
+                    onChunk?.invoke(blockTopY, blockBottomY, isFirstChunk)
+                    canvas.save()
+                    canvas.clipRect(
+                        MARGIN_LEFT + xOffset,
+                        blockTopY + blockTopPadding,
+                        MARGIN_LEFT + xOffset + layout.width,
+                        blockTopY + blockTopPadding + chunkHeight
+                    )
+                    canvas.translate(MARGIN_LEFT + xOffset, blockTopY + blockTopPadding - chunkTop)
+                    layout.draw(canvas)
+                    canvas.restore()
+                    yPos = blockBottomY
+                    firstLine = lastLine
+                    isFirstChunk = false
+                    if (firstLine < totalLines) newPage()
+                }
+                yPos += spacingAfter
+            }
+
+            /**
+             * Draws a table row whose height exceeds a full page by slicing every
+             * cell's [StaticLayout] line-by-line across pages (instead of clipping).
+             * All cells in a row share the same paint, so line metrics are uniform
+             * and the tallest cell's layout drives the chunk boundaries.
+             */
+            fun drawSplitTableRow(
+                rIdx: Int,
+                cellLayouts: List<StaticLayout>,
+                maxCols: Int,
+                colWidth: Float,
+                headerBg: Paint,
+                border: Paint
+            ) {
+                val refLayout = cellLayouts.maxByOrNull { it.lineCount } ?: return
+                val totalLines = refLayout.lineCount
+                if (totalLines == 0) return
+                var firstLine = 0
+                while (firstLine < totalLines) {
+                    val available = maxBottom - yPos
+                    var lastLine = firstLine
+                    while (lastLine < totalLines &&
+                        (refLayout.getLineBottom(lastLine) - refLayout.getLineTop(firstLine)).toFloat() + 8f <= available
+                    ) {
+                        lastLine++
+                    }
+                    if (lastLine == firstLine) {
+                        // Not even one line fits: fresh page, unless already at the
+                        // top (then draw the line anyway so we never stall).
+                        if (yPos > MARGIN_TOP) {
+                            newPage()
+                            continue
+                        }
+                        lastLine = firstLine + 1
+                    }
+                    val chunkTop = refLayout.getLineTop(firstLine).toFloat()
+                    val chunkHeight = refLayout.getLineBottom(lastLine - 1).toFloat() - chunkTop
+                    val blockHeight = chunkHeight + 8f
+                    val blockTopY = yPos
+                    val blockBottomY = yPos + blockHeight
+
+                    if (rIdx == 0) {
+                        canvas.drawRect(RectF(MARGIN_LEFT, blockTopY, MARGIN_LEFT + usableWidth, blockBottomY), headerBg)
+                    }
+                    for (cIdx in 0 until maxCols) {
+                        val xPos = MARGIN_LEFT + (cIdx * colWidth)
+                        canvas.drawRect(RectF(xPos, blockTopY, xPos + colWidth, blockBottomY), border)
+                        val layout = cellLayouts[cIdx]
+                        canvas.save()
+                        canvas.clipRect(xPos + 4f, blockTopY + 4f, xPos + colWidth - 4f, blockTopY + 4f + chunkHeight)
+                        canvas.translate(xPos + 4f, blockTopY + 4f - chunkTop)
+                        layout.draw(canvas)
+                        canvas.restore()
+                    }
+                    yPos = blockBottomY
+                    firstLine = lastLine
+                    if (firstLine < totalLines) newPage()
                 }
             }
 
@@ -121,19 +249,13 @@ class MdToPdfUseCase @Inject constructor(
 
                         val formattedText = formatMarkdownInline(element.text)
                         val layout = createStaticLayout(formattedText, paint, usableWidth)
-                        val layoutHeight = layout.height.toFloat()
 
-                        checkNewPage(topPadding + layoutHeight + (if (element.level <= 2) 4f else 0f))
+                        checkNewPage(topPadding)
                         yPos += topPadding
-
-                        canvas.save()
-                        canvas.translate(MARGIN_LEFT, yPos)
-                        layout.draw(canvas)
-                        canvas.restore()
-
-                        yPos += layoutHeight + 4f
+                        drawLayoutMaybeSplit(layout, spacingAfter = 4f)
 
                         if (element.level <= 2) {
+                            checkNewPage(6f)
                             val rulePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                                 color = Color.parseColor("#D0D7DE")
                                 style = Paint.Style.STROKE
@@ -153,16 +275,7 @@ class MdToPdfUseCase @Inject constructor(
 
                         val formattedText = formatMarkdownInline(element.text)
                         val layout = createStaticLayout(formattedText, paint, usableWidth)
-                        val layoutHeight = layout.height.toFloat()
-
-                        checkNewPage(layoutHeight + 4f)
-
-                        canvas.save()
-                        canvas.translate(MARGIN_LEFT, yPos)
-                        layout.draw(canvas)
-                        canvas.restore()
-
-                        yPos += layoutHeight + 5f
+                        drawLayoutMaybeSplit(layout, spacingAfter = 5f)
                     }
 
                     is MdElement.BulletList -> {
@@ -174,25 +287,25 @@ class MdToPdfUseCase @Inject constructor(
 
                         val listWidth = usableWidth - 18
 
+                        val bulletPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                            color = Color.parseColor("#1F2328")
+                            style = Paint.Style.FILL
+                        }
+
                         for (item in element.items) {
                             val formattedText = formatMarkdownInline(item)
                             val layout = createStaticLayout(formattedText, paint, listWidth)
-                            val layoutHeight = layout.height.toFloat()
-
-                            checkNewPage(layoutHeight + 3f)
-
-                            val bulletPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                                color = Color.parseColor("#1F2328")
-                                style = Paint.Style.FILL
+                            drawLayoutMaybeSplit(
+                                layout,
+                                xOffset = 18f,
+                                spacingAfter = 3f
+                            ) { blockTopY, _, isFirstChunk ->
+                                // Bullet belongs to the first chunk only when an item
+                                // is split across pages.
+                                if (isFirstChunk) {
+                                    canvas.drawCircle(MARGIN_LEFT + 6f, blockTopY + 6f, 2.2f, bulletPaint)
+                                }
                             }
-                            canvas.drawCircle(MARGIN_LEFT + 6f, yPos + 6f, 2.2f, bulletPaint)
-
-                            canvas.save()
-                            canvas.translate(MARGIN_LEFT + 18f, yPos)
-                            layout.draw(canvas)
-                            canvas.restore()
-
-                            yPos += layoutHeight + 3f
                         }
                         yPos += 3f
                     }
@@ -206,27 +319,25 @@ class MdToPdfUseCase @Inject constructor(
 
                         val listWidth = usableWidth - 20
 
+                        val numPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+                            color = Color.parseColor("#57606A")
+                            textSize = 10f
+                            typeface = Typeface.DEFAULT
+                        }
+
                         for ((idx, item) in element.items.withIndex()) {
                             val formattedText = formatMarkdownInline(item)
                             val layout = createStaticLayout(formattedText, paint, listWidth)
-                            val layoutHeight = layout.height.toFloat()
-
-                            checkNewPage(layoutHeight + 3f)
-
-                            val numPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-                                color = Color.parseColor("#57606A")
-                                textSize = 10f
-                                typeface = Typeface.DEFAULT
-                            }
                             val numStr = "${idx + 1}."
-                            canvas.drawText(numStr, MARGIN_LEFT, yPos + 10f, numPaint)
-
-                            canvas.save()
-                            canvas.translate(MARGIN_LEFT + 20f, yPos)
-                            layout.draw(canvas)
-                            canvas.restore()
-
-                            yPos += layoutHeight + 3f
+                            drawLayoutMaybeSplit(
+                                layout,
+                                xOffset = 20f,
+                                spacingAfter = 3f
+                            ) { blockTopY, _, isFirstChunk ->
+                                if (isFirstChunk) {
+                                    canvas.drawText(numStr, MARGIN_LEFT, blockTopY + 10f, numPaint)
+                                }
+                            }
                         }
                         yPos += 3f
                     }
@@ -241,10 +352,6 @@ class MdToPdfUseCase @Inject constructor(
                         val combinedCode = element.lines.joinToString("\n")
                         val codeWidth = usableWidth - 16
                         val layout = createStaticLayout(combinedCode, paint, codeWidth)
-                        val layoutHeight = layout.height.toFloat()
-                        val boxHeight = layoutHeight + 12f
-
-                        checkNewPage(boxHeight + 6f)
 
                         val bgPaint = Paint().apply {
                             color = Color.parseColor("#F6F8FA")
@@ -256,16 +363,19 @@ class MdToPdfUseCase @Inject constructor(
                             strokeWidth = 0.8f
                         }
 
-                        val rect = RectF(MARGIN_LEFT, yPos, MARGIN_LEFT + usableWidth, yPos + boxHeight)
-                        canvas.drawRoundRect(rect, 4f, 4f, bgPaint)
-                        canvas.drawRoundRect(rect, 4f, 4f, borderPaint)
-
-                        canvas.save()
-                        canvas.translate(MARGIN_LEFT + 8f, yPos + 6f)
-                        layout.draw(canvas)
-                        canvas.restore()
-
-                        yPos += boxHeight + 6f
+                        // Background + border follow every page chunk when a long code
+                        // block is split across pages.
+                        drawLayoutMaybeSplit(
+                            layout,
+                            xOffset = 8f,
+                            blockTopPadding = 6f,
+                            blockBottomPadding = 6f,
+                            spacingAfter = 6f
+                        ) { blockTopY, blockBottomY, _ ->
+                            val rect = RectF(MARGIN_LEFT, blockTopY, MARGIN_LEFT + usableWidth, blockBottomY)
+                            canvas.drawRoundRect(rect, 4f, 4f, bgPaint)
+                            canvas.drawRoundRect(rect, 4f, 4f, borderPaint)
+                        }
                     }
 
                     is MdElement.Table -> {
@@ -317,26 +427,31 @@ class MdToPdfUseCase @Inject constructor(
                                 if (h > maxRowHeight) maxRowHeight = h
                             }
 
-                            checkNewPage(maxRowHeight)
+                            val pageUsableHeight = maxBottom - MARGIN_TOP
+                            if (maxRowHeight > pageUsableHeight) {
+                                // Single row taller than a page: split it across pages.
+                                drawSplitTableRow(rIdx, cellLayouts, maxCols, colWidth.toFloat(), bgPaint, borderPaint)
+                            } else {
+                                checkNewPage(maxRowHeight)
+                                if (rIdx == 0) {
+                                    val rect = RectF(MARGIN_LEFT, yPos, MARGIN_LEFT + usableWidth, yPos + maxRowHeight)
+                                    canvas.drawRect(rect, bgPaint)
+                                }
 
-                            if (rIdx == 0) {
-                                val rect = RectF(MARGIN_LEFT, yPos, MARGIN_LEFT + usableWidth, yPos + maxRowHeight)
-                                canvas.drawRect(rect, bgPaint)
+                                for (cIdx in 0 until maxCols) {
+                                    val xPos = MARGIN_LEFT + (cIdx * colWidth)
+                                    val rect = RectF(xPos, yPos, xPos + colWidth, yPos + maxRowHeight)
+                                    canvas.drawRect(rect, borderPaint)
+
+                                    val layout = cellLayouts[cIdx]
+                                    canvas.save()
+                                    canvas.translate(xPos + 4f, yPos + 4f)
+                                    layout.draw(canvas)
+                                    canvas.restore()
+                                }
+
+                                yPos += maxRowHeight
                             }
-
-                            for (cIdx in 0 until maxCols) {
-                                val xPos = MARGIN_LEFT + (cIdx * colWidth)
-                                val rect = RectF(xPos, yPos, xPos + colWidth, yPos + maxRowHeight)
-                                canvas.drawRect(rect, borderPaint)
-
-                                val layout = cellLayouts[cIdx]
-                                canvas.save()
-                                canvas.translate(xPos + 4f, yPos + 4f)
-                                layout.draw(canvas)
-                                canvas.restore()
-                            }
-
-                            yPos += maxRowHeight
                         }
                         yPos += 6f
                     }
@@ -351,23 +466,19 @@ class MdToPdfUseCase @Inject constructor(
                         val quoteWidth = usableWidth - 16
                         val formattedText = formatMarkdownInline(element.text)
                         val layout = createStaticLayout(formattedText, paint, quoteWidth)
-                        val layoutHeight = layout.height.toFloat()
-
-                        checkNewPage(layoutHeight + 4f)
 
                         val barPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                             color = Color.parseColor("#D0D7DE")
                             style = Paint.Style.FILL
                         }
-                        val barRect = RectF(MARGIN_LEFT, yPos, MARGIN_LEFT + 3f, yPos + layoutHeight)
-                        canvas.drawRect(barRect, barPaint)
-
-                        canvas.save()
-                        canvas.translate(MARGIN_LEFT + 10f, yPos)
-                        layout.draw(canvas)
-                        canvas.restore()
-
-                        yPos += layoutHeight + 5f
+                        drawLayoutMaybeSplit(
+                            layout,
+                            xOffset = 10f,
+                            spacingAfter = 5f
+                        ) { blockTopY, blockBottomY, _ ->
+                            val barRect = RectF(MARGIN_LEFT, blockTopY, MARGIN_LEFT + 3f, blockBottomY)
+                            canvas.drawRect(barRect, barPaint)
+                        }
                     }
 
                     is MdElement.HorizontalRule -> {
@@ -392,6 +503,43 @@ class MdToPdfUseCase @Inject constructor(
             FileHelper.saveToFile(context, settingsRepository, sanitizedFileName, baos.toByteArray())
         } finally {
             try { pdfDocument.close() } catch (_: Exception) {}
+        }
+    }
+
+    /**
+     * Streams the text file through a BufferedReader (no readBytes()): detects a
+     * BOM to pick the encoding (UTF-8 / UTF-16LE / UTF-16BE) and strips it so it
+     * never shows up as garbage in the first line.
+     */
+    private fun readTextLines(uri: Uri): List<String> {
+        FileHelper.readFileFromUri(context, uri).buffered().use { buffered ->
+            buffered.mark(4)
+            val bom = ByteArray(4)
+            var read = 0
+            while (read < 4) {
+                val n = buffered.read(bom, read, 4 - read)
+                if (n == -1) break
+                read += n
+            }
+            buffered.reset()
+            val charset: Charset
+            val bomLength: Int
+            when {
+                read >= 3 && bom[0] == 0xEF.toByte() && bom[1] == 0xBB.toByte() && bom[2] == 0xBF.toByte() -> {
+                    charset = Charsets.UTF_8; bomLength = 3
+                }
+                read >= 2 && bom[0] == 0xFF.toByte() && bom[1] == 0xFE.toByte() -> {
+                    charset = Charsets.UTF_16LE; bomLength = 2
+                }
+                read >= 2 && bom[0] == 0xFE.toByte() && bom[1] == 0xFF.toByte() -> {
+                    charset = Charsets.UTF_16BE; bomLength = 2
+                }
+                else -> {
+                    charset = Charsets.UTF_8; bomLength = 0
+                }
+            }
+            repeat(bomLength) { buffered.read() }
+            return BufferedReader(InputStreamReader(buffered, charset)).readLines()
         }
     }
 

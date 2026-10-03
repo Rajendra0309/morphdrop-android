@@ -1,6 +1,7 @@
 package com.morphdrop.app.domain.usecase.conversion
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import com.morphdrop.app.domain.model.WatermarkConfig
@@ -41,7 +42,16 @@ class WatermarkPdfUseCase @Inject constructor(
         subFolder: String? = null
     ): Uri = withContext(Dispatchers.IO) {
         val inputStream = FileHelper.readFileFromUri(context, pdfUri)
-        val document = PDDocument.load(inputStream)
+        val document = try {
+            PDDocument.load(inputStream)
+        } catch (e: Exception) {
+            try { inputStream.close() } catch (_: Exception) {}
+            throw e
+        }
+
+        // Decoded lazily below; recycled in the finally block so a mid-loop
+        // failure cannot leak the native allocation.
+        var imageBitmap: Bitmap? = null
 
         try {
             val totalPages = document.numberOfPages
@@ -59,10 +69,11 @@ class WatermarkPdfUseCase @Inject constructor(
             )
 
             // Cache image bitmap if image watermark
-            val imageBitmap = if (config.type == WatermarkType.IMAGE && config.imageUri != null) {
+            imageBitmap = if (config.type == WatermarkType.IMAGE && config.imageUri != null) {
                 try {
-                    val imgStream = FileHelper.readFileFromUri(context, Uri.parse(config.imageUri))
-                    BitmapFactory.decodeStream(imgStream)?.also { imgStream.close() }
+                    FileHelper.readFileFromUri(context, Uri.parse(config.imageUri)).use { imgStream ->
+                        BitmapFactory.decodeStream(imgStream)
+                    }
                 } catch (_: Exception) {
                     null
                 }
@@ -127,16 +138,21 @@ class WatermarkPdfUseCase @Inject constructor(
                         contentStream.setFont(font, fontSize)
                         contentStream.setNonStrokingColor(red / 255f, green / 255f, blue / 255f)
 
-                        val rotation = if (config.position == WatermarkPosition.DIAGONAL) {
-                            config.rotationDegrees
-                        } else {
-                            config.rotationDegrees
-                        }
+                        val rotation = config.rotationDegrees
 
                         if (rotation != 0f) {
+                            // Compose: center the text in its own space, rotate, then
+                            // move the center to the target position:
+                            //   M = T(cx,cy) · R · T(-tw/2,-th/2)
+                            // Matrix.concatenate() post-multiplies (this = this x arg),
+                            // so the last concatenated transform applies first: build
+                            // in reverse application order.
                             val rad = Math.toRadians(rotation.toDouble())
-                            val matrix = Matrix.getRotateInstance(rad, targetX + textWidth / 2f, targetY + textHeight / 2f)
-                            matrix.translate(-textWidth / 2f, -textHeight / 2f)
+                            val cx = targetX + textWidth / 2f
+                            val cy = targetY + textHeight / 2f
+                            val matrix = Matrix.getTranslateInstance(cx, cy)
+                            matrix.concatenate(Matrix.getRotateInstance(rad, 0f, 0f))
+                            matrix.concatenate(Matrix.getTranslateInstance(-textWidth / 2f, -textHeight / 2f))
                             contentStream.setTextMatrix(matrix)
                         } else {
                             contentStream.newLineAtOffset(targetX, targetY)
@@ -178,8 +194,6 @@ class WatermarkPdfUseCase @Inject constructor(
                 }
             }
 
-            imageBitmap?.recycle()
-
             val baos = ByteArrayOutputStream()
             document.save(baos)
             val bytes = baos.toByteArray()
@@ -196,8 +210,9 @@ class WatermarkPdfUseCase @Inject constructor(
                 FileHelper.saveToFile(context, settingsRepository, sanitizedFileName, bytes)
             }
         } finally {
-            document.close()
-            inputStream.close()
+            try { imageBitmap?.recycle() } catch (_: Exception) {}
+            try { document.close() } catch (_: Exception) {}
+            try { inputStream.close() } catch (_: Exception) {}
         }
     }
 

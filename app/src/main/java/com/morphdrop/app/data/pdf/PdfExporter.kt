@@ -20,7 +20,7 @@ object PdfExporter {
         annotations: List<PdfAnnotation>
     ): Boolean = withContext(Dispatchers.IO) {
         try {
-            val document = PDDocument.load(sourceFile)
+            PDDocument.load(sourceFile).use { document ->
             
             // Group annotations by page
             val annotationsByPage = annotations.groupBy { it.pageIndex }
@@ -33,14 +33,14 @@ object PdfExporter {
                 val pWidth = mediaBox.width
                 val pHeight = mediaBox.height
 
-                // Open content stream in append mode
-                val contentStream = PDPageContentStream(
-                    document, 
-                    page, 
-                    PDPageContentStream.AppendMode.APPEND, 
-                    true, 
+                // Open content stream in append mode; .use{} guarantees it is closed.
+                PDPageContentStream(
+                    document,
+                    page,
+                    PDPageContentStream.AppendMode.APPEND,
+                    true,
                     true
-                )
+                ).use { contentStream ->
 
                 // Shared graphics state for transparency
                 val highlightState = PDExtendedGraphicsState().apply {
@@ -121,29 +121,34 @@ object PdfExporter {
                         }
                     }
                 }
-                
-                contentStream.close()
-            }
+            } // closes PDPageContentStream.use
+            } // closes for ((pageIndex, pageAnnots) ...)
 
             // Save to a temporary local file first to prevent 0kb corruption over ContentResolver streams
             val tempOutFile = File(context.cacheDir, "export_temp_${System.currentTimeMillis()}.pdf")
-            document.save(tempOutFile)
-            document.close()
+            try {
+                document.save(tempOutFile)
 
-            // Copy the fully written temporary file to the final destination URI
-            context.contentResolver.openOutputStream(targetUri)?.use { outStream ->
-                tempOutFile.inputStream().use { inStream ->
-                    inStream.copyTo(outStream)
+                // Copy the fully written temporary file to the final destination URI.
+                // A null output stream means the export failed: report false, not true.
+                val outStream = context.contentResolver.openOutputStream(targetUri)
+                    ?: return@withContext false
+                outStream.use {
+                    tempOutFile.inputStream().use { inStream ->
+                        inStream.copyTo(it)
+                    }
+                }
+
+                true
+            } finally {
+                // Always clean up the temp file, including on copy failure.
+                if (tempOutFile.exists()) {
+                    tempOutFile.delete()
                 }
             }
-            
-            // Clean up temporary file
-            if (tempOutFile.exists()) {
-                tempOutFile.delete()
-            }
-            
-            true
-        } catch (e: Exception) {
+        } // closes PDDocument.use
+        } // closes try
+        catch (e: Exception) {
             e.printStackTrace()
             false
         }

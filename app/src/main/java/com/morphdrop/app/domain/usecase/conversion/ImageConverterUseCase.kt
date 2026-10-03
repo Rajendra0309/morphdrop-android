@@ -43,6 +43,37 @@ class ImageConverterUseCase @Inject constructor(
         outputFolderName: String? = null,
         outputFileName: String = "converted_image_${System.currentTimeMillis()}.$outputFormat"
     ): Uri = withContext(Dispatchers.IO) {
+        // Validate the requested format up front and derive the ACTUAL bytes format
+        // plus the file extension from it, so the container never lies about its
+        // contents (e.g. "bmp" previously wrote PNG bytes into a .bmp file).
+        val requestedFormat = outputFormat.lowercase()
+        val compressFormat: Bitmap.CompressFormat
+        val effectiveExtension: String
+        when (requestedFormat) {
+            "png", "bmp" -> {
+                compressFormat = Bitmap.CompressFormat.PNG
+                effectiveExtension = "png"
+            }
+            "webp" -> {
+                compressFormat = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                    Bitmap.CompressFormat.WEBP_LOSSY
+                } else {
+                    @Suppress("DEPRECATION")
+                    Bitmap.CompressFormat.WEBP
+                }
+                effectiveExtension = "webp"
+            }
+            "jpg", "jpeg" -> {
+                compressFormat = Bitmap.CompressFormat.JPEG
+                effectiveExtension = "jpg"
+            }
+            else -> throw IllegalArgumentException(
+                "Unsupported image format \"$outputFormat\". Supported formats: jpg, png, bmp, webp."
+            )
+        }
+        val baseName = outputFileName.substringBeforeLast(".", outputFileName)
+        val finalOutputFileName = "$baseName.$effectiveExtension"
+
         var originalBitmap: Bitmap? = null
         var processedBitmap: Bitmap? = null
         
@@ -174,18 +205,8 @@ class ImageConverterUseCase @Inject constructor(
             
             processedBitmap = currentBitmap
 
-            // 6. Output Compression
-            val format = when (outputFormat.lowercase()) {
-                "png", "bmp" -> Bitmap.CompressFormat.PNG
-                "webp" -> if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-                    Bitmap.CompressFormat.WEBP_LOSSY
-                } else {
-                    @Suppress("DEPRECATION")
-                    Bitmap.CompressFormat.WEBP
-                }
-                else -> Bitmap.CompressFormat.JPEG
-            }
-
+            // 6. Output Compression (compressFormat/effectiveExtension were validated up front)
+            val format = compressFormat
             var baos = ByteArrayOutputStream()
             val finalProcessed = processedBitmap!!
             
@@ -242,9 +263,9 @@ class ImageConverterUseCase @Inject constructor(
             baos.close()
 
             if (outputFolderName != null) {
-                FileHelper.saveToFile(context, outputFolderName, outputFileName, fileData)
+                FileHelper.saveToFile(context, outputFolderName, finalOutputFileName, fileData)
             } else {
-                FileHelper.saveToFile(context, settingsRepository, outputFileName, fileData)
+                FileHelper.saveToFile(context, settingsRepository, finalOutputFileName, fileData)
             }
         } finally {
             originalBitmap?.recycle()
