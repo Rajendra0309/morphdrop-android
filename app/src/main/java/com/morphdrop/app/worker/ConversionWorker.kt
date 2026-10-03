@@ -595,12 +595,15 @@ class ConversionWorker @AssistedInject constructor(
                 else -> throw IllegalArgumentException("Unsupported conversion type: $conversionType")
             }
 
+            outputsToCleanup.addAll(resultUris)
+            checkCancellation()
+
+            // Conversion completed successfully: clear outputsToCleanup immediately so later
+            // progress notifications and post-processing protect finished outputs from cleanup if cancelled.
+            outputsToCleanup.clear()
+
             notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 100, cancelPendingIntent)
             setProgress(workDataOf("progress" to 100))
-
-            // Conversion completed successfully: clear outputsToCleanup so later post-processing
-            // (history insertion, widget update) does not delete finished outputs if cancelled.
-            outputsToCleanup.clear()
 
             val duration = System.currentTimeMillis() - startTime
             val outputNames = resultUris.joinToString(", ") { uri ->

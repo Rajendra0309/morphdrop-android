@@ -38,6 +38,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import com.morphdrop.app.data.pdf.PdfTextExtractor
 import com.morphdrop.app.data.pdf.PdfWord
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -197,6 +198,11 @@ class PdfViewerViewModel @Inject constructor(
     private var pdfRenderer: PdfRenderer? = null
     private var fileDescriptor: ParcelFileDescriptor? = null
 
+    // Single lock guarding ALL PdfRenderer access: PdfRenderer is not thread-safe
+    // and is touched from IO dispatchers (per-page LaunchedEffects), Main
+    // (shareCurrentPage) and the thumbnail pre-generator concurrently.
+    private val rendererLock = Any()
+
     // Text Extraction
     private val textExtractor = PdfTextExtractor(application)
     private val pageDataCache = android.util.LruCache<Int, com.morphdrop.app.data.pdf.PdfPageData>(10)
@@ -221,12 +227,16 @@ class PdfViewerViewModel @Inject constructor(
             val previewBitmap = renderPreview(pageIndex)
             val data = textExtractor.extractDataFromPage(targetUri, pageIndex, "", previewBitmap)
             pageDataCache.put(pageIndex, data)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e("PdfViewerViewModel", "Failed to extract data for page $pageIndex", e)
         }
     }
     private var decryptedFile: File? = null
     private var currentUri: Uri? = null
+    /** One-shot continue-reading target, consumed on the next successful load. */
+    private var initialPageRequest: Int = 0
 
     private var bookmarkJob: Job? = null
 
@@ -269,14 +279,36 @@ class PdfViewerViewModel @Inject constructor(
         }
     }
 
-    fun loadPdf(uri: Uri, password: String? = null) {
+    fun loadPdf(uri: Uri, password: String? = null, initialPage: Int = 0) {
         currentUri = uri
+        // A continue-reading request: jump to this page once the document loads.
+        if (initialPage > 0) initialPageRequest = initialPage
+        highResJobs.values.forEach { it.cancel() }
+        highResJobs.clear()
+        pregenerateThumbnailsJob?.cancel()
+        _visiblePages.value = emptyMap()
+        _thumbnailsReady.value = emptySet()
         loadBookmarks(uri)
         loadAnnotations(uri)
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null, isPasswordProtected = false) }
             try {
                 withContext(Dispatchers.IO) {
+                    // Close any previously opened renderer/descriptor BEFORE opening new ones,
+                    // and evict caches once in-flight renders have finished under the lock.
+                    synchronized(rendererLock) {
+                        runCatching { pdfRenderer?.close() }
+                        pdfRenderer = null
+                        runCatching { fileDescriptor?.close() }
+                        fileDescriptor = null
+                        bitmapCache.evictAll()
+                        thumbnailCache.evictAll()
+                        pageDataCache.evictAll()
+                    }
+                    // Drop the previous decrypted temp file so password retries don't orphan files.
+                    decryptedFile?.delete()
+                    decryptedFile = null
+
                     if (password != null) {
                         decryptAndLoad(uri, password)
                     } else {
@@ -291,6 +323,8 @@ class PdfViewerViewModel @Inject constructor(
                                     val encrypted = doc.isEncrypted
                                     doc.close()
                                     encrypted
+                                } catch (e: CancellationException) {
+                                    throw e
                                 } catch (e: Exception) {
                                     false
                                 }
@@ -299,8 +333,10 @@ class PdfViewerViewModel @Inject constructor(
                             if (isEncrypted) {
                                 _uiState.update { it.copy(isLoading = false, isPasswordProtected = true) }
                             } else {
-                                pdfRenderer = PdfRenderer(pfd)
-                                val totalPages = pdfRenderer?.pageCount ?: 0
+                                val totalPages = synchronized(rendererLock) {
+                                    pdfRenderer = PdfRenderer(pfd)
+                                    pdfRenderer?.pageCount ?: 0
+                                }
                                 _uiState.update {
                                     it.copy(
                                         isLoading = false,
@@ -309,6 +345,7 @@ class PdfViewerViewModel @Inject constructor(
                                         isPasswordProtected = false
                                     )
                                 }
+                                onPdfLoaded(uri, totalPages)
                                 startThumbnailGeneration(totalPages)
                                 viewModelScope.launch(Dispatchers.IO) {
                                     try {
@@ -321,6 +358,8 @@ class PdfViewerViewModel @Inject constructor(
                                         val toc = com.morphdrop.app.data.pdf.PdfTocExtractor.extractToc(tempFile)
                                         tempFile.delete()
                                         _uiState.update { it.copy(tocList = toc) }
+                                    } catch (e: CancellationException) {
+                                        throw e
                                     } catch (e: Exception) {
                                         android.util.Log.e("PdfViewerViewModel", "Failed to extract TOC", e)
                                     }
@@ -333,6 +372,8 @@ class PdfViewerViewModel @Inject constructor(
                 }
             } catch (e: SecurityException) {
                 _uiState.update { it.copy(isLoading = false, isPasswordProtected = true) }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e("PdfViewerViewModel", "Error loading PDF", e)
                 _uiState.update { it.copy(isLoading = false, error = "Damaged or unsupported PDF") }
@@ -367,6 +408,8 @@ class PdfViewerViewModel @Inject constructor(
                                     pathPoints = drawingData.points,
                                     strokeWidth = drawingData.strokeWidth
                                 )
+                            } catch (e: CancellationException) {
+                                throw e
                             } catch (e: Exception) {
                                 // Fallback for old databases
                                 val points: List<PdfAnnotation.Drawing.Point> = gson.fromJson(entity.data, object : TypeToken<List<PdfAnnotation.Drawing.Point>>() {}.type)
@@ -379,6 +422,8 @@ class PdfViewerViewModel @Inject constructor(
                                 )
                             }
                         } else null
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (e: Exception) {
                         null
                     }
@@ -569,21 +614,52 @@ class PdfViewerViewModel @Inject constructor(
     }
 
     fun exportPdf(targetUri: android.net.Uri) {
-        viewModelScope.launch {
-            val sourceFile = decryptedFile ?: return@launch
-            val success = com.morphdrop.app.data.pdf.PdfExporter.exportAnnotatedPdf(
-                context = application,
-                sourceFile = sourceFile,
-                targetUri = targetUri,
-                annotations = annotations.value
-            )
-            if (success) {
-                withContext(Dispatchers.Main) {
-                    android.widget.Toast.makeText(application, "PDF exported successfully", android.widget.Toast.LENGTH_SHORT).show()
-                }
+        viewModelScope.launch(Dispatchers.IO) {
+            // For password-protected PDFs the decrypted temp file is the source. For
+            // regular PDFs there is no decrypted file, so copy the current document
+            // into a temp file and export from that instead of silently doing nothing.
+            val sourceFile: File
+            var tempSource = false
+            val decrypted = decryptedFile
+            if (decrypted != null) {
+                sourceFile = decrypted
             } else {
-                withContext(Dispatchers.Main) {
-                    android.widget.Toast.makeText(application, "Failed to export PDF", android.widget.Toast.LENGTH_SHORT).show()
+                val uri = currentUri ?: return@launch
+                sourceFile = try {
+                    val tempFile = File(application.cacheDir, "export_src_${System.currentTimeMillis()}.pdf")
+                    val inputStream = application.contentResolver.openInputStream(uri)
+                        ?: throw java.io.IOException("Cannot open input stream for $uri")
+                    inputStream.use { input ->
+                        tempFile.outputStream().use { output -> input.copyTo(output) }
+                    }
+                    tempSource = true
+                    tempFile
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.e("PdfViewerViewModel", "Failed to stage PDF for export", e)
+                    return@launch
+                }
+            }
+            try {
+                val success = com.morphdrop.app.data.pdf.PdfExporter.exportAnnotatedPdf(
+                    context = application,
+                    sourceFile = sourceFile,
+                    targetUri = targetUri,
+                    annotations = annotations.value
+                )
+                if (success) {
+                    withContext(Dispatchers.Main) {
+                        android.widget.Toast.makeText(application, "PDF exported successfully", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                } else {
+                    withContext(Dispatchers.Main) {
+                        android.widget.Toast.makeText(application, "Failed to export PDF", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } finally {
+                if (tempSource) {
+                    runCatching { sourceFile.delete() }
                 }
             }
         }
@@ -604,8 +680,10 @@ class PdfViewerViewModel @Inject constructor(
             decryptedFile = tempFile
 
             val pfd = ParcelFileDescriptor.open(tempFile, ParcelFileDescriptor.MODE_READ_ONLY)
-            fileDescriptor = pfd
-            pdfRenderer = PdfRenderer(pfd)
+            synchronized(rendererLock) {
+                fileDescriptor = pfd
+                pdfRenderer = PdfRenderer(pfd)
+            }
 
             _uiState.update {
                 it.copy(
@@ -616,14 +694,19 @@ class PdfViewerViewModel @Inject constructor(
                     error = null
                 )
             }
+            onPdfLoaded(uri, totalPages)
             viewModelScope.launch(Dispatchers.IO) {
                 try {
                     val toc = com.morphdrop.app.data.pdf.PdfTocExtractor.extractToc(tempFile)
                     _uiState.update { it.copy(tocList = toc) }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     android.util.Log.e("PdfViewerViewModel", "Failed to extract TOC", e)
                 }
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e("PdfViewerViewModel", "Decryption failed", e)
             _uiState.update { it.copy(isLoading = false, error = "Incorrect password", isPasswordProtected = true) }
@@ -631,59 +714,91 @@ class PdfViewerViewModel @Inject constructor(
     }
 
     private fun getFileName(uri: Uri): String {
-        var name = "Document.pdf"
-        try {
-            application.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-                val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
-                if (cursor.moveToFirst() && nameIndex != -1) {
-                    name = cursor.getString(nameIndex)
-                }
-            }
-        } catch (e: Exception) {
-            Log.e("PdfViewerViewModel", "Error getting file name", e)
-        }
-        return name
+        // 1. Provider display name — but reject blank values and bare numeric
+        //    IDs (some providers return a document ID like "12345" instead of
+        //    a real filename).
+        queryDisplayName(uri)
+            ?.takeIf { it.isNotBlank() && !isBareDocumentId(it) }
+            ?.let { return it }
+        // 2. Last path segment of the URI. Handles DocumentsContract IDs such
+        //    as "primary:Download/report.pdf".
+        uri.lastPathSegment
+            ?.substringAfterLast(':')
+            ?.substringAfterLast('/')
+            ?.let { Uri.decode(it) }
+            ?.takeIf { it.isNotBlank() && !isBareDocumentId(it) }
+            ?.let { return it }
+        // 3. Sensible default.
+        return "Document.pdf"
     }
 
-    fun renderPreview(pageIndex: Int): Bitmap? {
-        val renderer = pdfRenderer ?: return null
-        if (pageIndex < 0 || pageIndex >= renderer.pageCount) return null
-
-        val cacheKey = "$pageIndex-preview"
-        bitmapCache.get(cacheKey)?.let { return it }
-
+    private fun queryDisplayName(uri: Uri): String? {
         return try {
-            val page = renderer.openPage(pageIndex)
-            // Use 2.0f density multiplier to give it crisp base resolution before zoom high-res kicks in.
-            val density = application.resources.displayMetrics.density * 2.0f
-            var width = (page.width * density).toInt()
-            var height = (page.height * density).toInt()
-
-            // Guard exclusively against Android Hardware Canvas 100MB limit (100 * 1024 * 1024 bytes)
-            val maxBytes = 95 * 1024 * 1024L
-            if (width.toLong() * height.toLong() * 4L > maxBytes) {
-                val scaleFactor = kotlin.math.sqrt(maxBytes.toDouble() / (width.toLong() * height.toLong() * 4L)).toFloat()
-                width = (width * scaleFactor).toInt().coerceAtLeast(1)
-                height = (height * scaleFactor).toInt().coerceAtLeast(1)
+            application.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                if (cursor.moveToFirst() && nameIndex != -1) cursor.getString(nameIndex) else null
             }
-
-            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-            bitmap.eraseColor(android.graphics.Color.WHITE)
-            page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-            page.close()
-
-            bitmapCache.put(cacheKey, bitmap)
-            bitmap
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            Log.e("PdfViewerViewModel", "Preview render failed", e)
+            Log.e("PdfViewerViewModel", "Error getting file name", e)
             null
         }
     }
 
-    suspend fun renderHighRes(pageIndex: Int, zoomScale: Float, normalizedViewport: android.graphics.RectF? = null): Bitmap? = withContext(Dispatchers.IO) {
-        val renderer = pdfRenderer ?: return@withContext null
-        if (pageIndex < 0 || pageIndex >= renderer.pageCount) return@withContext null
+    /** True when the "name" is just a numeric document ID with no real filename in it. */
+    private fun isBareDocumentId(name: String): Boolean {
+        return name.isNotEmpty() && name.all { it.isDigit() }
+    }
 
+    suspend fun renderPreview(pageIndex: Int): Bitmap? = withContext(Dispatchers.IO) {
+        val cacheKey = "$pageIndex-preview"
+        bitmapCache.get(cacheKey)?.let { return@withContext it }
+
+        synchronized(rendererLock) {
+            val renderer = pdfRenderer ?: return@withContext null
+            if (pageIndex < 0 || pageIndex >= renderer.pageCount) return@withContext null
+
+            try {
+                val page = renderer.openPage(pageIndex)
+                try {
+                    // Use 2.0f density multiplier to give it crisp base resolution before zoom high-res kicks in.
+                    val density = application.resources.displayMetrics.density * 2.0f
+                    var width = (page.width * density).toInt().coerceAtLeast(1)
+                    var height = (page.height * density).toInt().coerceAtLeast(1)
+
+                    // Cap preview bitmaps well below the GPU hardware-canvas texture limit
+                    // (~100MB): near-limit bitmaps frequently fail texture upload SILENTLY
+                    // and draw as BLANK pages, while the 200px thumbnails keep working —
+                    // exactly the "pages visible in the grid but blank in the viewer"
+                    // symptom on high-density phones (density x2 can reach ~95MB/page).
+                    // 16MB stays crisp at >1x screen width with zero upload risk.
+                    val maxBytes = 16 * 1024 * 1024L
+                    if (width.toLong() * height.toLong() * 4L > maxBytes) {
+                        val scaleFactor = kotlin.math.sqrt(maxBytes.toDouble() / (width.toLong() * height.toLong() * 4L)).toFloat()
+                        width = (width * scaleFactor).toInt().coerceAtLeast(1)
+                        height = (height * scaleFactor).toInt().coerceAtLeast(1)
+                    }
+
+                    val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                    bitmap.eraseColor(android.graphics.Color.WHITE)
+                    page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+
+                    bitmapCache.put(cacheKey, bitmap)
+                    bitmap
+                } finally {
+                    page.close()
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e("PdfViewerViewModel", "Preview render failed", e)
+                null
+            }
+        }
+    }
+
+    suspend fun renderHighRes(pageIndex: Int, zoomScale: Float, normalizedViewport: android.graphics.RectF? = null): Bitmap? = withContext(Dispatchers.IO) {
         // Round zoom scale to 1 decimal place to avoid excessive re-renders for tiny changes
         val roundedScale = Math.round(zoomScale * 10f) / 10f
         if (roundedScale <= 1.0f) return@withContext null // No high-res needed if not zoomed in
@@ -698,85 +813,105 @@ class PdfViewerViewModel @Inject constructor(
 
         bitmapCache.get(cacheKey)?.let { return@withContext it }
 
-        try {
-            val page = renderer.openPage(pageIndex)
-            val renderDensity = application.resources.displayMetrics.density * 2.0f // Boost density for ultra-sharp text
+        synchronized(rendererLock) {
+            val renderer = pdfRenderer ?: return@withContext null
+            if (pageIndex < 0 || pageIndex >= renderer.pageCount) return@withContext null
 
-            val bitmap: Bitmap
-            val matrix = android.graphics.Matrix()
+            try {
+                val page = renderer.openPage(pageIndex)
+                try {
+                    val renderDensity = application.resources.displayMetrics.density * 2.0f // Boost density for ultra-sharp text
 
-            if (normalizedViewport != null) {
-                val fullWidth = page.width * renderDensity * roundedScale
-                val fullHeight = page.height * renderDensity * roundedScale
+                    val bitmap: Bitmap
+                    val matrix = android.graphics.Matrix()
 
-                val viewWidth = (fullWidth * normalizedViewport.width()).toInt()
-                val viewHeight = (fullHeight * normalizedViewport.height()).toInt()
+                    if (normalizedViewport != null) {
+                        val fullWidth = page.width * renderDensity * roundedScale
+                        val fullHeight = page.height * renderDensity * roundedScale
 
-                if (viewWidth <= 0 || viewHeight <= 0) { page.close(); return@withContext null }
+                        val viewWidth = (fullWidth * normalizedViewport.width()).toInt()
+                        val viewHeight = (fullHeight * normalizedViewport.height()).toInt()
 
-                // Allow up to 4096px for max crispness (avoiding OOM)
-                val maxViewDim = 4096
+                        if (viewWidth <= 0 || viewHeight <= 0) return@withContext null
 
-                var targetW = viewWidth
-                var targetH = viewHeight
+                        // Allow up to 4096px for max crispness (avoiding OOM)
+                        val maxViewDim = 4096
 
-                if (targetW > maxViewDim || targetH > maxViewDim) {
-                    val ratio = maxViewDim.toFloat() / maxOf(targetW, targetH)
-                    targetW = (targetW * ratio).toInt()
-                    targetH = (targetH * ratio).toInt()
+                        var targetW = viewWidth
+                        var targetH = viewHeight
+
+                        if (targetW > maxViewDim || targetH > maxViewDim) {
+                            val ratio = maxViewDim.toFloat() / maxOf(targetW, targetH)
+                            targetW = (targetW * ratio).toInt()
+                            targetH = (targetH * ratio).toInt()
+                        }
+
+                        // Keep zoom tiles safely below the GPU texture limit: oversized tiles
+                        // can fail texture upload silently and draw as blank.
+                        val maxBytes = 48 * 1024 * 1024L
+                        if (targetW.toLong() * targetH.toLong() * 4L > maxBytes) {
+                            val scaleFactor = kotlin.math.sqrt(maxBytes.toDouble() / (targetW.toLong() * targetH.toLong() * 4L)).toFloat()
+                            targetW = (targetW * scaleFactor).toInt().coerceAtLeast(1)
+                            targetH = (targetH * scaleFactor).toInt().coerceAtLeast(1)
+                        } else {
+                            targetW = targetW.coerceAtLeast(1)
+                            targetH = targetH.coerceAtLeast(1)
+                        }
+
+                        bitmap = Bitmap.createBitmap(targetW, targetH, Bitmap.Config.ARGB_8888)
+
+                        // Scale to full zoomed size
+                        matrix.postScale(fullWidth / page.width, fullHeight / page.height)
+                        // Translate to crop the viewport
+                        matrix.postTranslate(-normalizedViewport.left * fullWidth, -normalizedViewport.top * fullHeight)
+
+                        if (targetW != viewWidth) {
+                            val ratio = targetW.toFloat() / viewWidth
+                            matrix.postScale(ratio, ratio)
+                        }
+                    } else {
+                        var width = (page.width * renderDensity * roundedScale).toInt()
+                        var height = (page.height * renderDensity * roundedScale).toInt()
+
+                        val maxDim = 4096
+                        if (width > maxDim || height > maxDim) {
+                            val ratio = maxDim.toFloat() / maxOf(width, height)
+                            width = (width * ratio).toInt()
+                            height = (height * ratio).toInt()
+                        }
+
+                        // Keep zoom tiles safely below the GPU texture limit: oversized tiles
+                        // can fail texture upload silently and draw as blank.
+                        val maxBytes = 48 * 1024 * 1024L
+                        if (width.toLong() * height.toLong() * 4L > maxBytes) {
+                            val scaleFactor = kotlin.math.sqrt(maxBytes.toDouble() / (width.toLong() * height.toLong() * 4L)).toFloat()
+                            width = (width * scaleFactor).toInt().coerceAtLeast(1)
+                            height = (height * scaleFactor).toInt().coerceAtLeast(1)
+                        } else {
+                            width = width.coerceAtLeast(1)
+                            height = height.coerceAtLeast(1)
+                        }
+
+                        bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                        val scaleX = width.toFloat() / page.width
+                        val scaleY = height.toFloat() / page.height
+                        matrix.postScale(scaleX, scaleY)
+                    }
+
+                    bitmap.eraseColor(android.graphics.Color.WHITE)
+                    page.render(bitmap, null, matrix, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+
+                    bitmapCache.put(cacheKey, bitmap)
+                    bitmap
+                } finally {
+                    page.close()
                 }
-
-                val maxBytes = 95 * 1024 * 1024L
-                if (targetW.toLong() * targetH.toLong() * 4L > maxBytes) {
-                    val scaleFactor = kotlin.math.sqrt(maxBytes.toDouble() / (targetW.toLong() * targetH.toLong() * 4L)).toFloat()
-                    targetW = (targetW * scaleFactor).toInt().coerceAtLeast(1)
-                    targetH = (targetH * scaleFactor).toInt().coerceAtLeast(1)
-                }
-
-                bitmap = Bitmap.createBitmap(targetW, targetH, Bitmap.Config.ARGB_8888)
-
-                // Scale to full zoomed size
-                matrix.postScale(fullWidth / page.width, fullHeight / page.height)
-                // Translate to crop the viewport
-                matrix.postTranslate(-normalizedViewport.left * fullWidth, -normalizedViewport.top * fullHeight)
-
-                if (targetW != viewWidth) {
-                    val ratio = targetW.toFloat() / viewWidth
-                    matrix.postScale(ratio, ratio)
-                }
-            } else {
-                var width = (page.width * renderDensity * roundedScale).toInt()
-                var height = (page.height * renderDensity * roundedScale).toInt()
-
-                val maxDim = 4096
-                if (width > maxDim || height > maxDim) {
-                    val ratio = maxDim.toFloat() / maxOf(width, height)
-                    width = (width * ratio).toInt()
-                    height = (height * ratio).toInt()
-                }
-
-                val maxBytes = 95 * 1024 * 1024L
-                if (width.toLong() * height.toLong() * 4L > maxBytes) {
-                    val scaleFactor = kotlin.math.sqrt(maxBytes.toDouble() / (width.toLong() * height.toLong() * 4L)).toFloat()
-                    width = (width * scaleFactor).toInt().coerceAtLeast(1)
-                    height = (height * scaleFactor).toInt().coerceAtLeast(1)
-                }
-
-                bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-                val scaleX = width.toFloat() / page.width
-                val scaleY = height.toFloat() / page.height
-                matrix.postScale(scaleX, scaleY)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e("PdfViewerViewModel", "High-res render failed", e)
+                null
             }
-
-            bitmap.eraseColor(android.graphics.Color.WHITE)
-            page.render(bitmap, null, matrix, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-            page.close()
-
-            bitmapCache.put(cacheKey, bitmap)
-            bitmap
-        } catch (e: Exception) {
-            Log.e("PdfViewerViewModel", "High-res render failed", e)
-            null
         }
     }
 
@@ -792,14 +927,6 @@ class PdfViewerViewModel @Inject constructor(
             _uiState.update { it.copy(isSearching = true) }
             val matches = mutableListOf<SearchMatch>()
             try {
-                val fileToOpen = decryptedFile
-                val document = if (fileToOpen != null) {
-                    PDDocument.load(fileToOpen)
-                } else {
-                    val stream = application.contentResolver.openInputStream(currentUri ?: return@launch)
-                    PDDocument.load(stream)
-                }
-
                 val stripper = object : PDFTextStripper() {
                     var currentPageIndex = 0
                     var currentWidth = 0f
@@ -822,16 +949,29 @@ class PdfViewerViewModel @Inject constructor(
                     }
                 }
 
-                for (i in 0 until document.numberOfPages) {
-                    val pdPage = document.getPage(i)
-                    stripper.currentWidth = pdPage.cropBox.width
-                    stripper.currentHeight = pdPage.cropBox.height
-                    stripper.currentPageIndex = i
-                    stripper.startPage = i + 1
-                    stripper.endPage = i + 1
-                    stripper.getText(document)
+                fun runSearchOn(document: PDDocument) {
+                    for (i in 0 until document.numberOfPages) {
+                        val pdPage = document.getPage(i)
+                        stripper.currentWidth = pdPage.cropBox.width
+                        stripper.currentHeight = pdPage.cropBox.height
+                        stripper.currentPageIndex = i
+                        stripper.startPage = i + 1
+                        stripper.endPage = i + 1
+                        stripper.getText(document)
+                    }
                 }
-                document.close()
+
+                val fileToOpen = decryptedFile
+                if (fileToOpen != null) {
+                    PDDocument.load(fileToOpen).use { document -> runSearchOn(document) }
+                } else {
+                    val uri = currentUri ?: return@launch
+                    application.contentResolver.openInputStream(uri)?.use { stream ->
+                        PDDocument.load(stream).use { document -> runSearchOn(document) }
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e("PdfViewerViewModel", "Search failed", e)
             }
@@ -863,32 +1003,34 @@ class PdfViewerViewModel @Inject constructor(
         val uri = currentUri ?: return
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val inputStream = application.contentResolver.openInputStream(uri) ?: throw Exception("File not found")
-                val fileName = _uiState.value.fileName
+                application.contentResolver.openInputStream(uri)?.use { inputStream ->
+                    val fileName = _uiState.value.fileName
 
-                val values = ContentValues().apply {
-                    put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
-                    put(MediaStore.MediaColumns.MIME_TYPE, "application/pdf")
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                        put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/MorphDrop")
+                    val values = ContentValues().apply {
+                        put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                        put(MediaStore.MediaColumns.MIME_TYPE, "application/pdf")
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                            put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/MorphDrop")
+                        }
                     }
-                }
 
-                val contentResolver = application.contentResolver
-                val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    MediaStore.Downloads.EXTERNAL_CONTENT_URI
-                } else {
-                    MediaStore.Files.getContentUri("external")
-                }
+                    val contentResolver = application.contentResolver
+                    val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        MediaStore.Downloads.EXTERNAL_CONTENT_URI
+                    } else {
+                        MediaStore.Files.getContentUri("external")
+                    }
 
-                val outputUri = contentResolver.insert(collection, values)
-                    ?: throw Exception("Unable to create file in Downloads")
+                    val outputUri = contentResolver.insert(collection, values)
+                        ?: throw Exception("Unable to create file in Downloads")
 
-                contentResolver.openOutputStream(outputUri)?.use { outputStream ->
-                    inputStream.copyTo(outputStream)
-                }
-                inputStream.close()
-                showToast("Saved to Downloads/MorphDrop")
+                    contentResolver.openOutputStream(outputUri)?.use { outputStream ->
+                        inputStream.copyTo(outputStream)
+                    }
+                    showToast("Saved to Downloads/MorphDrop")
+                } ?: showToast("Download failed")
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e("PdfViewerViewModel", "Download failed", e)
                 showToast("Download failed")
@@ -913,6 +1055,8 @@ class PdfViewerViewModel @Inject constructor(
             }
 
             printManager.print(jobName, PdfPrintAdapter(fileToPrint, jobName), null)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e("PdfViewerViewModel", "Print failed", e)
             showToast("Print failed")
@@ -998,6 +1142,44 @@ class PdfViewerViewModel @Inject constructor(
             currentPage = pageNum,
             isBookmarked = it.bookmarks.any { bookmark -> bookmark.pageNumber == pageNum }
         ) }
+        // Remember where the user left off for the Home continue-reading card.
+        // Fires only when the visible page index actually changes.
+        currentUri?.let { uri ->
+            val snapshot = _uiState.value
+            viewModelScope.launch {
+                settingsRepository.saveLastOpenedPdf(
+                    uri = uri.toString(),
+                    page = page.coerceAtLeast(0),
+                    displayName = snapshot.fileName,
+                    totalPages = snapshot.totalPages
+                )
+            }
+        }
+    }
+
+    /**
+     * Called on every successful document load: records the document for
+     * continue-reading and honors a one-shot initial-page request.
+     */
+    private suspend fun onPdfLoaded(uri: Uri, totalPages: Int) {
+        val requested = initialPageRequest
+        initialPageRequest = 0
+        val targetPage = requested.coerceIn(0, (totalPages - 1).coerceAtLeast(0))
+        try {
+            settingsRepository.saveLastOpenedPdf(
+                uri = uri.toString(),
+                page = targetPage,
+                displayName = _uiState.value.fileName,
+                totalPages = totalPages
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e("PdfViewerViewModel", "Failed to save last opened PDF state", e)
+        }
+        if (targetPage > 0) {
+            scrollToPage(targetPage)
+        }
     }
 
     fun scrollToPage(pageIndex: Int) {
@@ -1030,21 +1212,26 @@ class PdfViewerViewModel @Inject constructor(
     }
 
     private fun generateThumbnailSync(pageIndex: Int) {
-        val renderer = pdfRenderer ?: return
-        if (pageIndex < 0 || pageIndex >= renderer.pageCount) return
+        synchronized(rendererLock) {
+            val renderer = pdfRenderer ?: return
+            if (pageIndex < 0 || pageIndex >= renderer.pageCount) return
 
-        synchronized(renderer) {
             try {
                 val page = renderer.openPage(pageIndex)
-                val width = 200
-                val height = (width * (page.height.toFloat() / page.width)).toInt()
+                try {
+                    val width = 200
+                    val height = (width * (page.height.toFloat() / page.width)).toInt().coerceAtLeast(1)
 
-                val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-                page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                page.close()
+                    val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                    page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
 
-                thumbnailCache.put(pageIndex, bitmap)
-                _thumbnailsReady.update { it + pageIndex }
+                    thumbnailCache.put(pageIndex, bitmap)
+                    _thumbnailsReady.update { it + pageIndex }
+                } finally {
+                    page.close()
+                }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 // Ignore
             }
@@ -1056,8 +1243,24 @@ class PdfViewerViewModel @Inject constructor(
     }
 
     override fun onCleared() {
-        pdfRenderer?.close()
-        fileDescriptor?.close()
-        decryptedFile?.delete()
+        highResJobs.values.forEach { it.cancel() }
+        highResJobs.clear()
+        pregenerateThumbnailsJob?.cancel()
+        _visiblePages.value = emptyMap()
+        bitmapCache.evictAll()
+        thumbnailCache.evictAll()
+        val rendererToClose = pdfRenderer
+        val pfdToClose = fileDescriptor
+        val fileToDelete = decryptedFile
+        pdfRenderer = null
+        fileDescriptor = null
+        decryptedFile = null
+        kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
+            synchronized(rendererLock) {
+                runCatching { rendererToClose?.close() }
+                runCatching { pfdToClose?.close() }
+            }
+            runCatching { fileToDelete?.delete() }
+        }
     }
 }

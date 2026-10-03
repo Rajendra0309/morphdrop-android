@@ -56,7 +56,7 @@ class CacheCleanupWorker @AssistedInject constructor(
 
             if (failedDeletions.isNotEmpty()) {
                 Log.w("CacheCleanupWorker", "${failedDeletions.size} file(s) could not be deleted")
-                Result.failure()
+                Result.retry()
             } else {
                 Log.d("CacheCleanupWorker", "Automated cache cleanup finished successfully")
                 Result.success()

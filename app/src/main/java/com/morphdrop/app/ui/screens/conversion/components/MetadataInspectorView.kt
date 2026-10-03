@@ -73,7 +73,7 @@ import androidx.compose.ui.unit.dp
 import com.morphdrop.app.domain.model.FileMetadata
 import com.morphdrop.app.domain.model.FileType
 import com.morphdrop.app.domain.model.MetadataEditParams
-import com.morphdrop.app.ui.components.FormatBadge
+import com.morphdrop.app.ui.components.FormatChip
 import java.util.Locale
 
 @Composable
@@ -247,11 +247,12 @@ fun MetadataInspectorView(
                     }
                     Spacer(modifier = Modifier.width(12.dp))
                     if (metadata.fileType != null) {
-                        FormatBadge(fileType = metadata.fileType)
+                        FormatChip(fileType = metadata.fileType)
                     } else {
-                        FormatBadge(
-                            text = metadata.fileExtension,
-                            backgroundColor = MaterialTheme.colorScheme.primary
+                        FormatChip(
+                            format = metadata.fileExtension,
+                            containerColor = MaterialTheme.colorScheme.primaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
                         )
                     }
                 }

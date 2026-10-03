@@ -78,7 +78,7 @@ import com.morphdrop.app.ui.theme.MorphDropTheme
 import com.morphdrop.app.PdfViewerActivity
 import com.morphdrop.app.domain.model.FileType
 import com.morphdrop.app.domain.model.RotateScope
-import com.morphdrop.app.ui.components.FormatBadge
+import com.morphdrop.app.ui.components.FormatChip
 import com.morphdrop.app.ui.components.MorphDropTopAppBar
 import com.morphdrop.app.ui.components.PrimaryButton
 import com.morphdrop.app.ui.screens.processing.ProcessingScreenContent
@@ -158,19 +158,41 @@ fun PdfRotateScreen(
                 ),
                 scrollBehavior = resultScrollBehavior,
                 onDone = onNavigateBack,
-                onShare = {
-                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                        type = "application/pdf"
-                        putExtra(Intent.EXTRA_STREAM, state.resultUri)
-                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                onShareFile = { file ->
+                    file.uri?.let { uri ->
+                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                            type = "application/pdf"
+                            putExtra(Intent.EXTRA_STREAM, uri)
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        context.startActivity(Intent.createChooser(shareIntent, "Share Rotated PDF"))
                     }
-                    context.startActivity(Intent.createChooser(shareIntent, "Share Rotated PDF"))
                 },
-                onOpen = {
-                    val intent = Intent(context, PdfViewerActivity::class.java).apply {
-                        data = state.resultUri
+                onOpenFile = { file ->
+                    file.uri?.let { uri ->
+                        val intent = Intent(context, PdfViewerActivity::class.java).apply {
+                            data = uri
+                        }
+                        context.startActivity(intent)
                     }
-                    context.startActivity(intent)
+                },
+                onOpenFolder = {
+                    state.resultUri?.let { uri ->
+                        val intent = Intent(context, PdfViewerActivity::class.java).apply {
+                            data = uri
+                        }
+                        context.startActivity(intent)
+                    }
+                },
+                onShareAll = {
+                    state.resultUri?.let { uri ->
+                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                            type = "application/pdf"
+                            putExtra(Intent.EXTRA_STREAM, uri)
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        context.startActivity(Intent.createChooser(shareIntent, "Share Rotated PDF"))
+                    }
                 }
             )
         }
@@ -264,7 +286,7 @@ fun PdfRotateContent(
                                 modifier = Modifier
                                     .fillMaxSize()
                                     .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                                    .background(Color.White),
+                                    .background(MaterialTheme.colorScheme.surfaceContainerLowest),
                                 contentAlignment = Alignment.Center
                             ) {
                                 androidx.compose.foundation.Image(
@@ -352,7 +374,7 @@ fun PdfRotateContent(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
-                            FormatBadge(fileType = FileType.PDF)
+                            FormatChip(fileType = FileType.PDF)
                         }
 
                         Spacer(modifier = Modifier.height(16.dp))
@@ -515,8 +537,10 @@ fun PdfRotateScreenResultLightPreview() {
             ),
             scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState()),
             onDone = {},
-            onShare = {},
-            onOpen = {}
+            onOpenFile = {},
+            onShareFile = {},
+            onOpenFolder = {},
+            onShareAll = {}
         )
     }
 }

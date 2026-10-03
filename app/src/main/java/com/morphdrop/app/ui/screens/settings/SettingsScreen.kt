@@ -3,6 +3,7 @@ package com.morphdrop.app.ui.screens.settings
 import android.content.Intent
 import android.content.res.Configuration
 import android.net.Uri
+import android.os.Build
 import android.widget.Toast
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.BorderStroke
@@ -60,6 +61,7 @@ fun SettingsScreen(
     SettingsScreenContent(
         state = uiState,
         onSetThemeMode = viewModel::setThemeMode,
+        onSetDynamicColorEnabled = viewModel::setDynamicColorEnabled,
         onClearCache = {
             viewModel.clearCache(context)
             Toast.makeText(context, "Cache cleared successfully", Toast.LENGTH_SHORT).show()
@@ -98,6 +100,7 @@ fun SettingsScreen(
 fun SettingsScreenContent(
     state: SettingsUiState,
     onSetThemeMode: (ThemeMode) -> Unit,
+    onSetDynamicColorEnabled: (Boolean) -> Unit,
     onClearCache: () -> Unit,
     onOutputFolderChange: (String) -> Unit,
     onCheckForUpdates: () -> Unit,
@@ -560,15 +563,28 @@ fun SettingsScreenContent(
             )
         }
     ) { innerPadding ->
-        Column(
+        // On large screens (navigation rail instead of the bottom pill) the
+        // content is centered at a readable width with less bottom padding.
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
-                .imePadding()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .padding(innerPadding),
+            contentAlignment = Alignment.TopCenter
         ) {
+            val isExpanded = maxWidth >= 840.dp
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .widthIn(max = 840.dp)
+                    .imePadding()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp)
+                    .padding(
+                        top = 8.dp,
+                        bottom = if (isExpanded) 24.dp else 88.dp
+                    ),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
             // App Brand Hero Header Card (With official MorphDrop app logo)
             Card(
                 shape = RoundedCornerShape(24.dp),
@@ -670,6 +686,27 @@ fun SettingsScreenContent(
                         selectedTheme = state.themeMode,
                         onSelectTheme = onSetThemeMode
                     )
+
+                    // Wallpaper colors (dynamic color) — shown only on supported
+                    // Android versions; the version check stays internal, no
+                    // version text is shown to the user.
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        SettingsItem(
+                            title = "Wallpaper colors",
+                            description = "Match app colors to your wallpaper",
+                            icon = Icons.Default.Wallpaper,
+                            containerColor = if (isDark) Color(0xFF00BCD4).copy(alpha = 0.20f) else Color(0xFFE0F7FA),
+                            contentColor = if (isDark) Color(0xFF4DD0E1) else Color(0xFF00838F),
+                            trailingContent = {
+                                Switch(
+                                    checked = state.dynamicColorEnabled,
+                                    onCheckedChange = onSetDynamicColorEnabled
+                                )
+                            },
+                            onClick = { onSetDynamicColorEnabled(!state.dynamicColorEnabled) }
+                        )
+                    }
                 }
             }
 
@@ -835,7 +872,7 @@ fun SettingsScreenContent(
                 )
             }
 
-            Spacer(modifier = Modifier.height(120.dp))
+            }
         }
     }
 }
@@ -1097,6 +1134,7 @@ fun SettingsScreenLightPreview() {
                 appVersion = "v1.4.0"
             ),
             onSetThemeMode = {},
+            onSetDynamicColorEnabled = {},
             onClearCache = {},
             onOutputFolderChange = {},
             onCheckForUpdates = {},
@@ -1118,6 +1156,7 @@ fun SettingsScreenDarkPreview() {
                 appVersion = "v1.4.0"
             ),
             onSetThemeMode = {},
+            onSetDynamicColorEnabled = {},
             onClearCache = {},
             onOutputFolderChange = {},
             onCheckForUpdates = {},

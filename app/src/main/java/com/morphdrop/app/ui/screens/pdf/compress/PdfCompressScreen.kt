@@ -84,7 +84,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.morphdrop.app.PdfViewerActivity
 import com.morphdrop.app.domain.model.FileType
 import com.morphdrop.app.domain.usecase.conversion.CompressionLevel
-import com.morphdrop.app.ui.components.FormatBadge
+import com.morphdrop.app.ui.components.FormatChip
 import com.morphdrop.app.ui.components.MorphDropTopAppBar
 import com.morphdrop.app.ui.components.PrimaryButton
 import com.morphdrop.app.ui.screens.processing.ProcessingScreenContent
@@ -186,19 +186,41 @@ fun PdfCompressScreen(
                 ),
                 scrollBehavior = resultScrollBehavior,
                 onDone = onNavigateBack,
-                onShare = {
-                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                        type = "application/pdf"
-                        putExtra(Intent.EXTRA_STREAM, state.resultUri)
-                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                onShareFile = { file ->
+                    file.uri?.let { uri ->
+                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                            type = "application/pdf"
+                            putExtra(Intent.EXTRA_STREAM, uri)
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        context.startActivity(Intent.createChooser(shareIntent, "Share Compressed PDF"))
                     }
-                    context.startActivity(Intent.createChooser(shareIntent, "Share Compressed PDF"))
                 },
-                onOpen = {
-                    val intent = Intent(context, PdfViewerActivity::class.java).apply {
-                        data = state.resultUri
+                onOpenFile = { file ->
+                    file.uri?.let { uri ->
+                        val intent = Intent(context, PdfViewerActivity::class.java).apply {
+                            data = uri
+                        }
+                        context.startActivity(intent)
                     }
-                    context.startActivity(intent)
+                },
+                onOpenFolder = {
+                    state.resultUri?.let { uri ->
+                        val intent = Intent(context, PdfViewerActivity::class.java).apply {
+                            data = uri
+                        }
+                        context.startActivity(intent)
+                    }
+                },
+                onShareAll = {
+                    state.resultUri?.let { uri ->
+                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                            type = "application/pdf"
+                            putExtra(Intent.EXTRA_STREAM, uri)
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        context.startActivity(Intent.createChooser(shareIntent, "Share Compressed PDF"))
+                    }
                 }
             )
         }
@@ -302,7 +324,7 @@ fun PdfCompressContent(
                                         .aspectRatio(pageAspectRatio)
                                         .shadow(6.dp, RoundedCornerShape(4.dp))
                                         .clip(RoundedCornerShape(4.dp))
-                                        .background(Color.White),
+                                        .background(MaterialTheme.colorScheme.surfaceContainerLowest),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     androidx.compose.foundation.Image(
@@ -374,7 +396,7 @@ fun PdfCompressContent(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
-                            FormatBadge(fileType = FileType.PDF)
+                            FormatChip(fileType = FileType.PDF)
                         }
 
                         Spacer(modifier = Modifier.height(16.dp))
@@ -695,8 +717,10 @@ fun PdfCompressScreenResultLightPreview() {
             ),
             scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState()),
             onDone = {},
-            onShare = {},
-            onOpen = {}
+            onOpenFile = {},
+            onShareFile = {},
+            onOpenFolder = {},
+            onShareAll = {}
         )
     }
 }

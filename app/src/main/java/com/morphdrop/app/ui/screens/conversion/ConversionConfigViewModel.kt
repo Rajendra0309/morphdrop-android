@@ -8,6 +8,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.morphdrop.app.domain.model.ConversionType
 import com.morphdrop.app.domain.model.FileType
+import com.morphdrop.app.domain.model.ToolPreset
 import com.morphdrop.app.domain.repository.SettingsRepository
 import com.morphdrop.app.ui.components.WorkbenchImageItem
 import com.morphdrop.app.util.FileHelper
@@ -148,6 +149,13 @@ class ConversionConfigViewModel @Inject constructor(
     )
     val state: StateFlow<ConversionConfigState> = _state.asStateFlow()
 
+    /** Whether this tool has a saved preset (last-used settings) for one-tap repeat. */
+    private val _hasPreset = MutableStateFlow(false)
+    val hasPreset: StateFlow<Boolean> = _hasPreset.asStateFlow()
+
+    private var pdfLoadingJob: kotlinx.coroutines.Job? = null
+    private var fileSelectionGeneration = 0L
+
     init {
         val type = ConversionType.defaultList.find { it.id == conversionTypeId }
         if (type != null) {
@@ -156,18 +164,43 @@ class ConversionConfigViewModel @Inject constructor(
                 val savedQuality = settingsRepository.lastImageQuality.first()
                 val savedResize = settingsRepository.lastImageResizeOption.first()
                 val savedStrip = settingsRepository.lastStripMetadata.first()
+                val preset = settingsRepository.toolPreset(type.id).first()
 
-                _state.update {
-                    it.copy(
+                _state.update { current ->
+                    var next = current.copy(
                         outputFormat = if (isImageOutput(type)) savedFormat else type.outputType.extension,
-                        quality = if (isImageOutput(type)) savedQuality else if (type.id == "compress_pdf") 60 else it.quality,
+                        quality = if (isImageOutput(type)) savedQuality else if (type.id == "compress_pdf") 60 else current.quality,
                         resizeOption = savedResize,
                         stripMetadata = savedStrip,
                         showQualitySlider = isImageOutput(type) || type.id == "compress_pdf",
                         showPageRange = type.id in listOf("split_pdf", "pdf_to_images", "organize_pdf"),
                         availableOutputFormats = getFormatsForType(type),
-                        compressionPreset = if (type.id == "compress_pdf") "Recommended" else it.compressionPreset
+                        compressionPreset = if (type.id == "compress_pdf") "Recommended" else current.compressionPreset
                     )
+                    // Per-tool preset (last-used settings) wins over the globals above.
+                    if (preset != null) {
+                        _hasPreset.value = true
+                        next = next.copy(
+                            outputFormat = preset.outputFormat.ifBlank { next.outputFormat },
+                            quality = preset.quality,
+                            resizeOption = preset.resizeOption.ifBlank { next.resizeOption },
+                            stripMetadata = preset.stripMetadata,
+                            pageRangeStart = "",
+                            pageRangeEnd = "",
+                            compressionPreset = preset.compressionPreset.ifBlank { next.compressionPreset },
+                            targetSizeKb = preset.targetSizeKb,
+                            rotationDegrees = preset.rotationDegrees,
+                            targetWidth = preset.targetWidth,
+                            targetHeight = preset.targetHeight,
+                            aspectRatioPreset = preset.aspectRatioPreset.ifBlank { next.aspectRatioPreset },
+                            allowPrinting = preset.allowPrinting,
+                            allowCopying = preset.allowCopying,
+                            allowEditing = preset.allowEditing,
+                            splitMode = preset.splitMode.ifBlank { next.splitMode },
+                            splitEveryN = preset.splitEveryN.toIntOrNull() ?: next.splitEveryN
+                        )
+                    }
+                    next.copy(isConvertEnabled = isStateValid(next))
                 }
             }
         }
@@ -203,6 +236,7 @@ class ConversionConfigViewModel @Inject constructor(
 
     fun onFilesSelected(context: Context, uris: List<Uri>, append: Boolean = false) {
         if (uris.isEmpty()) return
+        val currentGeneration = ++fileSelectionGeneration
 
         viewModelScope.launch(Dispatchers.IO) {
             val type = _state.value.conversionType
@@ -276,6 +310,7 @@ class ConversionConfigViewModel @Inject constructor(
         }
 
         if (hasInvalidFile) {
+            if (currentGeneration != fileSelectionGeneration) return@launch
             val allowedText = allowedExts.joinToString(", ") { ".$it" }
             _state.update {
                 it.copy(
@@ -315,6 +350,8 @@ class ConversionConfigViewModel @Inject constructor(
         val firstSelectedExt = firstFileName.substringAfterLast('.', "").lowercase()
         val isFirstAnImage = firstSelectedMime.startsWith("image/") || firstSelectedExt in listOf("jpg", "jpeg", "png", "webp", "bmp", "heic", "gif")
 
+        if (currentGeneration != fileSelectionGeneration) return@launch
+
         _state.update {
             val s = it.copy(
                 selectedFileUris = selectedUris,
@@ -340,6 +377,7 @@ class ConversionConfigViewModel @Inject constructor(
             val isMediaFile = mime.startsWith("video/") || mime.startsWith("audio/") || ext in listOf("mp4", "mkv", "avi", "mov", "3gp", "webm", "mp3", "flac", "wav")
 
             viewModelScope.launch {
+                if (currentGeneration != fileSelectionGeneration) return@launch
                 val thumbUri = when {
                     isPdfFile -> PdfThumbnailHelper.getThumbnailUri(context, firstUri, 0)
                     isMediaFile -> MediaThumbnailHelper.getMediaThumbnailUri(context, firstUri)
@@ -353,7 +391,9 @@ class ConversionConfigViewModel @Inject constructor(
 
         if (type?.inputType == FileType.PDF && selectedUris.isNotEmpty()) {
             _state.update { it.copy(isPdfLoading = true) }
-            viewModelScope.launch {
+            pdfLoadingJob?.cancel()
+            pdfLoadingJob = viewModelScope.launch {
+                if (currentGeneration != fileSelectionGeneration) return@launch
                 val allWorkbenchPages = mutableListOf<WorkbenchPage>()
                 var totalPagesCount = 0
                 
@@ -401,6 +441,7 @@ class ConversionConfigViewModel @Inject constructor(
         }
 
         if (type?.id == "metadata_editor" && selectedUris.isNotEmpty()) {
+            if (currentGeneration != fileSelectionGeneration) return@launch
             loadMetadata(context, selectedUris.first())
         }
         }
@@ -545,6 +586,40 @@ class ConversionConfigViewModel @Inject constructor(
 
     fun onFileSelected(context: Context, uri: Uri, fileName: String, fileSize: Long) {
         onFilesSelected(context, listOf(uri), append = false)
+    }
+
+    /** Dismiss the inline error banner. */
+    fun clearError() {
+        _state.update { it.copy(errorMessage = null) }
+    }
+
+    /** Remove the selected input file(s) and reset dependent state. */
+    fun removeSelectedFiles() {
+        fileSelectionGeneration++
+        pdfLoadingJob?.cancel()
+        _state.update {
+            it.copy(
+                selectedFileUris = emptyList(),
+                selectedFileNames = emptyList(),
+                selectedFileSize = -1,
+                workbenchImageItems = emptyList(),
+                mergeItems = emptyList(),
+                selectedPreviewUri = null,
+                outputFileName = "",
+                pageRangeStart = "",
+                pageRangeEnd = "",
+                pdfPageCount = 0,
+                workbenchPages = emptyList(),
+                selectedWorkbenchPages = emptySet(),
+                pageRotations = emptyMap(),
+                isPdfLoading = false,
+                isBatchMode = false,
+                showOrganizerDialog = false,
+                fileMetadata = null,
+                errorMessage = null,
+                isConvertEnabled = false
+            )
+        }
     }
 
     fun onOutputFormatChanged(format: String) {
@@ -887,8 +962,15 @@ class ConversionConfigViewModel @Inject constructor(
         if (s.targetWidth.isNotEmpty() && s.targetWidth.toIntOrNull() == null) return false
         if (s.targetHeight.isNotEmpty() && s.targetHeight.toIntOrNull() == null) return false
         if (s.targetSizeKb.isNotEmpty() && s.targetSizeKb.toIntOrNull() == null) return false
-        if (s.pageRangeStart.isNotEmpty() && s.pageRangeStart.toIntOrNull() == null) return false
-        if (s.pageRangeEnd.isNotEmpty() && s.pageRangeEnd.toIntOrNull() == null) return false
+        val start = s.pageRangeStart.toIntOrNull()
+        val end = s.pageRangeEnd.toIntOrNull()
+        if (s.pageRangeStart.isNotEmpty() && (start == null || start < 1)) return false
+        if (s.pageRangeEnd.isNotEmpty() && (end == null || end < 1)) return false
+        if (s.pdfPageCount > 0) {
+            if (start != null && start > s.pdfPageCount) return false
+            if (end != null && end > s.pdfPageCount) return false
+        }
+        if (start != null && end != null && start > end) return false
         if ((s.conversionType?.id == "protect_pdf" || s.conversionType?.id == "unlock_pdf") && s.pdfPassword.isEmpty()) return false
         return true
     }
@@ -905,6 +987,11 @@ class ConversionConfigViewModel @Inject constructor(
         }
 
         if (uris.isEmpty() || !currentState.isConvertEnabled) return null
+
+        // Remember this tool's settings as a preset for one-tap repeat (long-press).
+        viewModelScope.launch {
+            settingsRepository.saveToolPreset(type.id, currentState.toToolPreset())
+        }
 
         return try {
             val uriStrings: Array<String?> = Array(uris.size) { uris[it].toString() }
@@ -926,10 +1013,14 @@ class ConversionConfigViewModel @Inject constructor(
                 dataBuilder.putFloat(com.morphdrop.app.worker.ConversionWorker.KEY_RESIZE_SCALE, resizeScaleFloat)
             }
 
-            if (currentState.pageRangeStart.isNotBlank() && currentState.pageRangeEnd.isNotBlank()) {
+            val startNum = currentState.pageRangeStart.toIntOrNull()
+            val endNum = currentState.pageRangeEnd.toIntOrNull()
+            if (startNum != null || endNum != null) {
+                val effectiveStart = startNum ?: 1
+                val effectiveEnd = endNum ?: if (currentState.pdfPageCount > 0) currentState.pdfPageCount else Int.MAX_VALUE
                 dataBuilder.putString(
                     com.morphdrop.app.worker.ConversionWorker.KEY_PAGE_RANGE,
-                    "${currentState.pageRangeStart}-${currentState.pageRangeEnd}"
+                    "$effectiveStart-$effectiveEnd"
                 )
             }
 
@@ -999,6 +1090,12 @@ class ConversionConfigViewModel @Inject constructor(
                 }
             }
 
+            // In-memory debounce guard: a double-tap on Convert produces the
+            // same name twice within 3 seconds, so the duplicate tap is dropped.
+            val urisHash = uris.joinToString("|") { it.toString() }.hashCode()
+            val uniqueWorkName = "conversion_${type.id}_$urisHash"
+            if (isDuplicateEnqueue(uniqueWorkName)) return null
+
             if (type.id == "merge_pdf" || type.id == "merge_pdfs") {
                 val activeWorkbenchPages = currentState.workbenchPages.filter { currentState.selectedWorkbenchPages.contains(it.id) }
                 val mergeData = activeWorkbenchPages.map { p ->
@@ -1009,18 +1106,52 @@ class ConversionConfigViewModel @Inject constructor(
                     )
                 }
                 val json = com.google.gson.Gson().toJson(mergeData)
-                dataBuilder.putString("merge_payload", json)
+                if (json.toByteArray(Charsets.UTF_8).size > 8 * 1024) {
+                    // WorkManager Data is capped at 10KB: spill an oversized merge
+                    // payload to a temp file and pass its URI under "merge_payload_file"
+                    // instead of inline "merge_payload" (the worker reads this key).
+                    val payloadFile = File(context.cacheDir, "merge_payload_${System.currentTimeMillis()}.json")
+                    payloadFile.writeText(json)
+                    // Expose via FileProvider (never a raw file:// URI); the worker
+                    // reads it back through ContentResolver, which handles content://.
+                    val payloadUri = androidx.core.content.FileProvider.getUriForFile(
+                        context,
+                        "${context.packageName}.fileprovider",
+                        payloadFile
+                    )
+                    dataBuilder.putString("merge_payload_file", payloadUri.toString())
+                } else {
+                    dataBuilder.putString("merge_payload", json)
+                }
             }
 
             val workRequest = androidx.work.OneTimeWorkRequestBuilder<com.morphdrop.app.worker.ConversionWorker>()
                 .setInputData(dataBuilder.build())
                 .build()
 
-            androidx.work.WorkManager.getInstance(context).enqueue(workRequest)
+            androidx.work.WorkManager.getInstance(context)
+                .enqueue(workRequest)
+            recordSuccessfulEnqueue(uniqueWorkName)
             workRequest.id
         } catch (e: Exception) {
             null
         }
+    }
+
+    // Guards against double-tap duplicate enqueues: a second tap within a short
+    // window returns null so the caller doesn't navigate to another processing
+    // screen for a duplicate job.
+    private var lastEnqueueName: String? = null
+    private var lastEnqueueAtMs: Long = 0L
+
+    private fun isDuplicateEnqueue(uniqueName: String): Boolean {
+        val now = System.currentTimeMillis()
+        return uniqueName == lastEnqueueName && (now - lastEnqueueAtMs) < 3000L
+    }
+
+    private fun recordSuccessfulEnqueue(uniqueName: String) {
+        lastEnqueueName = uniqueName
+        lastEnqueueAtMs = System.currentTimeMillis()
     }
 
     fun isFolderOutput(type: ConversionType?): Boolean {
@@ -1051,4 +1182,28 @@ class ConversionConfigViewModel @Inject constructor(
             else -> listOf(type.outputType.extension)
         }
     }
+
+    /**
+     * Snapshot of this tool's current settings as a portable preset — the
+     * same portable settings that the worker reads back on start.
+     */
+    private fun ConversionConfigState.toToolPreset(): ToolPreset = ToolPreset(
+        outputFormat = outputFormat,
+        quality = quality,
+        resizeOption = resizeOption,
+        stripMetadata = stripMetadata,
+        pageRangeStart = "",
+        pageRangeEnd = "",
+        compressionPreset = compressionPreset,
+        targetSizeKb = targetSizeKb,
+        rotationDegrees = rotationDegrees,
+        targetWidth = targetWidth,
+        targetHeight = targetHeight,
+        aspectRatioPreset = aspectRatioPreset,
+        allowPrinting = allowPrinting,
+        allowCopying = allowCopying,
+        allowEditing = allowEditing,
+        splitMode = splitMode,
+        splitEveryN = splitEveryN.toString()
+    )
 }

@@ -247,8 +247,8 @@ fun HistoryDetailScreenContent(
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary
                         )
-                        val matchedType = remember(item.conversionType) {
-                            resolveConversionType(item.conversionType)
+                        val matchedType = remember(item.conversionTypeId, item.conversionType) {
+                            resolveConversionType(item.conversionTypeId, item.conversionType)
                         }
 
                         DetailItem(

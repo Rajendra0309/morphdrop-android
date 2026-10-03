@@ -95,7 +95,7 @@ import com.morphdrop.app.domain.model.FileType
 import com.morphdrop.app.domain.model.WatermarkConfig
 import com.morphdrop.app.domain.model.WatermarkPosition
 import com.morphdrop.app.domain.model.WatermarkType
-import com.morphdrop.app.ui.components.FormatBadge
+import com.morphdrop.app.ui.components.FormatChip
 import com.morphdrop.app.ui.components.MorphDropTopAppBar
 import com.morphdrop.app.ui.components.PrimaryButton
 import com.morphdrop.app.ui.screens.processing.ProcessingScreenContent
@@ -184,19 +184,41 @@ fun PdfWatermarkScreen(
                 ),
                 scrollBehavior = resultScrollBehavior,
                 onDone = onNavigateBack,
-                onShare = {
-                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                        type = "application/pdf"
-                        putExtra(Intent.EXTRA_STREAM, state.resultUri)
-                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                onShareFile = { file ->
+                    file.uri?.let { uri ->
+                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                            type = "application/pdf"
+                            putExtra(Intent.EXTRA_STREAM, uri)
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        context.startActivity(Intent.createChooser(shareIntent, "Share Watermarked PDF"))
                     }
-                    context.startActivity(Intent.createChooser(shareIntent, "Share Watermarked PDF"))
                 },
-                onOpen = {
-                    val intent = Intent(context, PdfViewerActivity::class.java).apply {
-                        data = state.resultUri
+                onOpenFile = { file ->
+                    file.uri?.let { uri ->
+                        val intent = Intent(context, PdfViewerActivity::class.java).apply {
+                            data = uri
+                        }
+                        context.startActivity(intent)
                     }
-                    context.startActivity(intent)
+                },
+                onOpenFolder = {
+                    state.resultUri?.let { uri ->
+                        val intent = Intent(context, PdfViewerActivity::class.java).apply {
+                            data = uri
+                        }
+                        context.startActivity(intent)
+                    }
+                },
+                onShareAll = {
+                    state.resultUri?.let { uri ->
+                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                            type = "application/pdf"
+                            putExtra(Intent.EXTRA_STREAM, uri)
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        context.startActivity(Intent.createChooser(shareIntent, "Share Watermarked PDF"))
+                    }
                 }
             )
         }
@@ -298,7 +320,7 @@ fun PdfWatermarkContent(
                                         .aspectRatio(pageAspectRatio)
                                         .shadow(6.dp, RoundedCornerShape(4.dp))
                                         .clip(RoundedCornerShape(4.dp))
-                                        .background(Color.White),
+                                        .background(MaterialTheme.colorScheme.surfaceContainerLowest),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     androidx.compose.foundation.Image(
@@ -372,7 +394,7 @@ fun PdfWatermarkContent(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
-                            FormatBadge(fileType = FileType.PDF)
+                            FormatChip(fileType = FileType.PDF)
                         }
 
                         Spacer(modifier = Modifier.height(16.dp))
@@ -730,8 +752,10 @@ fun PdfWatermarkScreenResultLightPreview() {
             ),
             scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState()),
             onDone = {},
-            onShare = {},
-            onOpen = {}
+            onOpenFile = {},
+            onShareFile = {},
+            onOpenFolder = {},
+            onShareAll = {}
         )
     }
 }

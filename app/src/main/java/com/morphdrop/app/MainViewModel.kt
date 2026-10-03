@@ -38,6 +38,63 @@ class MainViewModel @Inject constructor(
             initialValue = com.morphdrop.app.domain.model.ThemeMode.SYSTEM
         )
 
+    val dynamicColorEnabled: StateFlow<Boolean> = settingsRepository.dynamicColorEnabled
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = true
+        )
+
+    /** Last PDF opened in the viewer + page, for the Home continue-reading card. */
+    val lastOpenedPdf: StateFlow<com.morphdrop.app.domain.model.LastOpenedPdf?> =
+        settingsRepository.lastOpenedPdf
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.Eagerly,
+                initialValue = null
+            )
+
+    fun clearLastOpenedPdf() {
+        viewModelScope.launch {
+            settingsRepository.clearLastOpenedPdf()
+        }
+    }
+
+    /**
+     * Opens the last-read PDF in the viewer at the saved page. Returns false
+     * (and clears the stale entry) when the file is no longer readable.
+     */
+    suspend fun openLastOpenedPdf(context: android.content.Context): Boolean {
+        val last = settingsRepository.lastOpenedPdf.first() ?: return false
+        val uri = try {
+            android.net.Uri.parse(last.uri)
+        } catch (_: Exception) {
+            null
+        }
+        val readable = uri != null && try {
+            context.contentResolver.openInputStream(uri)?.use { true } ?: false
+        } catch (_: Exception) {
+            false
+        }
+        if (!readable) {
+            settingsRepository.clearLastOpenedPdf()
+            return false
+        }
+        return try {
+            val intent = android.content.Intent(context, PdfViewerActivity::class.java).apply {
+                action = android.content.Intent.ACTION_VIEW
+                data = uri
+                putExtra("pdf_uri", uri)
+                putExtra("page", last.page)
+                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(intent)
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     val hasSeenWelcome: StateFlow<Boolean?> = settingsRepository.hasSeenWelcome
         .map { it }
         .stateIn(
@@ -46,18 +103,29 @@ class MainViewModel @Inject constructor(
             initialValue = null // Use null to indicate "loading" state
         )
 
+    private val _whatsNewInfo = MutableStateFlow<WhatsNewInfo?>(savedStateHandle.get<WhatsNewInfo?>("whats_new_info"))
+    val whatsNewInfo = _whatsNewInfo.asStateFlow()
+
+    // Scroll-driven search button beside the bottom navbar (Home + History).
+    // Screens push visibility + click action here; MainActivity renders the icon.
     private val _showSearchFab = MutableStateFlow(false)
     val showSearchFab = _showSearchFab.asStateFlow()
 
     private val _onSearchFabClick = MutableStateFlow<(() -> Unit)?>(null)
     val onSearchFabClick = _onSearchFabClick.asStateFlow()
 
-    // Persistent state for scroll-based visibility to prevent jitter on navigation
-    private val _isSearchFabVisibleByScroll = MutableStateFlow(false)
-    val isSearchFabVisibleByScroll = _isSearchFabVisibleByScroll.asStateFlow()
+    fun setSearchFabVisibility(show: Boolean) {
+        _showSearchFab.value = show
+    }
 
-    private val _whatsNewInfo = MutableStateFlow<WhatsNewInfo?>(savedStateHandle.get<WhatsNewInfo?>("whats_new_info"))
-    val whatsNewInfo = _whatsNewInfo.asStateFlow()
+    fun setOnSearchFabClick(action: (() -> Unit)?) {
+        _onSearchFabClick.value = action
+    }
+
+    fun resetSearchFab() {
+        _showSearchFab.value = false
+        _onSearchFabClick.value = null
+    }
 
     private val _updateInfo = MutableStateFlow<UpdateInfo?>(savedStateHandle.get<UpdateInfo?>("update_info"))
     val updateInfo = _updateInfo.asStateFlow()
@@ -92,21 +160,6 @@ class MainViewModel @Inject constructor(
     init {
         checkForUpdates(force = false)
         checkWhatsNew()
-    }
-
-    fun setSearchFabVisibility(show: Boolean) {
-        _isSearchFabVisibleByScroll.value = show
-        _showSearchFab.value = show
-    }
-
-    fun setOnSearchFabClick(onClick: (() -> Unit)?) {
-        _onSearchFabClick.value = onClick
-    }
-
-    fun resetSearchFab() {
-        _showSearchFab.value = false
-        _isSearchFabVisibleByScroll.value = false
-        _onSearchFabClick.value = null
     }
 
     fun checkWhatsNew() {
@@ -206,14 +259,21 @@ class MainViewModel @Inject constructor(
 
     fun downloadUpdate(info: UpdateInfo) {
         viewModelScope.launch {
-            val downloadId = updateManager.downloadApk(info.downloadUrl, info.versionName)
-            updateManager.pollDownloadProgress(downloadId).collect { progress ->
-                _downloadProgress.value = progress
-                if (progress.status == com.morphdrop.app.data.updater.DownloadStatus.SUCCESSFUL) {
-                    kotlinx.coroutines.delay(1000)
-                    setUpdateInfo(null)
-                    _downloadProgress.value = com.morphdrop.app.data.updater.DownloadProgress()
+            try {
+                val downloadId = updateManager.downloadApk(info.downloadUrl, info.versionName)
+                updateManager.pollDownloadProgress(downloadId).collect { progress ->
+                    _downloadProgress.value = progress
+                    if (progress.status == com.morphdrop.app.data.updater.DownloadStatus.SUCCESSFUL) {
+                        kotlinx.coroutines.delay(1000)
+                        setUpdateInfo(null)
+                        _downloadProgress.value = com.morphdrop.app.data.updater.DownloadProgress()
+                    }
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // downloadApk throws IllegalArgumentException on a bad URL scheme, among others
+                _updateEvents.emit(UpdateEvent.Error("Unable to start download"))
             }
         }
     }

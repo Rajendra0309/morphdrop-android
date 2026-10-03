@@ -103,6 +103,7 @@ import com.morphdrop.app.data.pdf.PdfTocItem
 fun PdfViewerScreen(
     pdfUri: Uri,
     onNavigateBack: () -> Unit,
+    initialPage: Int = 0,
     viewModel: PdfViewerViewModel = hiltViewModel()
 ) {
     val pdfUiState by viewModel.pdfUiState.collectAsState()
@@ -129,6 +130,31 @@ fun PdfViewerScreen(
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
 
     val pagerState = androidx.compose.foundation.pager.rememberPagerState(pageCount = { pdfUiState.totalPages.coerceAtLeast(1) })
+
+    // Smooth reading progress driven directly by the active scroller, so the
+    // top progress line stays accurate in both vertical and horizontal modes
+    // even if ViewModel page updates lag behind.
+    val smoothProgress by remember {
+        derivedStateOf {
+            val total = pdfUiState.totalPages
+            if (total <= 1) {
+                0f
+            } else if (isVerticalMode) {
+                val first = listState.layoutInfo.visibleItemsInfo.firstOrNull()
+                if (first == null) {
+                    (listState.firstVisibleItemIndex + 1) / total.toFloat()
+                } else {
+                    val pageIndex = first.index.coerceIn(0, total - 1)
+                    val itemSize = first.size.takeIf { it > 0 } ?: 1
+                    // first.offset is 0 at rest, negative as the page scrolls up past the top.
+                    val scrolled = (-first.offset / itemSize.toFloat()).coerceIn(0f, 1f)
+                    ((pageIndex + scrolled + 1) / total.toFloat()).coerceIn(0f, 1f)
+                }
+            } else {
+                (pagerState.currentPage + 1) / total.toFloat()
+            }
+        }
+    }
 
     val window = (context as? Activity)?.window
     var isBarsHiddenByScroll by remember { mutableStateOf(false) }
@@ -165,7 +191,7 @@ fun PdfViewerScreen(
     }
 
     LaunchedEffect(pdfUri) {
-        viewModel.loadPdf(pdfUri)
+        viewModel.loadPdf(pdfUri, initialPage = initialPage)
     }
 
     val allAnnotations by viewModel.annotations.collectAsState()
@@ -190,17 +216,20 @@ fun PdfViewerScreen(
         }
     }
 
-    val firstVisibleIndex by remember { derivedStateOf { if (isVerticalMode) listState.firstVisibleItemIndex else pagerState.currentPage } }
-    LaunchedEffect(firstVisibleIndex) {
-        viewModel.updateCurrentPage(firstVisibleIndex)
-    }
-
+    // Keep the ViewModel's current page in sync with the visible page in both
+    // reading modes. snapshotFlow restarts on mode switch, so the inactive
+    // scroller can never shadow the active one and the page indicator stays
+    // accurate in vertical and horizontal modes alike.
     // Sync Pager and ListState when switching modes
     LaunchedEffect(isVerticalMode) {
         if (isVerticalMode) {
             listState.scrollToItem(pagerState.currentPage)
+            snapshotFlow { listState.firstVisibleItemIndex }
+                .collect { viewModel.updateCurrentPage(it) }
         } else {
             pagerState.scrollToPage(listState.firstVisibleItemIndex)
+            snapshotFlow { pagerState.currentPage }
+                .collect { viewModel.updateCurrentPage(it) }
         }
     }
 
@@ -396,6 +425,20 @@ fun PdfViewerScreen(
                                     IconButton(onClick = { showThumbnailsSheet = true }) {
                                         Icon(Icons.Default.GridView, contentDescription = "Thumbnails")
                                     }
+                                    val bookmarkPageNumber = (if (isVerticalMode) listState.firstVisibleItemIndex else pagerState.currentPage) + 1
+                                    val isPageBookmarked = pdfUiState.bookmarks.any { it.pageNumber == bookmarkPageNumber }
+                                    IconButton(
+                                        onClick = { viewModel.toggleBookmarkForPage(bookmarkPageNumber) },
+                                        modifier = Modifier.size(48.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isPageBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                                            contentDescription = if (isPageBookmarked) "Remove bookmark for page $bookmarkPageNumber"
+                                                                 else "Bookmark page $bookmarkPageNumber",
+                                            tint = if (isPageBookmarked) MaterialTheme.colorScheme.primary
+                                                   else MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
                                     if (pdfUiState.tocList.isNotEmpty()) {
                                         IconButton(onClick = { coroutineScope.launch { drawerState.open() } }) {
                                             Icon(Icons.Default.List, contentDescription = "Table of Contents")
@@ -426,11 +469,11 @@ fun PdfViewerScreen(
                                             )
                                             androidx.compose.material3.HorizontalDivider()
                                             DropdownMenuItem(
-                                                text = { Text(if (pdfUiState.bookmarks.any { it.pageNumber == firstVisibleIndex + 1 }) "Remove Bookmark" else "Add Bookmark") },
-                                                leadingIcon = { Icon(if (pdfUiState.bookmarks.any { it.pageNumber == firstVisibleIndex + 1 }) Icons.Default.Bookmark else Icons.Default.BookmarkBorder, null) },
+                                                text = { Text(if (pdfUiState.bookmarks.any { it.pageNumber == (if (isVerticalMode) listState.firstVisibleItemIndex else pagerState.currentPage) + 1 }) "Remove Bookmark" else "Add Bookmark") },
+                                                leadingIcon = { Icon(if (pdfUiState.bookmarks.any { it.pageNumber == (if (isVerticalMode) listState.firstVisibleItemIndex else pagerState.currentPage) + 1 }) Icons.Default.Bookmark else Icons.Default.BookmarkBorder, null) },
                                                 onClick = {
                                                     showOverflowMenu = false
-                                                    viewModel.toggleBookmarkForPage(firstVisibleIndex + 1)
+                                                    viewModel.toggleBookmarkForPage((if (isVerticalMode) listState.firstVisibleItemIndex else pagerState.currentPage) + 1)
                                                 }
                                             )
                                             DropdownMenuItem(
@@ -594,7 +637,9 @@ fun PdfViewerScreen(
                                 onScaleChange = { currentScale = it },
                                 onOffsetChange = { currentOffset = it },
                                 onTap = {
-                                    viewModel.clearAllSelections()
+                                    // Tap toggles immersive reading chrome (animated via AnimatedVisibility).
+                                    // Text-selection clearing is handled by the page-level tap handler.
+                                    viewModel.toggleImmersiveMode()
                                 }
                             ) {
                                 if (isVerticalMode) {
@@ -732,6 +777,27 @@ fun PdfViewerScreen(
                 }
             }
         }
+
+        // Slim reading progress bar pinned to the top of the content area.
+        // Wrapped in its own Box so TopCenter alignment resolves regardless
+        // of the enclosing layout scope.
+        if (!pdfUiState.isLoading && pdfUiState.error == null &&
+            !pdfUiState.isPasswordProtected && pdfUiState.totalPages > 1
+        ) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.TopCenter
+            ) {
+                LinearProgressIndicator(
+                    progress = { smoothProgress },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(3.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                )
+            }
+        }
     }
 
     if (showReadingModeSheet) {
@@ -856,7 +922,7 @@ private fun BookmarksBottomSheet(
                         val bookmark = bookmarks[index]
                         ListItem(
                             headlineContent = { Text("Page ${bookmark.pageNumber}") },
-                            leadingContent = { Icon(Icons.Default.Bookmark, contentDescription = null, tint = Color(0xFF008080)) },
+                            leadingContent = { Icon(Icons.Default.Bookmark, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
                             modifier = Modifier.clickable { onBookmarkClick(bookmark.pageNumber) }
                         )
                     }
@@ -938,7 +1004,7 @@ private fun ThumbnailItem(
                     else Modifier
                 ),
             border = if (isSelected) androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
-            color = Color.White,
+            color = MaterialTheme.colorScheme.surface,
             tonalElevation = 1.dp
         ) {
             Box(contentAlignment = Alignment.Center) {
@@ -1101,8 +1167,10 @@ fun PdfPageItem(
         androidx.compose.ui.geometry.Size(displayMetrics.widthPixels.toFloat(), displayMetrics.heightPixels.toFloat())
     }
 
-    // Generate Paper Texture once per configuration
-    val paperTextureBrush = remember(textureIntensity) {
+    // Generate Paper Texture once per configuration.
+    // The backing bitmap is captured and recycled when the brush is disposed,
+    // so scrolling through pages never leaks native bitmap memory.
+    val paperTexture = remember(textureIntensity) {
         val bitmap = Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888)
         val pixels = IntArray(256 * 256)
         val random = java.util.Random(42) // Fixed seed for consistent texture
@@ -1113,14 +1181,23 @@ fun PdfPageItem(
             pixels[i] = android.graphics.Color.argb(noise, 0, 0, 0)
         }
         bitmap.setPixels(pixels, 0, 256, 0, 0, 256, 256)
-        androidx.compose.ui.graphics.ShaderBrush(
+        val brush = androidx.compose.ui.graphics.ShaderBrush(
             android.graphics.BitmapShader(
                 bitmap,
                 android.graphics.Shader.TileMode.REPEAT,
                 android.graphics.Shader.TileMode.REPEAT
             )
         )
+        bitmap to brush
     }
+    DisposableEffect(paperTexture) {
+        onDispose {
+            if (!paperTexture.first.isRecycled) {
+                paperTexture.first.recycle()
+            }
+        }
+    }
+    val paperTextureBrush = paperTexture.second
 
     val colorFilter = remember(readingMode, sepiaIntensity) {
         when (readingMode) {
@@ -1152,7 +1229,8 @@ fun PdfPageItem(
                 if (previewBitmap != null) Modifier.aspectRatio(previewBitmap!!.width.toFloat() / previewBitmap!!.height.toFloat())
                 else Modifier.aspectRatio(0.707f)
             )
-            .background(Color.White)
+            // Theme-aware page background — no white flash in dark mode
+            .background(MaterialTheme.colorScheme.surface)
             .then(
                 if (magnifierCenter != Offset.Unspecified && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                     Modifier.magnifier(
@@ -1667,7 +1745,13 @@ fun PdfPageItem(
                                                 horizontalArrangement = Arrangement.SpaceEvenly,
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
-                                                val colors = listOf(Color.Yellow, Color.Green, Color.Cyan, Color.Magenta)
+                                                // Curated, theme-derived highlight colors (no raw rainbow)
+                                                val colors = listOf(
+                                                    MaterialTheme.colorScheme.primary,
+                                                    MaterialTheme.colorScheme.secondary,
+                                                    MaterialTheme.colorScheme.tertiary,
+                                                    MaterialTheme.colorScheme.error
+                                                )
                                                 colors.forEach { color ->
                                                     Box(
                                                         modifier = Modifier
@@ -1698,7 +1782,7 @@ fun PdfPageItem(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(Color.LightGray.copy(alpha = 0.3f))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
                 ) {
                     CircularProgressIndicator(
                         modifier = Modifier.align(Alignment.Center).size(32.dp),

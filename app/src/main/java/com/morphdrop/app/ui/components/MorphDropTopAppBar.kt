@@ -22,6 +22,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -37,16 +38,21 @@ fun MorphDropTopAppBar(
     onBackClick: () -> Unit = {},
     showTagline: Boolean = false,
     hasActions: Boolean = false,
+    /**
+     * Brand styling (heavy title + tagline). Pass explicitly instead of
+     * relying on fragile `title == "MorphDrop"` string comparison.
+     */
+    isBrand: Boolean = false,
     modifier: Modifier = Modifier,
     actions: @Composable () -> Unit = {}
 ) {
     val collapsedFraction = scrollBehavior.state.collapsedFraction
+    val density = LocalDensity.current
 
     // Smooth alpha for the tagline (fades out early)
     val taglineAlpha = (1f - (collapsedFraction * 4f)).coerceIn(0f, 1f)
-    
-    val isHomeBrand = title == "MorphDrop"
-    val titleWeight = if (isHomeBrand) FontWeight.Black else FontWeight.Bold
+
+    val titleWeight = if (isBrand) FontWeight.Black else FontWeight.Bold
 
     // We need to calculate the offset to keep the title exactly in the screen center
     // when the bar is collapsed.
@@ -82,7 +88,7 @@ fun MorphDropTopAppBar(
                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                     )
                     
-                    if (showTagline && isHomeBrand && taglineAlpha > 0.01f) {
+                    if (showTagline && isBrand && taglineAlpha > 0.01f) {
                         Text(
                             text = "Drop. Transform. Done.",
                             style = MaterialTheme.typography.bodyMedium,
@@ -101,13 +107,14 @@ fun MorphDropTopAppBar(
 
                             // Absolute Screen Centering Logic:
                             // The LargeTopAppBar title slot is horizontally biased by the nav icon area.
-                            // navWidth: area on the left (Back Arrow 48dp or Home 16dp).
-                            // actionWidth: area on the right (Actions 48dp or balanced spacer 48dp).
-                            val left = if (showBackArrow) 48f else 16f
-                            val right = if (hasActions || showBackArrow) 48f else 0f
+                            // graphicsLayer.translationX is in PIXELS, so convert dp -> px with
+                            // LocalDensity (the old code used raw dp values here, drifting
+                            // off-center on high-density screens).
+                            val leftPx = with(density) { (if (showBackArrow) 48.dp else 16.dp).toPx() }
+                            val rightPx = with(density) { (if (hasActions || showBackArrow) 48.dp else 0.dp).toPx() }
 
                             // Shift to reach absolute horizontal screen center
-                            translationX = (right - left) / 2f
+                            translationX = (rightPx - leftPx) / 2f
                         },
                     contentAlignment = Alignment.Center
                 ) {
