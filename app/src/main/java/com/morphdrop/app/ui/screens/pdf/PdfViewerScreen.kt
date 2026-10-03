@@ -21,6 +21,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -216,6 +217,27 @@ fun PdfViewerScreen(
         }
     }
 
+    val isListDragged by listState.interactionSource.collectIsDraggedAsState()
+    val isPagerDragged by pagerState.interactionSource.collectIsDraggedAsState()
+
+    var isUserScrollingList by remember { mutableStateOf(false) }
+    LaunchedEffect(isListDragged, listState.isScrollInProgress) {
+        if (isListDragged) {
+            isUserScrollingList = true
+        } else if (!listState.isScrollInProgress) {
+            isUserScrollingList = false
+        }
+    }
+
+    var isUserScrollingPager by remember { mutableStateOf(false) }
+    LaunchedEffect(isPagerDragged, pagerState.isScrollInProgress) {
+        if (isPagerDragged) {
+            isUserScrollingPager = true
+        } else if (!pagerState.isScrollInProgress) {
+            isUserScrollingPager = false
+        }
+    }
+
     // Keep the ViewModel's current page in sync with the visible page in both
     // reading modes. snapshotFlow restarts on mode switch, so the inactive
     // scroller can never shadow the active one and the page indicator stays
@@ -224,12 +246,12 @@ fun PdfViewerScreen(
     LaunchedEffect(isVerticalMode) {
         if (isVerticalMode) {
             listState.scrollToItem(pagerState.currentPage)
-            snapshotFlow { listState.firstVisibleItemIndex }
-                .collect { viewModel.updateCurrentPage(it) }
+            snapshotFlow { listState.firstVisibleItemIndex to isUserScrollingList }
+                .collect { (page, isUser) -> viewModel.updateCurrentPage(page, isUserScroll = isUser) }
         } else {
             pagerState.scrollToPage(listState.firstVisibleItemIndex)
-            snapshotFlow { pagerState.currentPage }
-                .collect { viewModel.updateCurrentPage(it) }
+            snapshotFlow { pagerState.currentPage to isUserScrollingPager }
+                .collect { (page, isUser) -> viewModel.updateCurrentPage(page, isUserScroll = isUser) }
         }
     }
 
@@ -295,7 +317,7 @@ fun PdfViewerScreen(
                 TextButton(onClick = {
                     val page = jumpPageInput.toIntOrNull()
                     if (page != null && page in 1..pdfUiState.totalPages) {
-                        coroutineScope.launch { listState.scrollToItem(page - 1) }
+                        viewModel.scrollToPage(page - 1)
                         showJumpDialog = false
                     }
                 }) {
@@ -334,11 +356,7 @@ fun PdfViewerScreen(
                 onNavigate = { pageIndex ->
                     coroutineScope.launch {
                         drawerState.close()
-                        if (isVerticalMode) {
-                            listState.animateScrollToItem(pageIndex)
-                        } else {
-                            pagerState.animateScrollToPage(pageIndex)
-                        }
+                        viewModel.scrollToPage(pageIndex)
                     }
                 }
             )

@@ -472,7 +472,8 @@ class ConversionConfigViewModel @Inject constructor(
             }
             val hash = metadataUseCase.computeFileHash(context, uri)
             _state.update { current ->
-                if (current.fileMetadata?.fileName == meta.fileName) {
+                if (current.selectedFileUris.firstOrNull() == uri &&
+                    current.fileMetadata?.fileName == meta.fileName) {
                     current.copy(fileMetadata = current.fileMetadata?.copy(fileHash = hash))
                 } else current
             }

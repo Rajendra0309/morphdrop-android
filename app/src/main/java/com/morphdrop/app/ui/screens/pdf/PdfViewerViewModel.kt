@@ -1138,15 +1138,20 @@ class PdfViewerViewModel @Inject constructor(
         }
     }
 
-    fun updateCurrentPage(page: Int) {
+    fun updateCurrentPage(page: Int, isUserScroll: Boolean = false) {
         val pageNum = page + 1
         _uiState.update { it.copy(
             currentPage = pageNum,
             isBookmarked = it.bookmarks.any { bookmark -> bookmark.pageNumber == pageNum }
         ) }
         if (pendingRestorePage >= 0) {
-            if (page != pendingRestorePage) return
-            pendingRestorePage = -1
+            if (isUserScroll) {
+                // Genuine user progress overrides missed or interrupted restore target
+                pendingRestorePage = -1
+            } else {
+                if (page != pendingRestorePage) return
+                pendingRestorePage = -1
+            }
         }
         // Remember where the user left off for the Home continue-reading card.
         // Fires only when the visible page index actually changes.
@@ -1185,11 +1190,14 @@ class PdfViewerViewModel @Inject constructor(
         }
         if (targetPage > 0) {
             pendingRestorePage = targetPage
-            scrollToPage(targetPage)
+            scrollToPage(targetPage, isUserNavigation = false)
         }
     }
 
-    fun scrollToPage(pageIndex: Int) {
+    fun scrollToPage(pageIndex: Int, isUserNavigation: Boolean = true) {
+        if (isUserNavigation) {
+            pendingRestorePage = -1
+        }
         viewModelScope.launch {
             _events.emit(PdfViewerEvent.ScrollToPage(pageIndex))
         }
