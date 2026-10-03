@@ -9,5 +9,7 @@ interface HistoryRepository {
     suspend fun insertHistory(history: ConversionHistoryEntity): Long
     suspend fun deleteHistory(history: ConversionHistoryEntity)
     suspend fun deleteHistoryById(id: Long)
+    suspend fun deleteHistoryByIds(ids: List<Long>)
+    suspend fun setPinned(id: Long, pinned: Boolean)
     suspend fun clearAllHistory()
 }

@@ -39,14 +39,15 @@ class PdfTextExtractor(private val context: Context) {
     suspend fun extractDataFromPage(uri: Uri, pageIndex: Int, password: String = "", bitmap: Bitmap? = null): PdfPageData = withContext(Dispatchers.IO) {
         val words = mutableListOf<PdfWord>()
         val links = mutableListOf<PdfLink>()
-        var document: PDDocument? = null
         try {
-            val inputStream = context.contentResolver.openInputStream(uri)
-            document = if (password.isNotEmpty()) {
-                PDDocument.load(inputStream, password)
-            } else {
-                PDDocument.load(inputStream)
-            }
+            // .use{} closes both the ContentResolver stream and the PDDocument.
+            context.contentResolver.openInputStream(uri)?.use { inputStream ->
+                val loadedDoc = if (password.isNotEmpty()) {
+                    PDDocument.load(inputStream, password)
+                } else {
+                    PDDocument.load(inputStream)
+                }
+                loadedDoc.use { document ->
 
             val page = document.getPage(pageIndex)
             val cropBox = page.cropBox
@@ -153,11 +154,11 @@ class PdfTextExtractor(private val context: Context) {
             val writer: Writer = OutputStreamWriter(dummyStream)
             stripper.writeText(document, writer)
             writer.close()
-            
+
+                } // closes loadedDoc.use
+            } // closes openInputStream.use
         } catch (e: Exception) {
             e.printStackTrace()
-        } finally {
-            document?.close()
         }
         
         // ML Kit Fallback for Scanned Documents
@@ -169,31 +170,35 @@ class PdfTextExtractor(private val context: Context) {
                     TextRecognition.getClient(DevanagariTextRecognizerOptions.Builder().build())
                 )
 
-                for (recognizer in recognizers) {
-                    val mlText = recognizer.process(image).await()
-                    if (mlText.textBlocks.isNotEmpty()) {
-                        for (block in mlText.textBlocks) {
-                            for (line in block.lines) {
-                                for (element in line.elements) {
-                                    val bbox = element.boundingBox
-                                    if (bbox != null) {
-                                        val normRect = RectF(
-                                            bbox.left.toFloat() / bitmap.width,
-                                            bbox.top.toFloat() / bitmap.height,
-                                            bbox.right.toFloat() / bitmap.width,
-                                            bbox.bottom.toFloat() / bitmap.height
-                                        )
-                                        words.add(PdfWord(element.text, normRect))
+                // Always close the recognizer clients, even on failure or early break.
+                try {
+                    for (recognizer in recognizers) {
+                        val mlText = recognizer.process(image).await()
+                        if (mlText.textBlocks.isNotEmpty()) {
+                            for (block in mlText.textBlocks) {
+                                for (line in block.lines) {
+                                    for (element in line.elements) {
+                                        val bbox = element.boundingBox
+                                        if (bbox != null) {
+                                            val normRect = RectF(
+                                                bbox.left.toFloat() / bitmap.width,
+                                                bbox.top.toFloat() / bitmap.height,
+                                                bbox.right.toFloat() / bitmap.width,
+                                                bbox.bottom.toFloat() / bitmap.height
+                                            )
+                                            words.add(PdfWord(element.text, normRect))
+                                        }
                                     }
                                 }
                             }
-                        }
-                        if (words.isNotEmpty()) {
-                            break // Stop once we find text in a language model
+                            if (words.isNotEmpty()) {
+                                break // Stop once we find text in a language model
+                            }
                         }
                     }
+                } finally {
+                    recognizers.forEach { it.close() }
                 }
-                recognizers.forEach { it.close() }
             } catch (e: Exception) {
                 e.printStackTrace()
             }

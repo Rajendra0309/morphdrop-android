@@ -25,8 +25,23 @@ class ReorderPdfPagesUseCase @Inject constructor(
     ): Uri = withContext(Dispatchers.IO) {
         if (newOrder.isEmpty()) throw InvalidPageOrderException()
 
+        if (!PDFBoxResourceLoader.isReady()) {
+            PDFBoxResourceLoader.init(context)
+        }
+
+        val sanitizedFileName = if (outputFileName.endsWith(".pdf", ignoreCase = true)) {
+            outputFileName
+        } else {
+            "$outputFileName.pdf"
+        }
+
         val inputStream = FileHelper.readFileFromUri(context, pdfUri)
-        val sourceDoc = PDDocument.load(inputStream)
+        val sourceDoc = try {
+            PDDocument.load(inputStream)
+        } catch (e: Exception) {
+            try { inputStream.close() } catch (_: Exception) {}
+            throw e
+        }
         val newDoc = PDDocument()
 
         try {
@@ -41,7 +56,7 @@ class ReorderPdfPagesUseCase @Inject constructor(
 
             val baos = ByteArrayOutputStream()
             newDoc.save(baos)
-            FileHelper.saveToFile(context, settingsRepository, outputFileName, baos.toByteArray())
+            FileHelper.saveToFile(context, settingsRepository, sanitizedFileName, baos.toByteArray())
         } finally {
             newDoc.close()
             sourceDoc.close()

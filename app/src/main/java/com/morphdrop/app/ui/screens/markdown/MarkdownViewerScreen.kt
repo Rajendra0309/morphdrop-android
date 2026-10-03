@@ -357,9 +357,11 @@ fun MarkdownViewerContent(
     var lastRecordedTextSize by remember { mutableFloatStateOf(state.textSizeSp) }
 
     // Anchor relative scroll position when scrolling normally
-    LaunchedEffect(scrollState.value, scrollState.maxValue) {
-        if (scrollState.maxValue > 0 && !scrollState.isScrollInProgress) {
-            scrollRatio = scrollState.value.toFloat() / scrollState.maxValue
+    LaunchedEffect(scrollState) {
+        snapshotFlow { scrollState.value to scrollState.maxValue }.collect { (value, max) ->
+            if (max > 0 && !scrollState.isScrollInProgress) {
+                scrollRatio = value.toFloat() / max
+            }
         }
     }
 

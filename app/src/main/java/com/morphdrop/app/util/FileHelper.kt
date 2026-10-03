@@ -77,7 +77,11 @@ object FileHelper {
     fun saveToCache(context: Context, fileName: String, data: ByteArray): Uri {
         val file = File(context.cacheDir, fileName)
         file.writeBytes(data)
-        return Uri.fromFile(file)
+        return androidx.core.content.FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.fileprovider",
+            file
+        )
     }
 
     suspend fun saveToFile(context: Context, settingsRepository: SettingsRepository, fileName: String, data: ByteArray): Uri {
@@ -226,11 +230,23 @@ object FileHelper {
         return Uri.fromFile(folder)
     }
 
-    fun openFolderIntent(folderName: String): Intent {
-        val uri = getOutputFolderUri(folderName)
+    fun openFolderIntent(context: Context, folderName: String): Intent {
+        val folder = File(
+            android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS),
+            folderName
+        )
+        if (!folder.exists()) folder.mkdirs()
+        // A file:// URI here would crash with FileUriExposedException when sent
+        // to a file manager, so expose it through FileProvider instead.
+        val uri = androidx.core.content.FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.fileprovider",
+            folder
+        )
         return Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(uri, "resource/folder")
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
     }
 

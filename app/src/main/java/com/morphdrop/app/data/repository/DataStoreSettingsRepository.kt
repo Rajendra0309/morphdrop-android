@@ -12,6 +12,8 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.morphdrop.app.domain.model.ReadingMode
 import com.morphdrop.app.domain.model.ThemeMode
+import com.morphdrop.app.domain.model.LastOpenedPdf
+import com.morphdrop.app.domain.model.ToolPreset
 import com.morphdrop.app.domain.repository.SettingsRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
@@ -41,6 +43,14 @@ class DataStoreSettingsRepository @Inject constructor(
         val HAS_SEEN_OCR_DISCLAIMER = booleanPreferencesKey("has_seen_ocr_disclaimer")
         val SKIPPED_UPDATE_VERSION = stringPreferencesKey("skipped_update_version")
         val LAST_SEEN_APP_VERSION = stringPreferencesKey("last_seen_app_version")
+        val DYNAMIC_COLOR_ENABLED = booleanPreferencesKey("dynamic_color_enabled")
+        val LAST_PDF_URI = stringPreferencesKey("last_pdf_uri")
+        val LAST_PDF_PAGE = intPreferencesKey("last_pdf_page")
+        val LAST_PDF_TIMESTAMP = longPreferencesKey("last_pdf_timestamp")
+        val LAST_PDF_NAME = stringPreferencesKey("last_pdf_name")
+        val LAST_PDF_PAGES = intPreferencesKey("last_pdf_pages")
+        /** Per-tool preset keys are dynamic: "tool_preset_<toolId>". */
+        fun toolPresetKey(toolId: String) = stringPreferencesKey("tool_preset_$toolId")
     }
 
     override val themeMode: Flow<ThemeMode> = context.dataStore.data.map { preferences ->
@@ -190,6 +200,79 @@ class DataStoreSettingsRepository @Inject constructor(
     override suspend fun setLastSeenAppVersion(version: String) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.LAST_SEEN_APP_VERSION] = version
+        }
+    }
+
+    /**
+     * "Match wallpaper" dynamic color. Defaults to false (the user can turn
+     * it on in Settings > Appearance).
+     */
+    override val dynamicColorEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.DYNAMIC_COLOR_ENABLED] ?: false
+    }
+
+    override suspend fun setDynamicColorEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.DYNAMIC_COLOR_ENABLED] = enabled
+        }
+    }
+
+    /**
+     * Last PDF opened in the viewer + the page the user left off on. Powers
+     * the Home "Pick up where you left off" card.
+     */
+    override val lastOpenedPdf: Flow<LastOpenedPdf?> = context.dataStore.data.map { preferences ->
+        val uri = preferences[PreferencesKeys.LAST_PDF_URI]
+        if (uri.isNullOrBlank()) {
+            null
+        } else {
+            LastOpenedPdf(
+                uri = uri,
+                page = preferences[PreferencesKeys.LAST_PDF_PAGE] ?: 0,
+                timestamp = preferences[PreferencesKeys.LAST_PDF_TIMESTAMP] ?: 0L,
+                displayName = preferences[PreferencesKeys.LAST_PDF_NAME] ?: "",
+                totalPages = preferences[PreferencesKeys.LAST_PDF_PAGES] ?: 0
+            )
+        }
+    }
+
+    override suspend fun saveLastOpenedPdf(
+        uri: String,
+        page: Int,
+        displayName: String,
+        totalPages: Int
+    ) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.LAST_PDF_URI] = uri
+            preferences[PreferencesKeys.LAST_PDF_PAGE] = page.coerceAtLeast(0)
+            preferences[PreferencesKeys.LAST_PDF_TIMESTAMP] = System.currentTimeMillis()
+            preferences[PreferencesKeys.LAST_PDF_NAME] = displayName
+            preferences[PreferencesKeys.LAST_PDF_PAGES] = totalPages.coerceAtLeast(0)
+        }
+    }
+
+    override suspend fun clearLastOpenedPdf() {
+        context.dataStore.edit { preferences ->
+            preferences.remove(PreferencesKeys.LAST_PDF_URI)
+            preferences.remove(PreferencesKeys.LAST_PDF_PAGE)
+            preferences.remove(PreferencesKeys.LAST_PDF_TIMESTAMP)
+            preferences.remove(PreferencesKeys.LAST_PDF_NAME)
+            preferences.remove(PreferencesKeys.LAST_PDF_PAGES)
+        }
+    }
+
+    /**
+     * Per-tool conversion presets (last-used settings), keyed by normalized
+     * tool id. Stored as a compact JSON string per tool.
+     */
+    override fun toolPreset(toolId: String): Flow<ToolPreset?> =
+        context.dataStore.data.map { preferences ->
+            preferences[PreferencesKeys.toolPresetKey(toolId)]?.let { ToolPreset.fromJson(it) }
+        }
+
+    override suspend fun saveToolPreset(toolId: String, preset: ToolPreset) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.toolPresetKey(toolId)] = preset.toJson()
         }
     }
 }

@@ -21,6 +21,7 @@ import javax.inject.Inject
 
 data class SettingsUiState(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
+    val dynamicColorEnabled: Boolean = false,
     val defaultOutputDirectory: String = "Downloads/MorphDrop",
     val cacheSizeFormatted: String = "0 B",
     val appVersion: String = "v${BuildConfig.VERSION_NAME}",
@@ -46,6 +47,17 @@ class SettingsViewModel @Inject constructor(
             settingsRepository.outputFolderName.collect { folderName ->
                 _uiState.update { it.copy(defaultOutputDirectory = folderName) }
             }
+        }
+        viewModelScope.launch {
+            settingsRepository.dynamicColorEnabled.collect { enabled ->
+                _uiState.update { it.copy(dynamicColorEnabled = enabled) }
+            }
+        }
+    }
+
+    fun setDynamicColorEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsRepository.setDynamicColorEnabled(enabled)
         }
     }
 

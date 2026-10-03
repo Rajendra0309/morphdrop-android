@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import androidx.core.content.FileProvider
+import com.morphdrop.app.BuildConfig
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -75,12 +76,20 @@ class HistoryDetailViewModel @Inject constructor(
                         val file = File(fullPath)
                         val parent = file.parentFile
                         if (parent != null && parent.exists() && parent.isDirectory) {
+                            val folderUri = FileProvider.getUriForFile(
+                                context,
+                                BuildConfig.APPLICATION_ID + ".fileprovider",
+                                parent
+                            )
                             val intent = Intent(Intent.ACTION_VIEW).apply {
-                                setDataAndType(Uri.fromFile(parent), "resource/folder")
+                                setDataAndType(folderUri, "resource/folder")
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                             }
-                            context.startActivity(Intent.createChooser(intent, "Open Folder"))
-                            return
+                            if (intent.resolveActivity(context.packageManager) != null) {
+                                context.startActivity(Intent.createChooser(intent, "Open Folder"))
+                                return
+                            }
                         }
                     }
                 } catch (_: Exception) {}
@@ -110,7 +119,7 @@ class HistoryDetailViewModel @Inject constructor(
                     } else {
                         val contentUri = FileProvider.getUriForFile(
                             context,
-                            "com.morphdrop.app.fileprovider",
+                            BuildConfig.APPLICATION_ID + ".fileprovider",
                             File(uri.path ?: "")
                         )
                         val mimeType = context.contentResolver.getType(contentUri) ?: "*/*"
@@ -144,7 +153,7 @@ class HistoryDetailViewModel @Inject constructor(
                         val file = File(uri.path ?: "")
                         val contentUri = FileProvider.getUriForFile(
                             context,
-                            "com.morphdrop.app.fileprovider",
+                            BuildConfig.APPLICATION_ID + ".fileprovider",
                             file
                         )
                         val mimeType = context.contentResolver.getType(contentUri) ?: "*/*"
@@ -177,7 +186,7 @@ class HistoryDetailViewModel @Inject constructor(
                     } else {
                         val file = File(uri.path ?: "")
                         if (file.exists()) {
-                            shareUris.add(FileProvider.getUriForFile(context, "com.morphdrop.app.fileprovider", file))
+                            shareUris.add(FileProvider.getUriForFile(context, BuildConfig.APPLICATION_ID + ".fileprovider", file))
                         } else {
                             missingCount++
                         }
@@ -216,7 +225,7 @@ class HistoryDetailViewModel @Inject constructor(
                 val shareUri = if (uri.scheme == "content") {
                     uri
                 } else {
-                    FileProvider.getUriForFile(context, "com.morphdrop.app.fileprovider", File(uri.path ?: ""))
+                    FileProvider.getUriForFile(context, BuildConfig.APPLICATION_ID + ".fileprovider", File(uri.path ?: ""))
                 }
                 
                 val mimeType = context.contentResolver.getType(shareUri) ?: "*/*"

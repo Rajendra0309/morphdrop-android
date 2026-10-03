@@ -21,6 +21,7 @@ import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import com.morphdrop.app.domain.model.OcrScript
 import com.morphdrop.app.util.FileHelper
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -46,6 +47,7 @@ class OcrUseCase @Inject constructor(
 
         val recognizer = getRecognizerForScript(script)
         val results = mutableListOf<Pair<Uri, String>>()
+        var modelUnavailableError: Throwable? = null
 
         try {
             for ((index, uri) in uris.withIndex()) {
@@ -77,6 +79,8 @@ class OcrUseCase @Inject constructor(
                             val inputImage = InputImage.fromFilePath(context, uri)
                             val result = recognizer.process(inputImage).await()
                             result.text
+                        } catch (ce: CancellationException) {
+                            throw ce
                         } catch (e: Exception) {
                             Log.e("OcrUseCase", "fromFilePath failed for $uri, falling back to bitmap", e)
                             var bitmap: Bitmap? = null
@@ -94,14 +98,27 @@ class OcrUseCase @Inject constructor(
                     if (text.isNotBlank()) {
                         results.add(uri to text.trim())
                     }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
-                    Log.e("OcrUseCase", "Failed to extract text from uri: $uri", e)
+                    if (isModelUnavailableError(e)) {
+                        // Remember it: a missing model fails every item, so report
+                        // the real cause instead of "no text found" at the end.
+                        if (modelUnavailableError == null) modelUnavailableError = e
+                    } else {
+                        Log.e("OcrUseCase", "Failed to extract text from uri: $uri", e)
+                    }
                     // Skip failed image and continue
                 }
             }
 
             if (results.isEmpty()) {
-                Result.failure(OcrException.NoTextFoundException())
+                val modelError = modelUnavailableError
+                if (modelError != null) {
+                    Result.failure(OcrException.ModelDownloadException(modelError.message))
+                } else {
+                    Result.failure(OcrException.NoTextFoundException())
+                }
             } else {
                 Result.success(results)
             }
@@ -117,6 +134,31 @@ class OcrUseCase @Inject constructor(
         }
     }
 
+    /**
+     * Detects an ML Kit "model unavailable / not downloaded" failure anywhere in the
+     * causal chain. Checked by class name (not a hard reference) so this file never
+     * breaks if the ML Kit artifact layout changes; falls back to message matching.
+     */
+    private fun isModelUnavailableError(e: Throwable): Boolean {
+        var current: Throwable? = e
+        while (current != null) {
+            // Local val: the mutable `current` cannot be smart-cast inside the
+            // runCatching lambda below.
+            val cause = current
+            if (cause.javaClass.name == "com.google.mlkit.common.MlKitException") {
+                val code = runCatching {
+                    cause.javaClass.getMethod("getErrorCode").invoke(cause) as? Int
+                }.getOrNull()
+                // MlKitException.UNAVAILABLE == 14: model not downloaded / no network.
+                if (code == 14) return true
+            }
+            val msg = cause.message?.lowercase().orEmpty()
+            if ("model" in msg && ("download" in msg || "unavailable" in msg)) return true
+            current = cause.cause
+        }
+        return false
+    }
+
     suspend fun processBitmapForScript(bitmap: Bitmap, script: OcrScript): Result<String> = withContext(Dispatchers.Default) {
         val recognizer = getRecognizerForScript(script)
         try {
@@ -128,11 +170,17 @@ class OcrUseCase @Inject constructor(
             } else {
                 Result.success(text)
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (_: OutOfMemoryError) {
             Result.failure(OcrException.MemoryException())
         } catch (e: Exception) {
             Log.e("OcrUseCase", "Failed to process bitmap", e)
-            Result.failure(OcrException.ExtractionFailedException(e.message))
+            if (isModelUnavailableError(e)) {
+                Result.failure(OcrException.ModelDownloadException(e.message))
+            } else {
+                Result.failure(OcrException.ExtractionFailedException(e.message))
+            }
         } finally {
             recognizer.close()
         }
@@ -149,6 +197,8 @@ class OcrUseCase @Inject constructor(
             } else {
                 Result.success(text)
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e("OcrUseCase", "fromFilePath failed for $uri, falling back to bitmap", e)
             var bitmap: Bitmap? = null
@@ -162,11 +212,17 @@ class OcrUseCase @Inject constructor(
                 } else {
                     Result.success(text)
                 }
+            } catch (ce: CancellationException) {
+                throw ce
             } catch (_: OutOfMemoryError) {
                 Result.failure(OcrException.MemoryException())
-            } catch (e: Exception) {
-                Log.e("OcrUseCase", "Bitmap fallback failed for $uri", e)
-                Result.failure(OcrException.ExtractionFailedException(e.message))
+            } catch (fallbackError: Exception) {
+                Log.e("OcrUseCase", "Bitmap fallback failed for $uri", fallbackError)
+                if (isModelUnavailableError(fallbackError)) {
+                    Result.failure(OcrException.ModelDownloadException(fallbackError.message))
+                } else {
+                    Result.failure(OcrException.ExtractionFailedException(fallbackError.message))
+                }
             } finally {
                 bitmap?.recycle()
             }
@@ -176,17 +232,22 @@ class OcrUseCase @Inject constructor(
     }
 
     suspend fun getPdfPageCount(uri: Uri): Int = withContext(Dispatchers.IO) {
-        var pfd: ParcelFileDescriptor? = null
+        var handle: PdfHandle? = null
         var renderer: PdfRenderer? = null
         try {
-            pfd = getParcelFileDescriptor(context, uri)
-            renderer = PdfRenderer(pfd)
+            handle = openPdfHandle(context, uri)
+            renderer = PdfRenderer(handle.pfd)
             renderer.pageCount
+        } catch (e: CancellationException) {
+            throw e
         } catch (_: Exception) {
             0
         } finally {
             renderer?.close()
-            pfd?.close()
+            handle?.let {
+                runCatching { it.pfd.close() }
+                it.tempFile?.let { tmp -> runCatching { tmp.delete() } }
+            }
         }
     }
 
@@ -195,11 +256,17 @@ class OcrUseCase @Inject constructor(
         try {
             bitmap = renderPdfPage(context, uri, pageIndex)
             processBitmapForScript(bitmap, script)
+        } catch (e: CancellationException) {
+            throw e
         } catch (_: OutOfMemoryError) {
             Result.failure(OcrException.MemoryException())
         } catch (e: Exception) {
             Log.e("OcrUseCase", "Failed to extract from PDF page", e)
-            Result.failure(OcrException.ExtractionFailedException(e.message))
+            if (isModelUnavailableError(e)) {
+                Result.failure(OcrException.ModelDownloadException(e.message))
+            } else {
+                Result.failure(OcrException.ExtractionFailedException(e.message))
+            }
         } finally {
             bitmap?.recycle()
         }
@@ -219,6 +286,7 @@ class OcrUseCase @Inject constructor(
         try {
             val fullTextBuilder = StringBuilder()
             var hasFoundAnyText = false
+            var modelUnavailableError: Throwable? = null
 
             for (pageIndex in 0 until totalPages) {
                 ensureActive()
@@ -238,10 +306,16 @@ class OcrUseCase @Inject constructor(
                         }
                         fullTextBuilder.append(text)
                     }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (_: OutOfMemoryError) {
                     // Continue
                 } catch (e: Exception) {
-                    Log.e("OcrUseCase", "Failed to extract text from page $pageIndex", e)
+                    if (isModelUnavailableError(e)) {
+                        if (modelUnavailableError == null) modelUnavailableError = e
+                    } else {
+                        Log.e("OcrUseCase", "Failed to extract text from page $pageIndex", e)
+                    }
                     // Continue
                 } finally {
                     pageBitmap?.recycle()
@@ -249,7 +323,12 @@ class OcrUseCase @Inject constructor(
             }
 
             if (!hasFoundAnyText || fullTextBuilder.isBlank()) {
-                Result.failure(OcrException.NoTextFoundException())
+                val modelError = modelUnavailableError
+                if (modelError != null) {
+                    Result.failure(OcrException.ModelDownloadException(modelError.message))
+                } else {
+                    Result.failure(OcrException.NoTextFoundException())
+                }
             } else {
                 Result.success(fullTextBuilder.toString().trim())
             }
@@ -271,6 +350,8 @@ class OcrUseCase @Inject constructor(
                     }
                 }
                 return fixOrientationIfNeeded(context, uri, bitmap)
+            } catch (ce: CancellationException) {
+                throw ce
             } catch (_: Exception) {
                 // Fallback
             }
@@ -318,6 +399,8 @@ class OcrUseCase @Inject constructor(
                     ExifInterface.ORIENTATION_NORMAL
                 )
             }
+        } catch (ce: CancellationException) {
+            throw ce
         } catch (_: Exception) {
             ExifInterface.ORIENTATION_NORMAL
         }
@@ -339,20 +422,27 @@ class OcrUseCase @Inject constructor(
     }
 
     private fun renderPdfPage(context: Context, uri: Uri, pageIndex: Int): Bitmap {
-        var pfd: ParcelFileDescriptor? = null
+        var handle: PdfHandle? = null
         var renderer: PdfRenderer? = null
         var page: PdfRenderer.Page? = null
         try {
-            pfd = getParcelFileDescriptor(context, uri)
-            renderer = PdfRenderer(pfd)
+            handle = openPdfHandle(context, uri)
+            renderer = PdfRenderer(handle.pfd)
             if (pageIndex < 0 || pageIndex >= renderer.pageCount) {
                 throw IllegalArgumentException("Invalid page index: $pageIndex")
             }
             page = renderer.openPage(pageIndex)
 
-            val scale = 300f / 72f
-            val targetWidth = (page.width * scale).toInt().coerceAtMost(3200)
-            val targetHeight = (page.height * scale).toInt().coerceAtMost(3200)
+            // Uniform aspect-preserving downscale: 300 DPI, capped at 3200px on the
+            // long edge via a single scale factor (never clamp w/h independently,
+            // which would distort the aspect ratio).
+            val scale = minOf(
+                300f / 72f,
+                3200f / page.width.coerceAtLeast(1),
+                3200f / page.height.coerceAtLeast(1)
+            )
+            val targetWidth = (page.width * scale).toInt().coerceAtLeast(1)
+            val targetHeight = (page.height * scale).toInt().coerceAtLeast(1)
 
             val bitmap = Bitmap.createBitmap(targetWidth, targetHeight, Bitmap.Config.ARGB_8888)
             val canvas = Canvas(bitmap)
@@ -363,29 +453,55 @@ class OcrUseCase @Inject constructor(
         } finally {
             page?.close()
             renderer?.close()
-            pfd?.close()
+            handle?.let {
+                runCatching { it.pfd.close() }
+                // Delete the per-page temp copy created when the content resolver
+                // could not hand us a descriptor directly.
+                it.tempFile?.let { tmp -> runCatching { tmp.delete() } }
+            }
         }
     }
 
-    private fun getParcelFileDescriptor(context: Context, uri: Uri): ParcelFileDescriptor {
+    /**
+     * Handle for a PDF opened for rendering. [tempFile] is non-null only when the
+     * source had to be copied into the cache dir first; callers must delete it.
+     */
+    private data class PdfHandle(
+        val pfd: ParcelFileDescriptor,
+        val tempFile: File?
+    )
+
+    private fun openPdfHandle(context: Context, uri: Uri): PdfHandle {
         if (uri.scheme == "file" && uri.path != null) {
             val file = File(uri.path!!)
             if (file.exists()) {
-                return ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
+                return PdfHandle(
+                    ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY),
+                    null
+                )
             }
         }
         val contentPfd = context.contentResolver.openFileDescriptor(uri, "r")
         if (contentPfd != null) {
-            return contentPfd
+            return PdfHandle(contentPfd, null)
         }
 
-        val tempFile = File(context.cacheDir, "ocr_temp_${System.currentTimeMillis()}.pdf")
-        FileHelper.readFileFromUri(context, uri).use { input ->
-            FileOutputStream(tempFile).use { output ->
-                input.copyTo(output)
+        val tempFile = File.createTempFile("ocr_temp_", ".pdf", context.cacheDir)
+        try {
+            FileHelper.readFileFromUri(context, uri).use { input ->
+                FileOutputStream(tempFile).use { output ->
+                    input.copyTo(output)
+                }
             }
+            return PdfHandle(
+                ParcelFileDescriptor.open(tempFile, ParcelFileDescriptor.MODE_READ_ONLY),
+                tempFile
+            )
+        } catch (e: Exception) {
+            // Never leave a stale PDF copy in the cache when we fail before returning.
+            runCatching { tempFile.delete() }
+            throw e
         }
-        return ParcelFileDescriptor.open(tempFile, ParcelFileDescriptor.MODE_READ_ONLY)
     }
 }
 sealed class OcrException(message: String) : Exception(message) {

@@ -21,11 +21,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.morphdrop.app.R
 
 @Composable
 fun AnnotationBottomBar(
@@ -48,13 +49,19 @@ fun AnnotationBottomBar(
     var showFullPalette by remember { mutableStateOf(false) }
 
     val colors = listOf(
-        Color(0xFFF48FB1), Color(0xFFF06292), Color(0xFFE91E63), Color(0xFFC2185B), Color(0xFFBF360C),
-        Color(0xFFFF9800), Color(0xFFFFB74D), Color(0xFFFFC107), Color(0xFFFFEB3B), Color(0xFFFFFF00),
-        Color(0xFF00B0FF), Color(0xFF00E5FF), Color(0xFF00E676), Color(0xFF76FF03), Color(0xFFC6FF00),
-        Color(0xFFAA00FF), Color(0xFFD500F9), Color(0xFF000000), Color(0xFF757575), Color(0xFFFFFFFF)
+        "Pink" to Color(0xFFF48FB1), "Rose" to Color(0xFFF06292), "Crimson" to Color(0xFFE91E63),
+        "Maroon" to Color(0xFFC2185B), "Rust" to Color(0xFFBF360C),
+        "Orange" to Color(0xFFFF9800), "Amber" to Color(0xFFFFB74D), "Gold" to Color(0xFFFFC107),
+        "Yellow" to Color(0xFFFFEB3B), "Lemon" to Color(0xFFFFFF00),
+        "Sky blue" to Color(0xFF00B0FF), "Cyan" to Color(0xFF00E5FF), "Mint" to Color(0xFF00E676),
+        "Lime" to Color(0xFF76FF03), "Chartreuse" to Color(0xFFC6FF00),
+        "Purple" to Color(0xFFAA00FF), "Magenta" to Color(0xFFD500F9), "Black" to Color(0xFF000000),
+        "Gray" to Color(0xFF757575), "White" to Color(0xFFFFFFFF)
     )
-    
-    val quickColors = listOf(Color.Red, Color.Black, Color.Blue, Color.Green)
+
+    val quickColors = listOf(
+        "Red" to Color.Red, "Black" to Color.Black, "Blue" to Color.Blue, "Green" to Color.Green
+    )
     val strokeWidths = listOf(2f, 4f, 8f, 12f, 24f)
 
     // Reset settings if tool changes externally
@@ -90,24 +97,25 @@ fun AnnotationBottomBar(
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
-                            "Choose Color", 
+                            "Choose Color",
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(bottom = 12.dp)
                         )
-                        
-                        // 4 columns grid of colors
+
+                        // 5-column grid of colors
                         val rows = colors.chunked(5)
                         rows.forEach { rowColors ->
                             Row(
                                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                                 modifier = Modifier.padding(vertical = 4.dp)
                             ) {
-                                rowColors.forEach { color ->
+                                rowColors.forEach { (name, color) ->
                                     ColorDot(
                                         color = color,
+                                        name = name,
                                         isSelected = currentColor == color,
-                                        onClick = { 
+                                        onClick = {
                                             onColorSelected(color)
                                             showFullPalette = false
                                         }
@@ -167,16 +175,16 @@ fun AnnotationBottomBar(
                             }
                         }
 
-                        // Quick Stroke Presets
+                        // Quick Stroke Presets (48dp targets)
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
                             modifier = Modifier.padding(bottom = 16.dp)
                         ) {
                             strokeWidths.forEach { width ->
                                 Box(
                                     modifier = Modifier
-                                        .size(32.dp)
+                                        .size(48.dp)
                                         .clip(CircleShape)
                                         .background(if (currentStrokeWidth == width) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
                                         .clickable { onStrokeWidthSelected(width) },
@@ -191,32 +199,33 @@ fun AnnotationBottomBar(
                                 }
                             }
                         }
-                        
+
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                        
+
                         // Quick Colors row
                         Row(
                             modifier = Modifier.padding(top = 16.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            quickColors.forEach { color ->
+                            quickColors.forEach { (name, color) ->
                                 ColorDot(
                                     color = color,
+                                    name = name,
                                     isSelected = currentColor == color && !showFullPalette,
                                     onClick = { onColorSelected(color) }
                                 )
                             }
-                            
+
                             // Plus icon to expand full palette
                             IconButton(
                                 onClick = { showFullPalette = !showFullPalette },
                                 modifier = Modifier
-                                    .size(32.dp)
+                                    .size(48.dp)
                                     .background(if (showFullPalette) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant, CircleShape)
                             ) {
                                 Icon(
-                                    Icons.Default.Add, 
+                                    Icons.Default.Add,
                                     contentDescription = "More colors",
                                     modifier = Modifier.size(20.dp),
                                     tint = if (showFullPalette) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
@@ -332,34 +341,44 @@ private fun ToolButton(
 @Composable
 private fun ColorDot(
     color: Color,
+    name: String = "",
     isSelected: Boolean,
     onClick: () -> Unit
 ) {
-    val contentDescription = "Color: ${color.toArgb()}" // Could be improved with name mapping
+    val description = if (name.isNotBlank()) {
+        stringResource(R.string.pdf_color_description, name)
+    } else {
+        stringResource(R.string.pdf_color_generic)
+    }
+    val clickLabel = if (name.isNotBlank()) {
+        stringResource(R.string.pdf_color_select_label, name)
+    } else {
+        stringResource(R.string.pdf_color_select_generic)
+    }
     Box(
         modifier = Modifier
-            .size(32.dp)
+            .size(48.dp)
             .clip(CircleShape)
             .background(if (isSelected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
-            .semantics { this.contentDescription = contentDescription }
-            .clickable(onClickLabel = "Select color") { onClick() },
+            .semantics { contentDescription = description }
+            .clickable(onClickLabel = clickLabel) { onClick() },
         contentAlignment = Alignment.Center
     ) {
         Box(
             modifier = Modifier
-                .size(24.dp)
+                .size(28.dp)
                 .clip(CircleShape)
                 .background(color)
                 .then(
-                    if (color == Color.White || color == MaterialTheme.colorScheme.surface) 
+                    if (color == Color.White || color == MaterialTheme.colorScheme.surface)
                         Modifier.background(MaterialTheme.colorScheme.outline.copy(alpha = 0.2f), CircleShape)
                     else Modifier
                 )
         )
         if (isSelected) {
             Icon(
-                Icons.Default.Check, 
-                contentDescription = "Selected", 
+                Icons.Default.Check,
+                contentDescription = "Selected",
                 modifier = Modifier.size(16.dp),
                 tint = if (color.luminance() > 0.5f) Color.Black else Color.White
             )

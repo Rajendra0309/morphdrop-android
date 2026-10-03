@@ -7,11 +7,13 @@ import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -20,8 +22,10 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -41,6 +45,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -107,12 +112,15 @@ fun MorphDropBottomNavigation(
                     Box(
                         modifier = Modifier
                             .height(48.dp)
+                            .defaultMinSize(minWidth = 48.dp)
                             .clip(CircleShape)
                             .background(containerColor)
-                            .clickable(
+                            .selectable(
+                                selected = isSelected,
+                                onClick = { onNavigate(item.route) },
+                                role = Role.Tab,
                                 interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                                onClick = { onNavigate(item.route) }
+                                indication = null
                             )
                             .padding(horizontal = 16.dp),
                         contentAlignment = Alignment.Center
@@ -123,7 +131,7 @@ fun MorphDropBottomNavigation(
                         ) {
                             Icon(
                                 imageVector = item.icon,
-                                contentDescription = item.label,
+                                contentDescription = if (isSelected) null else item.label,
                                 tint = contentColor,
                                 modifier = Modifier.size(24.dp)
                             )
@@ -179,3 +187,132 @@ fun MorphDropBottomNavigation(
 
 // Utility to handle route matching if routes have parameters in future
 private fun NavItem.itemRoute(): String = this.route
+
+/**
+ * Vertical navigation rail for large screens (tablets, Chromebooks, unfolded
+ * foldables). Mirrors the bottom pill's destinations and search action.
+ */
+@Composable
+fun MorphDropNavigationRail(
+    currentRoute: String?,
+    onNavigate: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    showSearchIcon: Boolean = false,
+    onSearchClick: () -> Unit = {}
+) {
+    val items = listOf(
+        NavItem.Home,
+        NavItem.History,
+        NavItem.Settings
+    )
+
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        tonalElevation = 0.dp,
+        modifier = modifier.fillMaxHeight()
+    ) {
+        Column(
+            modifier = Modifier
+                .padding(vertical = 24.dp, horizontal = 12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            // App mark
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(MaterialTheme.colorScheme.primaryContainer),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "M",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            }
+
+            Spacer(modifier = Modifier.size(8.dp))
+
+            // Search action (scroll-aware, same behavior as the bottom pill's)
+            AnimatedVisibility(
+                visible = showSearchIcon,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Surface(
+                        onClick = onSearchClick,
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.secondaryContainer,
+                        modifier = Modifier.size(56.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.Search,
+                                contentDescription = "Search",
+                                tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                modifier = Modifier.size(26.dp)
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.size(8.dp))
+                }
+            }
+
+            items.forEach { item ->
+                val isSelected = currentRoute == item.route
+
+                val containerColor by animateColorAsState(
+                    targetValue = if (isSelected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                    animationSpec = tween(400),
+                    label = "railPillColor"
+                )
+                val contentColor by animateColorAsState(
+                    targetValue = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                    animationSpec = tween(400),
+                    label = "railContentColor"
+                )
+
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(20.dp))
+                        .selectable(
+                            selected = isSelected,
+                            onClick = { onNavigate(item.route) },
+                            role = Role.Tab,
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        )
+                        .padding(vertical = 4.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(width = 64.dp, height = 40.dp)
+                            .clip(CircleShape)
+                            .background(containerColor),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = item.icon,
+                            contentDescription = null,
+                            tint = contentColor,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                    Text(
+                        text = item.label,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                        color = contentColor,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+            }
+        }
+    }
+}

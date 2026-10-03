@@ -3,6 +3,7 @@ package com.morphdrop.app.domain.usecase.conversion
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Matrix
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import androidx.exifinterface.media.ExifInterface
@@ -15,7 +16,9 @@ import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDDocumentInformation
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.coroutineContext
 import java.io.File
 import java.io.FileOutputStream
 import java.security.MessageDigest
@@ -41,9 +44,6 @@ class MetadataUseCase @Inject constructor(
             it.extension.equals(extension, ignoreCase = true) 
         }
 
-        // Calculate file hash (SHA-256 preview)
-        val fileHash = calculateFileHash(context, uri)
-
         val isImage = mimeType.startsWith("image/") || extension in listOf("jpg", "jpeg", "png", "webp", "tiff", "tif", "heic", "heif", "dng", "bmp")
         val isPdf = mimeType.equals("application/pdf", ignoreCase = true) || extension == "pdf"
         val isMedia = mimeType.startsWith("video/") || mimeType.startsWith("audio/") || extension in listOf("mp4", "mkv", "avi", "mov", "3gp", "webm", "m4v", "mp3", "flac", "wav", "aac", "ogg")
@@ -58,7 +58,7 @@ class MetadataUseCase @Inject constructor(
                 mimeType = mimeType,
                 extension = extension,
                 fileType = matchingFileType,
-                fileHash = fileHash
+                fileHash = null
             )
         } else if (isPdf) {
             inspectPdfMetadata(
@@ -70,7 +70,7 @@ class MetadataUseCase @Inject constructor(
                 mimeType = mimeType,
                 extension = extension,
                 fileType = matchingFileType,
-                fileHash = fileHash
+                fileHash = null
             )
         } else if (isMedia) {
             inspectMediaMetadata(
@@ -82,7 +82,7 @@ class MetadataUseCase @Inject constructor(
                 mimeType = mimeType,
                 extension = extension,
                 fileType = matchingFileType,
-                fileHash = fileHash
+                fileHash = null
             )
         } else {
             // Generic file inspection
@@ -93,7 +93,7 @@ class MetadataUseCase @Inject constructor(
                 mimeType = mimeType,
                 fileExtension = extension,
                 fileType = matchingFileType,
-                fileHash = fileHash,
+                fileHash = null,
                 hasMetadata = false,
                 isScrubbable = false,
                 isEditable = false
@@ -601,10 +601,15 @@ class MetadataUseCase @Inject constructor(
     suspend fun scrubMetadataAndSave(context: Context, inputUri: Uri, outputFileName: String): Uri = withContext(Dispatchers.IO) {
         val tempCacheUri = scrubMetadata(context, inputUri, "temp_scrubbed_${System.currentTimeMillis()}_$outputFileName")
         val file = File(tempCacheUri.path!!)
-        val bytes = file.readBytes()
-        val savedUri = FileHelper.saveToFile(context, settingsRepository, outputFileName, bytes)
-        try { file.delete() } catch (_: Exception) {}
-        savedUri
+        try {
+            val bytes = file.readBytes()
+            val actualExt = file.extension
+            val baseName = outputFileName.substringBeforeLast('.')
+            val finalFileName = if (actualExt.isNotBlank()) "$baseName.$actualExt" else outputFileName
+            FileHelper.saveToFile(context, settingsRepository, finalFileName, bytes)
+        } finally {
+            try { file.delete() } catch (_: Exception) {}
+        }
     }
 
     suspend fun editMetadataAndSave(
@@ -615,10 +620,15 @@ class MetadataUseCase @Inject constructor(
     ): Uri = withContext(Dispatchers.IO) {
         val tempCacheUri = editMetadata(context, inputUri, editParams, "temp_edited_${System.currentTimeMillis()}_$outputFileName")
         val file = File(tempCacheUri.path!!)
-        val bytes = file.readBytes()
-        val savedUri = FileHelper.saveToFile(context, settingsRepository, outputFileName, bytes)
-        try { file.delete() } catch (_: Exception) {}
-        savedUri
+        try {
+            val bytes = file.readBytes()
+            val actualExt = file.extension
+            val baseName = outputFileName.substringBeforeLast('.')
+            val finalFileName = if (actualExt.isNotBlank()) "$baseName.$actualExt" else outputFileName
+            FileHelper.saveToFile(context, settingsRepository, finalFileName, bytes)
+        } finally {
+            try { file.delete() } catch (_: Exception) {}
+        }
     }
 
     suspend fun scrubMetadata(context: Context, inputUri: Uri, outputFileName: String): Uri = withContext(Dispatchers.IO) {
@@ -629,16 +639,28 @@ class MetadataUseCase @Inject constructor(
         val tempFile = File(context.cacheDir, outputFileName)
         if (tempFile.exists()) tempFile.delete()
 
-        if (isPdf) {
-            scrubPdfMetadata(context, inputUri, tempFile)
-        } else {
-            scrubImageMetadata(context, inputUri, tempFile)
+        try {
+            if (isPdf) {
+                scrubPdfMetadata(context, inputUri, tempFile)
+                Uri.fromFile(tempFile)
+            } else {
+                // scrubImageMetadata may rename the file so its extension matches the
+                // actual bytes; use the returned file, never the stale tempFile path.
+                Uri.fromFile(scrubImageMetadata(context, inputUri, tempFile))
+            }
+        } catch (e: Exception) {
+            // Never leave a partially scrubbed temp file behind.
+            runCatching { tempFile.delete() }
+            throw e
         }
-
-        Uri.fromFile(tempFile)
     }
 
-    private fun scrubImageMetadata(context: Context, inputUri: Uri, outputFile: File) {
+    /**
+     * Returns the scrubbed file (possibly renamed so the extension matches the
+     * real container). Throws on ANY failure: callers must never hand back a
+     * success Uri for a file whose metadata may still be intact.
+     */
+    private fun scrubImageMetadata(context: Context, inputUri: Uri, outputFile: File): File {
         // 1. Copy source to outputFile
         FileHelper.readFileFromUri(context, inputUri).use { input ->
             FileOutputStream(outputFile).use { output ->
@@ -646,56 +668,141 @@ class MetadataUseCase @Inject constructor(
             }
         }
 
-        // 2. Clear EXIF attributes using ExifInterface
-        try {
-            val exif = ExifInterface(outputFile.absolutePath)
-            val tagsToClear = listOf(
-                ExifInterface.TAG_MAKE,
-                ExifInterface.TAG_MODEL,
-                ExifInterface.TAG_SOFTWARE,
-                ExifInterface.TAG_LENS_MAKE,
-                ExifInterface.TAG_LENS_MODEL,
-                ExifInterface.TAG_ARTIST,
-                ExifInterface.TAG_COPYRIGHT,
-                ExifInterface.TAG_IMAGE_DESCRIPTION,
-                ExifInterface.TAG_USER_COMMENT,
-                ExifInterface.TAG_DATETIME,
-                ExifInterface.TAG_DATETIME_ORIGINAL,
-                ExifInterface.TAG_DATETIME_DIGITIZED,
-                ExifInterface.TAG_GPS_LATITUDE,
-                ExifInterface.TAG_GPS_LATITUDE_REF,
-                ExifInterface.TAG_GPS_LONGITUDE,
-                ExifInterface.TAG_GPS_LONGITUDE_REF,
-                ExifInterface.TAG_GPS_ALTITUDE,
-                ExifInterface.TAG_GPS_ALTITUDE_REF,
-                ExifInterface.TAG_GPS_TIMESTAMP,
-                ExifInterface.TAG_GPS_DATESTAMP,
-                ExifInterface.TAG_GPS_PROCESSING_METHOD
-            )
-            tagsToClear.forEach { tag ->
-                exif.setAttribute(tag, null)
+        // 2. Clear EXIF attributes on formats that support EXIF. A failure here is
+        // fatal: the recompress below is the guarantee, but a clear failure on an
+        // EXIF-capable container means we cannot trust the result.
+        val ext = outputFile.extension.lowercase(Locale.ROOT)
+        if (ext == "jpg" || ext == "jpeg" || ext == "webp") {
+            try {
+                val exif = ExifInterface(outputFile.absolutePath)
+                val tagsToClear = listOf(
+                    ExifInterface.TAG_MAKE,
+                    ExifInterface.TAG_MODEL,
+                    ExifInterface.TAG_SOFTWARE,
+                    ExifInterface.TAG_LENS_MAKE,
+                    ExifInterface.TAG_LENS_MODEL,
+                    ExifInterface.TAG_ARTIST,
+                    ExifInterface.TAG_COPYRIGHT,
+                    ExifInterface.TAG_IMAGE_DESCRIPTION,
+                    ExifInterface.TAG_USER_COMMENT,
+                    ExifInterface.TAG_DATETIME,
+                    ExifInterface.TAG_DATETIME_ORIGINAL,
+                    ExifInterface.TAG_DATETIME_DIGITIZED,
+                    ExifInterface.TAG_GPS_LATITUDE,
+                    ExifInterface.TAG_GPS_LATITUDE_REF,
+                    ExifInterface.TAG_GPS_LONGITUDE,
+                    ExifInterface.TAG_GPS_LONGITUDE_REF,
+                    ExifInterface.TAG_GPS_ALTITUDE,
+                    ExifInterface.TAG_GPS_ALTITUDE_REF,
+                    ExifInterface.TAG_GPS_TIMESTAMP,
+                    ExifInterface.TAG_GPS_DATESTAMP,
+                    ExifInterface.TAG_GPS_PROCESSING_METHOD
+                )
+                tagsToClear.forEach { tag ->
+                    exif.setAttribute(tag, null)
+                }
+                exif.saveAttributes()
+            } catch (e: Exception) {
+                runCatching { outputFile.delete() }
+                throw IllegalStateException("Failed to clear EXIF metadata", e)
             }
-            exif.saveAttributes()
-        } catch (_: Exception) {}
+        }
 
-        // 3. Decode and re-compress bitmap to guarantee 100% removal of unhandled metadata chunks
-        try {
-            var bitmap: Bitmap? = null
+        val orientation = try {
             FileHelper.readFileFromUri(context, inputUri).use { input ->
-                bitmap = BitmapFactory.decodeStream(input)
+                ExifInterface(input).getAttributeInt(
+                    ExifInterface.TAG_ORIENTATION,
+                    ExifInterface.ORIENTATION_NORMAL
+                )
             }
-            if (bitmap != null) {
-                val format = when (outputFile.extension.lowercase(Locale.ROOT)) {
-                    "png" -> Bitmap.CompressFormat.PNG
-                    "webp" -> @Suppress("DEPRECATION") Bitmap.CompressFormat.WEBP
-                    else -> Bitmap.CompressFormat.JPEG
-                }
-                FileOutputStream(outputFile).use { out ->
-                    bitmap!!.compress(format, 95, out)
-                }
-                bitmap!!.recycle()
+        } catch (_: Exception) {
+            ExifInterface.ORIENTATION_NORMAL
+        }
+
+        // 3. Decode and re-compress bitmap to guarantee 100% removal of unhandled metadata chunks.
+        // The container is chosen from the DECODED CONTENT (alpha -> PNG), and the file is
+        // renamed so the extension matches the actual bytes.
+        val decodedBitmap = try {
+            FileHelper.readFileFromUri(context, inputUri).use { input ->
+                BitmapFactory.decodeStream(input)
             }
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            runCatching { outputFile.delete() }
+            throw IllegalStateException("Failed to decode image for metadata scrub", e)
+        } ?: run {
+            runCatching { outputFile.delete() }
+            throw IllegalStateException("Failed to decode image for metadata scrub")
+        }
+
+        val bitmap = applyExifOrientation(decodedBitmap, orientation)
+
+        try {
+            val inputExt = FileHelper.getFileName(context, inputUri)
+                .substringAfterLast('.', "").lowercase(Locale.ROOT)
+            val format = when {
+                bitmap.hasAlpha() -> Bitmap.CompressFormat.PNG
+                inputExt == "png" -> Bitmap.CompressFormat.PNG
+                inputExt == "webp" -> Bitmap.CompressFormat.WEBP
+                else -> Bitmap.CompressFormat.JPEG
+            }
+            val targetExt = when (format) {
+                Bitmap.CompressFormat.PNG -> "png"
+                Bitmap.CompressFormat.WEBP -> "webp"
+                else -> "jpg"
+            }
+
+            val finalFile = if (ext != targetExt) {
+                File(outputFile.parent, "${outputFile.nameWithoutExtension}.$targetExt")
+            } else {
+                outputFile
+            }
+            if (finalFile != outputFile && finalFile.exists()) finalFile.delete()
+
+            try {
+                FileOutputStream(finalFile).use { out ->
+                    if (!bitmap.compress(format, 95, out)) {
+                        throw IllegalStateException("Bitmap compression failed during metadata scrub")
+                    }
+                }
+            } catch (e: Exception) {
+                // Never leave a half-written file behind: the copy may still hold metadata.
+                if (finalFile != outputFile) runCatching { finalFile.delete() }
+                throw e
+            }
+            if (finalFile != outputFile) runCatching { outputFile.delete() }
+            return finalFile
+        } finally {
+            bitmap.recycle()
+        }
+    }
+
+    private fun applyExifOrientation(bitmap: Bitmap, orientation: Int): Bitmap {
+        val matrix = Matrix()
+        when (orientation) {
+            ExifInterface.ORIENTATION_ROTATE_90 -> matrix.postRotate(90f)
+            ExifInterface.ORIENTATION_ROTATE_180 -> matrix.postRotate(180f)
+            ExifInterface.ORIENTATION_ROTATE_270 -> matrix.postRotate(270f)
+            ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> matrix.postScale(-1f, 1f)
+            ExifInterface.ORIENTATION_FLIP_VERTICAL -> matrix.postScale(1f, -1f)
+            ExifInterface.ORIENTATION_TRANSPOSE -> {
+                matrix.postRotate(90f)
+                matrix.postScale(-1f, 1f)
+            }
+            ExifInterface.ORIENTATION_TRANSVERSE -> {
+                matrix.postRotate(270f)
+                matrix.postScale(-1f, 1f)
+            }
+            else -> return bitmap
+        }
+        return try {
+            val rotated = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+            if (rotated != bitmap) {
+                bitmap.recycle()
+            }
+            rotated
+        } catch (_: Exception) {
+            bitmap
+        }
     }
 
     private fun scrubPdfMetadata(context: Context, inputUri: Uri, outputFile: File) {
@@ -734,92 +841,94 @@ class MetadataUseCase @Inject constructor(
             }
         }
 
-        if (isPdf) {
-            editPdfMetadata(tempFile, editParams)
-        } else {
-            editImageMetadata(tempFile, editParams)
+        try {
+            if (isPdf) {
+                editPdfMetadata(tempFile, editParams)
+            } else {
+                editImageMetadata(tempFile, editParams)
+            }
+        } catch (e: Exception) {
+            // Never leave a partially edited temp file behind.
+            runCatching { tempFile.delete() }
+            throw e
         }
 
         Uri.fromFile(tempFile)
     }
 
     private fun editImageMetadata(file: File, params: MetadataEditParams) {
-        try {
-            val exif = ExifInterface(file.absolutePath)
+        // Any failure propagates: callers must never report success for an edit
+        // that did not actually apply.
+        val exif = ExifInterface(file.absolutePath)
 
-            if (!params.author.isNullOrEmpty()) {
-                exif.setAttribute(ExifInterface.TAG_ARTIST, params.author.trim())
-            }
-            if (!params.title.isNullOrEmpty()) {
-                exif.setAttribute(ExifInterface.TAG_IMAGE_DESCRIPTION, params.title.trim())
-            }
-            if (!params.subject.isNullOrEmpty()) {
-                exif.setAttribute(ExifInterface.TAG_USER_COMMENT, params.subject.trim())
-            }
-            if (!params.software.isNullOrEmpty()) {
-                exif.setAttribute(ExifInterface.TAG_SOFTWARE, params.software.trim())
-            }
-            if (!params.copyright.isNullOrEmpty()) {
-                exif.setAttribute(ExifInterface.TAG_COPYRIGHT, params.copyright.trim())
-            }
-            if (!params.cameraMake.isNullOrEmpty()) {
-                exif.setAttribute(ExifInterface.TAG_MAKE, params.cameraMake.trim())
-            }
-            if (!params.cameraModel.isNullOrEmpty()) {
-                exif.setAttribute(ExifInterface.TAG_MODEL, params.cameraModel.trim())
-            }
-            if (!params.dateCreated.isNullOrEmpty()) {
-                val formattedDate = formatExifDate(params.dateCreated)
-                exif.setAttribute(ExifInterface.TAG_DATETIME_ORIGINAL, formattedDate)
-                exif.setAttribute(ExifInterface.TAG_DATETIME, formattedDate)
-            }
-
-            if (params.latitude != null && params.longitude != null) {
-                exif.setLatLong(params.latitude, params.longitude)
-                val latDms = convertDecimalToDMS(params.latitude)
-                val lngDms = convertDecimalToDMS(params.longitude)
-                val latRef = if (params.latitude >= 0) "N" else "S"
-                val lngRef = if (params.longitude >= 0) "E" else "W"
-                exif.setAttribute(ExifInterface.TAG_GPS_LATITUDE, latDms)
-                exif.setAttribute(ExifInterface.TAG_GPS_LATITUDE_REF, latRef)
-                exif.setAttribute(ExifInterface.TAG_GPS_LONGITUDE, lngDms)
-                exif.setAttribute(ExifInterface.TAG_GPS_LONGITUDE_REF, lngRef)
-            }
-
-            exif.saveAttributes()
-        } catch (e: Exception) {
-            e.printStackTrace()
+        if (!params.author.isNullOrEmpty()) {
+            exif.setAttribute(ExifInterface.TAG_ARTIST, params.author.trim())
         }
+        if (!params.title.isNullOrEmpty()) {
+            exif.setAttribute(ExifInterface.TAG_IMAGE_DESCRIPTION, params.title.trim())
+        }
+        if (!params.subject.isNullOrEmpty()) {
+            exif.setAttribute(ExifInterface.TAG_USER_COMMENT, params.subject.trim())
+        }
+        if (!params.software.isNullOrEmpty()) {
+            exif.setAttribute(ExifInterface.TAG_SOFTWARE, params.software.trim())
+        }
+        if (!params.copyright.isNullOrEmpty()) {
+            exif.setAttribute(ExifInterface.TAG_COPYRIGHT, params.copyright.trim())
+        }
+        if (!params.cameraMake.isNullOrEmpty()) {
+            exif.setAttribute(ExifInterface.TAG_MAKE, params.cameraMake.trim())
+        }
+        if (!params.cameraModel.isNullOrEmpty()) {
+            exif.setAttribute(ExifInterface.TAG_MODEL, params.cameraModel.trim())
+        }
+        if (!params.dateCreated.isNullOrEmpty()) {
+            val formattedDate = formatExifDate(params.dateCreated)
+            exif.setAttribute(ExifInterface.TAG_DATETIME_ORIGINAL, formattedDate)
+            exif.setAttribute(ExifInterface.TAG_DATETIME, formattedDate)
+        }
+
+        if (params.latitude != null && params.longitude != null) {
+            exif.setLatLong(params.latitude, params.longitude)
+            val latDms = convertDecimalToDMS(params.latitude)
+            val lngDms = convertDecimalToDMS(params.longitude)
+            val latRef = if (params.latitude >= 0) "N" else "S"
+            val lngRef = if (params.longitude >= 0) "E" else "W"
+            exif.setAttribute(ExifInterface.TAG_GPS_LATITUDE, latDms)
+            exif.setAttribute(ExifInterface.TAG_GPS_LATITUDE_REF, latRef)
+            exif.setAttribute(ExifInterface.TAG_GPS_LONGITUDE, lngDms)
+            exif.setAttribute(ExifInterface.TAG_GPS_LONGITUDE_REF, lngRef)
+        }
+
+        exif.saveAttributes()
     }
 
     private fun editPdfMetadata(file: File, params: MetadataEditParams) {
-        try {
-            PDDocument.load(file).use { document ->
-                val info = document.documentInformation ?: PDDocumentInformation()
-                
-                if (!params.author.isNullOrEmpty()) {
-                    info.author = params.author.trim()
-                }
-                if (!params.title.isNullOrEmpty()) {
-                    info.title = params.title.trim()
-                }
-                if (!params.subject.isNullOrEmpty()) {
-                    info.subject = params.subject.trim()
-                }
-                if (!params.software.isNullOrEmpty()) {
-                    info.creator = params.software.trim()
-                }
-                if (!params.dateCreated.isNullOrEmpty()) {
-                    parseDateToCalendar(params.dateCreated)?.let {
-                        info.creationDate = it
-                    }
-                }
+        // Any failure propagates: callers must never report success for an edit
+        // that did not actually apply.
+        PDDocument.load(file).use { document ->
+            val info = document.documentInformation ?: PDDocumentInformation()
 
-                document.documentInformation = info
-                document.save(file)
+            if (!params.author.isNullOrEmpty()) {
+                info.author = params.author.trim()
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
+            if (!params.title.isNullOrEmpty()) {
+                info.title = params.title.trim()
+            }
+            if (!params.subject.isNullOrEmpty()) {
+                info.subject = params.subject.trim()
+            }
+            if (!params.software.isNullOrEmpty()) {
+                info.creator = params.software.trim()
+            }
+            if (!params.dateCreated.isNullOrEmpty()) {
+                parseDateToCalendar(params.dateCreated)?.let {
+                    info.creationDate = it
+                }
+            }
+
+            document.documentInformation = info
+            document.save(file)
         }
     }
 
@@ -921,20 +1030,26 @@ class MetadataUseCase @Inject constructor(
         }
     }
 
-    private fun calculateFileHash(context: Context, uri: Uri): String? {
+    suspend fun computeFileHash(context: Context, uri: Uri): String? = withContext(Dispatchers.IO) {
+        calculateFileHash(context, uri)
+    }
+
+    private suspend fun calculateFileHash(context: Context, uri: Uri): String? {
         return try {
             val digest = MessageDigest.getInstance("SHA-256")
             FileHelper.readFileFromUri(context, uri).use { input ->
                 val buffer = ByteArray(8192)
                 var bytesRead: Int
-                var totalRead = 0
+                // Hash the WHOLE file: a 1MB prefix is not a file hash and two
+                // different files can share a prefix.
                 while (input.read(buffer).also { bytesRead = it } != -1) {
+                    coroutineContext.ensureActive()
                     digest.update(buffer, 0, bytesRead)
-                    totalRead += bytesRead
-                    if (totalRead > 1_000_000) break // Limit hash calculation to first 1MB for speed
                 }
             }
             digest.digest().take(8).joinToString("") { "%02x".format(it) }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (_: Exception) {
             null
         }
@@ -955,7 +1070,16 @@ class MetadataUseCase @Inject constructor(
 
     private fun parseDateToCalendar(input: String): Calendar? {
         return try {
-            val clean = input.trim().replace(':', '-')
+            val trimmed = input.trim()
+            // Only the DATE part's separators become dashes; the time part keeps
+            // its colons. The old code replaced every ':' ("12:46:28" -> "12-46-28")
+            // which broke the "HH:mm:ss" pattern.
+            val clean = if (trimmed.contains(" ")) {
+                val datePart = trimmed.substringBefore(" ").replace(':', '-')
+                datePart + trimmed.substring(trimmed.indexOf(" "))
+            } else {
+                trimmed.replace(':', '-')
+            }
             val sdf = if (clean.contains(" ")) {
                 SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
             } else {

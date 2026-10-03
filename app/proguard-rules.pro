@@ -20,3 +20,35 @@
 -dontwarn com.google.mlkit.**
 -keep class com.google.android.gms.internal.mlkit_vision_text_common.** { *; }
 -keep class com.google.android.gms.tasks.** { *; }
+
+# tom_roush PDFBox and FontBox
+-keep class com.tom_roush.pdfbox.** { *; }
+-dontwarn com.tom_roush.pdfbox.**
+-keep class com.tom_roush.fontbox.** { *; }
+-dontwarn com.tom_roush.fontbox.**
+
+# Room Database and SQLite
+-keep class * extends androidx.room.RoomDatabase
+-dontwarn androidx.room.paging.**
+
+# WorkManager
+-keep class * extends androidx.work.ListenableWorker {
+    public <init>(android.content.Context, androidx.work.WorkerParameters);
+}
+-keep class androidx.work.WorkerParameters { *; }
+
+# Gson serialization and Domain Models
+-keepclassmembers class * {
+    @com.google.gson.annotations.SerializedName <fields>;
+}
+-keep class com.google.gson.** { *; }
+-keep class com.morphdrop.app.domain.model.** { *; }
+-keep class com.morphdrop.app.data.local.entity.** { *; }
+
+# BouncyCastle encryption/decryption
+-keep class org.bouncycastle.** { *; }
+-dontwarn org.bouncycastle.**
+
+# Coil Image Loader
+-keep class coil.** { *; }
+-dontwarn coil.**

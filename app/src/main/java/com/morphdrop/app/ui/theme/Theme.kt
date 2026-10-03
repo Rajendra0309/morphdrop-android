@@ -9,94 +9,101 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
-private val DarkColorScheme = darkColorScheme(
-    primary = NeonEmerald,
-    onPrimary = MidnightBlue,
-    primaryContainer = Color(0xFF00513B),
-    onPrimaryContainer = Color(0xFF9CFBC1),
-    secondary = CrimsonGlow,
-    onSecondary = Color.Black,
-    secondaryContainer = Color(0xFF91002A),
-    onSecondaryContainer = Color(0xFFFFD9DF),
-    tertiary = AmberWarn,
-    onTertiary = Color.Black,
-    tertiaryContainer = Color(0xFF574500),
-    onTertiaryContainer = Color(0xFFFFE18F),
-    background = MidnightBlue,
-    onBackground = Color(0xFFE2E2E6),
-    surface = SurfaceContainerLow,
-    onSurface = Color(0xFFE2E2E6),
-    surfaceVariant = SurfaceContainerHighest,
-    onSurfaceVariant = Color(0xFFC4C7C5),
-    outline = Color(0xFF8E918F)
+private val EmberLightColorScheme = lightColorScheme(
+    primary = EmberPrimaryLight,
+    onPrimary = EmberOnPrimaryLight,
+    primaryContainer = EmberPrimaryContainerLight,
+    onPrimaryContainer = EmberOnPrimaryContainerLight,
+    secondary = EmberSecondaryLight,
+    onSecondary = EmberOnSecondaryLight,
+    secondaryContainer = EmberSecondaryContainerLight,
+    onSecondaryContainer = EmberOnSecondaryContainerLight,
+    tertiary = EmberTertiaryLight,
+    onTertiary = EmberOnTertiaryLight,
+    tertiaryContainer = EmberTertiaryContainerLight,
+    onTertiaryContainer = EmberOnTertiaryContainerLight,
+    background = EmberBackgroundLight,
+    onBackground = EmberOnBackgroundLight,
+    surface = EmberSurfaceLight,
+    onSurface = EmberOnSurfaceLight,
+    surfaceVariant = EmberSurfaceVariantLight,
+    onSurfaceVariant = EmberOnSurfaceVariantLight,
+    surfaceContainerLowest = EmberSurfaceLowestLight,
+    surfaceContainerLow = EmberSurfaceLowLight,
+    surfaceContainer = EmberSurfaceContainerLight,
+    surfaceContainerHigh = EmberSurfaceHighLight,
+    surfaceContainerHighest = EmberSurfaceHighestLight,
+    outline = EmberOutlineLight,
+    outlineVariant = EmberOutlineVariantLight,
+    error = Color(0xFFBA1A1A),
+    onError = Color(0xFFFFFFFF),
+    errorContainer = Color(0xFFFFDAD6),
+    onErrorContainer = Color(0xFF410002),
+    inverseSurface = EmberInverseSurfaceLight,
+    inverseOnSurface = EmberInverseOnSurfaceLight,
+    inversePrimary = EmberInversePrimaryLight,
+    scrim = Color(0xFF000000)
 )
 
-private val LightColorScheme = lightColorScheme(
-    primary = Color(0xFF006A60),
-    onPrimary = Color.White,
-    primaryContainer = Color(0xFF70F7E8),
-    onPrimaryContainer = Color(0xFF00201C),
-    secondary = Color(0xFF984061),
-    onSecondary = Color.White,
-    secondaryContainer = Color(0xFFFFD9DF),
-    onSecondaryContainer = Color(0xFF3E001D),
-    tertiary = Color(0xFF705D00),
-    onTertiary = Color.White,
-    tertiaryContainer = Color(0xFFFFE18F),
-    onTertiaryContainer = Color(0xFF221B00),
-    background = PremiumOffWhite,
-    onBackground = Color(0xFF191C1E),
-    surface = Color.White,
-    onSurface = Color(0xFF191C1E),
-    surfaceVariant = Color(0xFFDBE4E1),
-    onSurfaceVariant = Color(0xFF3F4947),
-    outline = Color(0xFF6F7977)
+private val EmberDarkColorScheme = darkColorScheme(
+    primary = EmberPrimaryDark,
+    onPrimary = EmberOnPrimaryDark,
+    primaryContainer = EmberPrimaryContainerDark,
+    onPrimaryContainer = EmberOnPrimaryContainerDark,
+    secondary = EmberSecondaryDark,
+    onSecondary = EmberOnSecondaryDark,
+    secondaryContainer = EmberSecondaryContainerDark,
+    onSecondaryContainer = EmberOnSecondaryContainerDark,
+    tertiary = EmberTertiaryDark,
+    onTertiary = EmberOnTertiaryDark,
+    tertiaryContainer = EmberTertiaryContainerDark,
+    onTertiaryContainer = EmberOnTertiaryContainerDark,
+    background = EmberBackgroundDark,
+    onBackground = EmberOnBackgroundDark,
+    surface = EmberSurfaceDark,
+    onSurface = EmberOnSurfaceDark,
+    surfaceVariant = EmberSurfaceVariantDark,
+    onSurfaceVariant = EmberOnSurfaceVariantDark,
+    surfaceContainerLowest = EmberSurfaceLowestDark,
+    surfaceContainerLow = EmberSurfaceLowDark,
+    surfaceContainer = EmberSurfaceContainerDark,
+    surfaceContainerHigh = EmberSurfaceHighDark,
+    surfaceContainerHighest = EmberSurfaceHighestDark,
+    outline = EmberOutlineDark,
+    outlineVariant = EmberOutlineVariantDark,
+    error = Color(0xFFFFB4AB),
+    onError = Color(0xFF690005),
+    errorContainer = Color(0xFF93000A),
+    onErrorContainer = Color(0xFFFFDAD6),
+    inverseSurface = EmberInverseSurfaceDark,
+    inverseOnSurface = EmberInverseOnSurfaceDark,
+    inversePrimary = EmberInversePrimaryDark,
+    scrim = Color(0xFF000000)
 )
 
 @Composable
 fun MorphDropTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = true, // Enabled by default for native M3 feel
+    // Dynamic color is OFF by default: MorphDrop keeps its Ember identity on
+    // every device. Users can opt in via the "Match wallpaper" setting, which
+    // passes dynamicColor = true.
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
-    val context = LocalContext.current
-    var colorScheme = when {
+    val colorScheme = when {
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
+            val context = LocalContext.current
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         }
-        darkTheme -> DarkColorScheme
-        else -> LightColorScheme
-    }
-
-    // Universal Dynamic Theming Fix for Non-Pixel OS
-    if (dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && Build.MANUFACTURER.lowercase() != "google") {
-        // Some OEMs fail to populate rich secondary/tertiary colors in their dynamic scheme.
-        // We will mathematically generate rich secondary and tertiary tones from the provided primary color.
-        val primaryArgb = colorScheme.primary.toArgb()
-        val hsl = FloatArray(3)
-        androidx.core.graphics.ColorUtils.colorToHSL(primaryArgb, hsl)
-        
-        // Secondary: Same hue, lower saturation
-        val secondaryHsl = floatArrayOf(hsl[0], hsl[1] * 0.5f, hsl[2])
-        val secondaryColor = Color(androidx.core.graphics.ColorUtils.HSLToColor(secondaryHsl))
-        
-        // Tertiary: Shift hue by 60 degrees, lower saturation
-        val tertiaryHsl = floatArrayOf((hsl[0] + 60f) % 360f, hsl[1] * 0.6f, hsl[2])
-        val tertiaryColor = Color(androidx.core.graphics.ColorUtils.HSLToColor(tertiaryHsl))
-        
-        colorScheme = colorScheme.copy(
-            secondary = secondaryColor,
-            secondaryContainer = secondaryColor.copy(alpha = if (darkTheme) 0.3f else 0.2f),
-            tertiary = tertiaryColor,
-            tertiaryContainer = tertiaryColor.copy(alpha = if (darkTheme) 0.3f else 0.2f)
-        )
+        darkTheme -> EmberDarkColorScheme
+        else -> EmberLightColorScheme
     }
 
     val view = LocalView.current
@@ -112,41 +119,15 @@ fun MorphDropTheme(
                 val insetsController = WindowCompat.getInsetsController(window, window.decorView)
                 insetsController.isAppearanceLightStatusBars = !darkTheme
                 insetsController.isAppearanceLightNavigationBars = !darkTheme
-
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    window.insetsController?.setSystemBarsAppearance(
-                        if (!darkTheme) {
-                            android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
-                                    android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
-                        } else 0,
-                        android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
-                                android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
-                    )
-                }
-                @Suppress("DEPRECATION")
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    var flags = window.decorView.systemUiVisibility
-                    flags = if (!darkTheme) {
-                        flags or android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
-                    } else {
-                        flags and android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR.inv()
-                    }
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        flags = if (!darkTheme) {
-                            flags or android.view.View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
-                        } else {
-                            flags and android.view.View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR.inv()
-                        }
-                    }
-                    window.decorView.systemUiVisibility = flags
-                }
             }
         }
     }
 
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = Typography,
-        content = content
-    )
+    CompositionLocalProvider(LocalMorphColors provides if (darkTheme) darkMorphColors else lightMorphColors) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            typography = Typography,
+            content = content
+        )
+    }
 }

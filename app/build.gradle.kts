@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -13,12 +15,42 @@ android {
         applicationId = "com.morphdrop.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 10
-        versionName = "1.4.3"
+        versionCode = 11
+        versionName = "1.5.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
+        }
+    }
+
+    val localProperties = Properties()
+    val localPropsFile = rootProject.file("local.properties")
+    if (localPropsFile.exists()) {
+        localPropsFile.inputStream().use { stream ->
+            localProperties.load(stream)
+        }
+    }
+
+    val releaseStoreFilePath: String? = localProperties.getProperty("storeFile")
+    val releaseStorePassword: String? = localProperties.getProperty("storePassword")
+    val releaseKeyAlias: String? = localProperties.getProperty("keyAlias")
+    val releaseKeyPassword: String? = localProperties.getProperty("keyPassword")
+
+    val hasReleaseSigning = !releaseStoreFilePath.isNullOrBlank() &&
+        file(releaseStoreFilePath).exists() &&
+        !releaseStorePassword.isNullOrBlank() &&
+        !releaseKeyAlias.isNullOrBlank() &&
+        !releaseKeyPassword.isNullOrBlank()
+
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = file(releaseStoreFilePath)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
         }
     }
 
@@ -36,7 +68,10 @@ android {
                 "proguard-rules.pro"
             )
             ndk {
-                abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+                abiFilters += listOf("arm64-v8a")
+            }
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
             }
         }
     }

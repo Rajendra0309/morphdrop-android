@@ -25,6 +25,12 @@ interface HistoryDao {
     @Query("DELETE FROM conversion_history WHERE id = :id")
     suspend fun deleteHistoryById(id: Long)
 
+    @Query("DELETE FROM conversion_history WHERE id IN (:ids)")
+    suspend fun deleteHistoryByIds(ids: List<Long>)
+
+    @Query("UPDATE conversion_history SET isPinned = :pinned WHERE id = :id")
+    suspend fun setPinned(id: Long, pinned: Boolean)
+
     @Query("DELETE FROM conversion_history")
     suspend fun clearAllHistory()
 }

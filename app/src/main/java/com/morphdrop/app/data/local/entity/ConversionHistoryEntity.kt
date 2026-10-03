@@ -14,5 +14,10 @@ data class ConversionHistoryEntity(
     val displayName: String = "", // Added to store the user-defined name
     val timestamp: Long = System.currentTimeMillis(),
     val duration: Long = 0L,
-    val success: Boolean = true
+    val success: Boolean = true,
+    // Stable id of the ConversionType (e.g. "pdf_to_images"). Null for rows saved
+    // before this field existed — UI falls back to fuzzy-matching conversionType.
+    val conversionTypeId: String? = null,
+    /** Pinned favorites sort first in History. */
+    val isPinned: Boolean = false
 )

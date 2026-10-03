@@ -1,5 +1,6 @@
 package com.morphdrop.app.ui.screens.welcome
 
+import android.content.res.Configuration
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
@@ -13,17 +14,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import android.content.res.Configuration
 import androidx.compose.ui.tooling.preview.Devices
 import androidx.compose.ui.tooling.preview.Preview
-import com.morphdrop.app.ui.theme.MorphDropTheme
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.airbnb.lottie.compose.*
-import com.morphdrop.app.R
+import com.morphdrop.app.ui.theme.MorphDropTheme
 import kotlinx.coroutines.launch
 
 @Composable
@@ -31,10 +29,9 @@ fun WelcomeScreen(
     onFinish: () -> Unit
 ) {
     val pages = listOf(
-        OnboardingPage.Welcome,
-        OnboardingPage.Convert,
-        OnboardingPage.Privacy,
-        OnboardingPage.Speed
+        OnboardingPage.Drop,
+        OnboardingPage.Transform,
+        OnboardingPage.Private
     )
     val pagerState = rememberPagerState(pageCount = { pages.size })
     val scope = rememberCoroutineScope()
@@ -80,12 +77,13 @@ fun WelcomeScreen(
                 OnboardingPagerItem(page = pages[position])
             }
 
-            // Bottom Navigation Area
+            // Bottom Navigation Area: indicators 24dp above the 56dp button
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .navigationBarsPadding()
-                    .padding(horizontal = 32.dp, vertical = 40.dp),
+                    .padding(horizontal = 32.dp)
+                    .padding(top = 8.dp, bottom = 32.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 // Page Indicators (Animated Dots)
@@ -102,11 +100,11 @@ fun WelcomeScreen(
                             label = "dot_width"
                         )
                         val color by animateColorAsState(
-                            targetValue = if (isSelected) MaterialTheme.colorScheme.primary 
+                            targetValue = if (isSelected) MaterialTheme.colorScheme.primary
                                           else MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
                             label = "dot_color"
                         )
-                        
+
                         Box(
                             modifier = Modifier
                                 .padding(horizontal = 4.dp)
@@ -118,7 +116,7 @@ fun WelcomeScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(40.dp))
+                Spacer(modifier = Modifier.height(24.dp))
 
                 // Primary Action Button
                 Button(
@@ -162,14 +160,15 @@ fun OnboardingPagerItem(page: OnboardingPage) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
+        // Full-bleed morph-mark: the animated file-transformation visual
         LottieAnimationView(
             resId = page.lottieRes,
             modifier = Modifier
-                .fillMaxHeight(0.45f) // Take up 45% of height to look good on all screens
-                .aspectRatio(1f)
+                .fillMaxWidth()
+                .fillMaxHeight(0.52f)
         )
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(20.dp))
 
         Text(
             text = page.title,
@@ -181,7 +180,7 @@ fun OnboardingPagerItem(page: OnboardingPage) {
             textAlign = TextAlign.Center
         )
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
         Text(
             text = page.description,
@@ -192,9 +191,6 @@ fun OnboardingPagerItem(page: OnboardingPage) {
             ),
             modifier = Modifier.padding(horizontal = 8.dp)
         )
-        
-        // Extra spacer at bottom to push content up slightly for better balance
-        Spacer(modifier = Modifier.height(48.dp))
     }
 }
 
@@ -220,28 +216,22 @@ sealed class OnboardingPage(
     val description: String,
     val lottieRes: Int
 ) {
-    data object Welcome : OnboardingPage(
-        title = "Welcome to MorphDrop",
-        description = "The easiest way to convert files on your phone with elegance and speed.",
-        com.morphdrop.app.R.raw.welcome
-    )
-
-    data object Convert : OnboardingPage(
-        title = "Convert Any File",
-        description = "PDF, Excel, Images, and more. Support for all your essential formats.",
+    data object Drop : OnboardingPage(
+        title = "Drop any file",
+        description = "Pick a PDF, image, or spreadsheet — then choose what it becomes.",
         com.morphdrop.app.R.raw.convert
     )
 
-    data object Privacy : OnboardingPage(
-        title = "100% Offline & Private",
-        description = "Your files never leave your device. Privacy is our priority, no internet required.",
-        com.morphdrop.app.R.raw.privacy
+    data object Transform : OnboardingPage(
+        title = "It transforms on your device",
+        description = "OCR, merges, compression, and conversions run locally in seconds. No uploads, no waiting on a server.",
+        com.morphdrop.app.R.raw.welcome
     )
 
-    data object Speed : OnboardingPage(
-        title = "Beautiful & Fast",
-        description = "Material You design that adapts to your style while delivering peak performance.",
-        com.morphdrop.app.R.raw.performance
+    data object Private : OnboardingPage(
+        title = "Private by design",
+        description = "100% offline. Your files never leave your phone — ever.",
+        com.morphdrop.app.R.raw.privacy
     )
 }
 

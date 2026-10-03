@@ -71,13 +71,13 @@
 
 ## Features
 
-### Latest Updates (v1.4.3)
+### Latest Updates (v1.5.0)
 
-> - **Unified System Routing** — Single-task activity architecture for seamless external share sheet and "Open With" handling across PDF, Markdown, Excel, CSV, text, and images.
-> - **Wide Excel Layout & Preview** — Dynamic column width clamping, auto-orientation, zebra striping, multi-line row pagination, and interactive spreadsheet preview cards.
-> - **High-Performance PDF Viewer** — Hardware-accelerated 2.0x base density zoom rendering without pixelation, combined with canvas allocation guards preventing out-of-memory crashes on oversized documents.
-> - **Full Annotation Toolkit** — Complete drawing and highlight suite with undo/redo history, swipe-based eraser deduplication, and atomic Room database persistence.
-> - **Image Metadata Inspector** — Scoped storage stream fallback for permission-free EXIF metadata inspection, preserving 0-meter altitude and precision GPS data.
+> - **Ember Design Language** — Modern, warm aesthetic with responsive tablet/foldable layouts, comfortable screen paddings, and dynamic Android 12+ wallpaper palette theming.
+> - **Rich Markdown to PDF Engine** — Full rendering overhaul supporting tables, inline/block math equations, syntax-highlighted code blocks, blockquotes, and task checklists.
+> - **Quick Presets & Reading Continuation** — One-tap conversion via saved tool presets (long-press cards) and Home resume-reading card for your last opened PDF.
+> - **Streamlined APK Footprint** — Reduced release download size by >70% (from 73MB to ~21MB) via 64-bit architecture optimization and R8 bytecode shrinking.
+> - **History Multi-Select & Pinning** — Bulk log deletion with instant undo, combined with pinned-to-top ordering for favorite conversions.
 
 <br>
 <details>
@@ -94,6 +94,7 @@
 <summary><b>Document & Markdown Tools</b></summary>
 <br>
 
+- **Markdown to PDF** — Convert rich markdown files into formatted PDFs complete with tables, math equations, code blocks, blockquotes, and checklists.
 - **Markdown Viewer** — Clean reader for `.md` files with formatted tables, code blocks, and system-wide "Open With" integration.
 - **Markdown Editor** — Split-pane or full-screen editor with debounced live preview, formatting toolbar, and keyboard shortcuts.
 - **Text to PDF** — Convert plain text files into cleanly formatted PDF documents.

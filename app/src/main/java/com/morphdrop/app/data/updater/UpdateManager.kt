@@ -2,8 +2,11 @@ package com.morphdrop.app.data.updater
 
 import android.app.DownloadManager
 import android.content.Context
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Environment
+import android.util.Log
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -36,19 +39,41 @@ class UpdateManager @Inject constructor(
 ) {
     private val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
 
+    companion object {
+        const val UPDATER_PREFS = "updater_prefs"
+        const val KEY_LAST_DOWNLOAD_ID = "last_download_id"
+    }
+
     fun downloadApk(url: String, versionName: String): Long {
+        // Only HTTPS update URLs are allowed; anything else is rejected.
+        val uri = try {
+            Uri.parse(url)
+        } catch (_: Exception) {
+            throw IllegalArgumentException("Invalid update URL")
+        }
+        require(uri.scheme.equals("https", ignoreCase = true)) {
+            "Update URL must use https"
+        }
+
         val cleanVersion = if (versionName.startsWith("v", ignoreCase = true)) versionName else "v$versionName"
         val formattedName = "MorphDrop-$cleanVersion"
         val fileName = "$formattedName.apk"
 
-        val request = DownloadManager.Request(Uri.parse(url))
+        val request = DownloadManager.Request(uri)
             .setTitle(formattedName)
             .setDescription("Downloading latest version...")
             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
             .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
             .setMimeType("application/vnd.android.package-archive")
 
-        return downloadManager.enqueue(request)
+        val downloadId = downloadManager.enqueue(request)
+        // Persist the enqueue ID so UpdateDownloadReceiver can verify that a
+        // completed download is actually ours before offering an install.
+        context.getSharedPreferences(UPDATER_PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putLong(KEY_LAST_DOWNLOAD_ID, downloadId)
+            .apply()
+        return downloadId
     }
 
     fun pollDownloadProgress(downloadId: Long): Flow<DownloadProgress> = flow {
@@ -95,4 +120,54 @@ class UpdateManager @Inject constructor(
             if (!isDone) delay(400)
         }
     }.flowOn(Dispatchers.IO)
+
+    /**
+     * Verifies that the downloaded APK is signed by the same certificate as
+     * the installed app. Returns false if either side's signature info cannot
+     * be read, if the certificates differ, or if the file is not a valid APK.
+     */
+    fun verifyApkSignature(apkFile: java.io.File): Boolean {
+        return try {
+            val pm = context.packageManager
+            val archiveFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                PackageManager.GET_SIGNING_CERTIFICATES
+            } else {
+                @Suppress("DEPRECATION")
+                PackageManager.GET_SIGNATURES
+            }
+            val archiveInfo = pm.getPackageArchiveInfo(apkFile.absolutePath, archiveFlags)
+                ?: return false
+            val installedInfo = pm.getPackageInfo(context.packageName, archiveFlags)
+                ?: return false
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                val archiveSigning = archiveInfo.signingInfo ?: return false
+                val installedSigning = installedInfo.signingInfo ?: return false
+
+                if (archiveSigning.hasMultipleSigners() || installedSigning.hasMultipleSigners()) {
+                    val archiveSigners = archiveSigning.apkContentsSigners.map { it.toCharsString() }.toSet()
+                    val installedSigners = installedSigning.apkContentsSigners.map { it.toCharsString() }.toSet()
+                    archiveSigners == installedSigners
+                } else {
+                    val archiveCurrent = archiveSigning.apkContentsSigners.firstOrNull()?.toCharsString() ?: return false
+                    val installedCurrent = installedSigning.apkContentsSigners.firstOrNull()?.toCharsString() ?: return false
+                    val archiveHistory = archiveSigning.signingCertificateHistory.map { it.toCharsString() }.toSet()
+                    val installedHistory = installedSigning.signingCertificateHistory.map { it.toCharsString() }.toSet()
+
+                    archiveCurrent == installedCurrent ||
+                        archiveHistory.contains(installedCurrent) ||
+                        installedHistory.contains(archiveCurrent)
+                }
+            } else {
+                @Suppress("DEPRECATION")
+                val archiveSigners = archiveInfo.signatures?.map { it.toCharsString() }?.toSet() ?: return false
+                @Suppress("DEPRECATION")
+                val installedSigners = installedInfo.signatures?.map { it.toCharsString() }?.toSet() ?: return false
+                archiveSigners == installedSigners
+            }
+        } catch (e: Exception) {
+            Log.w("UpdateManager", "APK signature verification failed", e)
+            false
+        }
+    }
 }

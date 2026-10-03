@@ -4,16 +4,19 @@ import android.net.Uri
 
 sealed class Screen(val route: String) {
     data object Home : Screen("home")
-    data object ConversionConfig : Screen("config/{conversionTypeId}?uri={uri}") {
-        fun createRoute(conversionTypeId: String, uri: String? = null): String =
-            if (!uri.isNullOrBlank()) "config/$conversionTypeId?uri=${Uri.encode(uri)}"
-            else "config/$conversionTypeId"
+    data object ConversionConfig : Screen("config/{conversionTypeId}?uri={uri}&autostart={autostart}") {
+        fun createRoute(conversionTypeId: String, uri: String? = null, autostart: Boolean = false): String =
+            "config/$conversionTypeId" +
+                (if (!uri.isNullOrBlank()) "?uri=${Uri.encode(uri)}" else "?uri=") +
+                "&autostart=$autostart"
     }
     data object Processing : Screen("processing/{conversionTypeId}/{workId}") {
         fun createRoute(conversionTypeId: String, workId: String) = "processing/$conversionTypeId/$workId"
     }
-    data object Result : Screen("result/{workId}") {
-        fun createRoute(workId: String) = "result/$workId"
+    data object Result : Screen("result/{workId}?typeId={typeId}") {
+        fun createRoute(workId: String, typeId: String? = null): String =
+            if (!typeId.isNullOrBlank()) "result/$workId?typeId=$typeId"
+            else "result/$workId"
     }
     data object History : Screen("history")
     data object HistoryDetail : Screen("history_detail/{historyId}") {

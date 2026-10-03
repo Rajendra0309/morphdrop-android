@@ -36,7 +36,13 @@ class AddPageNumbersUseCase @Inject constructor(
         subFolder: String? = null
     ): Uri = withContext(Dispatchers.IO) {
         val inputStream = FileHelper.readFileFromUri(context, pdfUri)
-        val document = PDDocument.load(inputStream)
+        val document = try {
+            PDDocument.load(inputStream)
+        } catch (e: Exception) {
+            // load() failure must not leak the open stream.
+            try { inputStream.close() } catch (_: Exception) {}
+            throw e
+        }
 
         try {
             val totalPages = document.numberOfPages

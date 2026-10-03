@@ -9,6 +9,8 @@ interface BookmarkDao {
     @Query("SELECT * FROM bookmarks WHERE fileUri = :fileUri ORDER BY pageNumber ASC")
     fun getBookmarksForFile(fileUri: String): Flow<List<BookmarkEntity>>
 
+    // With the unique (fileUri, pageNumber) index, REPLACE is a true upsert:
+    // re-bookmarking a page refreshes the row instead of duplicating it.
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertBookmark(bookmark: BookmarkEntity)
 

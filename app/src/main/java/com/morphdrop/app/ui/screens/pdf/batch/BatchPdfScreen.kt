@@ -1416,7 +1416,7 @@ private fun RotateConfigSection(
                     .fillMaxWidth()
                     .height(140.dp),
                 shape = RoundedCornerShape(12.dp),
-                color = Color.White,
+                color = MaterialTheme.colorScheme.surfaceContainerLowest,
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
             ) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

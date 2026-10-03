@@ -1,7 +1,9 @@
 package com.morphdrop.app.ui.navigation
 
+import android.app.Activity
 import android.net.Uri
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -38,9 +40,23 @@ import androidx.compose.animation.slideOutHorizontally
 fun NavGraph(
     navController: NavHostController,
     mainViewModel: MainViewModel,
-    startDestination: String = Screen.Home.route
+    startDestination: String = Screen.Home.route,
+    // Adaptive layout inputs (computed from the window size in MainActivity).
+    gridColumns: Int = 2,
+    isExpanded: Boolean = false
 ) {
     val topLevelRoutes = listOf(Screen.Home.route, Screen.History.route, Screen.Settings.route)
+    val context = LocalContext.current
+
+    // Back navigation that also works when the current screen is a deep-link
+    // start destination with an empty back stack (e.g. Excel opened from
+    // Telegram): finishing the activity returns the user to the sender app
+    // instead of the back button silently doing nothing.
+    val navigateUpOrFinish: () -> Unit = {
+        if (!navController.popBackStack()) {
+            (context as? Activity)?.finish()
+        }
+    }
 
     NavHost(
         navController = navController,
@@ -73,7 +89,7 @@ fun NavGraph(
                 fadeIn(animationSpec = tween(200, easing = FastOutSlowInEasing))
             } else {
                 slideInHorizontally(
-                    initialOffsetX = { fullWidth -> -(fullWidth * 0.25f).toInt() },
+                    initialOffsetX = { fullWidth -> -(fullWidth * 0.15f).toInt() },
                     animationSpec = tween(300, easing = FastOutSlowInEasing)
                 ) + fadeIn(animationSpec = tween(300, easing = FastOutSlowInEasing))
             }
@@ -84,7 +100,7 @@ fun NavGraph(
                 fadeOut(animationSpec = tween(200, easing = FastOutSlowInEasing))
             } else {
                 slideOutHorizontally(
-                    targetOffsetX = { fullWidth -> fullWidth },
+                    targetOffsetX = { fullWidth -> (fullWidth * 0.15f).toInt() },
                     animationSpec = tween(300, easing = FastOutSlowInEasing)
                 ) + fadeOut(animationSpec = tween(300, easing = FastOutSlowInEasing))
             }
@@ -105,6 +121,25 @@ fun NavGraph(
                         else -> navController.navigate(Screen.ConversionConfig.createRoute(conversionTypeId))
                     }
                 },
+                // Long-press quick conversion: same destinations, but the config
+                // screen auto-starts processing with the saved preset once files
+                // are picked. Tools with dedicated screens fall back to normal.
+                onQuickConvert = { conversionTypeId ->
+                    when (conversionTypeId) {
+                        "ocr_text_extractor" -> navController.navigate(Screen.Ocr.route)
+                        "batch_ocr" -> navController.navigate(Screen.BatchOcr.route)
+                        "batch_pdf" -> navController.navigate(Screen.BatchPdf.route)
+                        "markdown_editor" -> navController.navigate(Screen.MarkdownEditor.createRoute(isNew = true))
+                        "watermark_pdf" -> navController.navigate(Screen.PdfWatermark.createRoute())
+                        "page_numbers_pdf" -> navController.navigate(Screen.PdfPageNumbers.createRoute())
+                        "compress_pdf" -> navController.navigate(Screen.PdfCompress.createRoute())
+                        "rotate_pdf" -> navController.navigate(Screen.PdfRotate.createRoute())
+                        else -> navController.navigate(
+                            Screen.ConversionConfig.createRoute(conversionTypeId, autostart = true)
+                        )
+                    }
+                },
+                onOpenRoute = { route -> navController.navigate(route) },
                 onNavigate = { route ->
                     navController.navigate(route) {
                         popUpTo(navController.graph.findStartDestination().id) {
@@ -114,17 +149,25 @@ fun NavGraph(
                         restoreState = true
                     }
                 },
-                mainViewModel = mainViewModel
+                mainViewModel = mainViewModel,
+                gridColumns = gridColumns,
+                hasNavigationRail = isExpanded
             )
         }
 
         composable(Screen.History.route) {
             HistoryScreen(
-                onNavigateBack = { navController.popBackStack() },
+                onNavigateBack = navigateUpOrFinish,
                 onNavigateToDetail = { id ->
                     navController.navigate(Screen.HistoryDetail.createRoute(id))
                 },
-                mainViewModel = mainViewModel
+                onTrySampleConvert = { uri ->
+                    navController.navigate(
+                        Screen.ConversionConfig.createRoute("pdf_to_images", uri = uri)
+                    )
+                },
+                mainViewModel = mainViewModel,
+                isExpanded = isExpanded
             )
         }
 
@@ -133,13 +176,13 @@ fun NavGraph(
             arguments = listOf(navArgument("historyId") { type = NavType.LongType })
         ) {
             HistoryDetailScreen(
-                onNavigateBack = { navController.popBackStack() }
+                onNavigateBack = navigateUpOrFinish
             )
         }
 
         composable(Screen.Settings.route) {
             SettingsScreen(
-                onNavigateBack = { navController.popBackStack() },
+                onNavigateBack = navigateUpOrFinish,
                 onCheckForUpdates = { mainViewModel.checkForUpdates(force = true) }
             )
         }
@@ -163,19 +206,26 @@ fun NavGraph(
                     type = NavType.StringType
                     nullable = true
                     defaultValue = null
+                },
+                navArgument("autostart") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
                 }
             )
         ) { backStackEntry ->
             val typeId = backStackEntry.arguments?.getString("conversionTypeId") ?: ""
             val initialUri = backStackEntry.arguments?.getString("uri")?.takeIf { it.isNotBlank() && it != "{uri}" }
+            val autoStart = backStackEntry.arguments?.getString("autostart") == "true"
             if (typeId == "ocr_text_extractor") {
                 OcrScreen(
-                    onNavigateBack = { navController.popBackStack() }
+                    onNavigateBack = navigateUpOrFinish
                 )
             } else {
                 ConversionConfigScreen(
                     initialUri = initialUri,
-                    onNavigateBack = { navController.popBackStack() },
+                    autoStart = autoStart,
+                    onNavigateBack = navigateUpOrFinish,
                     onNavigateToProcessing = { tId, workId ->
                         navController.navigate(Screen.Processing.createRoute(tId, workId))
                     }
@@ -185,20 +235,20 @@ fun NavGraph(
 
         composable(Screen.Ocr.route) {
             OcrScreen(
-                onNavigateBack = { navController.popBackStack() },
+                onNavigateBack = navigateUpOrFinish,
                 onNavigateToBatchOcr = { navController.navigate(Screen.BatchOcr.route) }
             )
         }
 
         composable(Screen.BatchOcr.route) {
             BatchOcrScreen(
-                onNavigateBack = { navController.popBackStack() }
+                onNavigateBack = navigateUpOrFinish
             )
         }
 
         composable(Screen.BatchPdf.route) {
             BatchPdfScreen(
-                onNavigateBack = { navController.popBackStack() }
+                onNavigateBack = navigateUpOrFinish
             )
         }
 
@@ -210,9 +260,10 @@ fun NavGraph(
             )
         ) { backStackEntry ->
             val workId = backStackEntry.arguments?.getString("workId") ?: ""
+            val processingTypeId = backStackEntry.arguments?.getString("conversionTypeId") ?: ""
             ProcessingScreen(
                 onNavigateToResult = {
-                    navController.navigate(Screen.Result.createRoute(workId)) {
+                    navController.navigate(Screen.Result.createRoute(workId, processingTypeId)) {
                         popUpTo(Screen.Home.route)
                     }
                 },
@@ -223,15 +274,28 @@ fun NavGraph(
         composable(
             route = Screen.Result.route,
             arguments = listOf(
-                navArgument("workId") { type = NavType.StringType }
+                navArgument("workId") { type = NavType.StringType },
+                navArgument("typeId") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                }
             )
-        ) {
+        ) { backStackEntry ->
+            val resultTypeId = backStackEntry.arguments?.getString("typeId")?.takeIf { it.isNotBlank() && it != "{typeId}" }
             ResultScreen(
                 onDone = {
                     navController.navigate(Screen.Home.route) {
                         popUpTo(Screen.Home.route) { inclusive = true }
                     }
-                }
+                },
+                onConvertAnother = if (resultTypeId != null) {
+                    {
+                        navController.navigate(Screen.ConversionConfig.createRoute(resultTypeId)) {
+                            popUpTo(Screen.Home.route)
+                        }
+                    }
+                } else null
             )
         }
 
@@ -276,7 +340,7 @@ fun NavGraph(
             MarkdownEditorScreen(
                 uriString = uriString,
                 isNew = isNew,
-                onNavigateBack = { navController.popBackStack() }
+                onNavigateBack = navigateUpOrFinish
             )
         }
 
@@ -292,7 +356,7 @@ fun NavGraph(
             val uriString = backStackEntry.arguments?.getString("uri")?.takeIf { it.isNotBlank() && it != "{uri}" }
             PdfWatermarkScreen(
                 initialUri = uriString?.let { Uri.parse(it) },
-                onNavigateBack = { navController.popBackStack() }
+                onNavigateBack = navigateUpOrFinish
             )
         }
 
@@ -308,7 +372,7 @@ fun NavGraph(
             val uriString = backStackEntry.arguments?.getString("uri")?.takeIf { it.isNotBlank() && it != "{uri}" }
             PdfPageNumbersScreen(
                 initialUri = uriString?.let { Uri.parse(it) },
-                onNavigateBack = { navController.popBackStack() }
+                onNavigateBack = navigateUpOrFinish
             )
         }
 
@@ -324,7 +388,7 @@ fun NavGraph(
             val uriString = backStackEntry.arguments?.getString("uri")?.takeIf { it.isNotBlank() && it != "{uri}" }
             PdfCompressScreen(
                 initialUri = uriString?.let { Uri.parse(it) },
-                onNavigateBack = { navController.popBackStack() }
+                onNavigateBack = navigateUpOrFinish
             )
         }
 
@@ -340,7 +404,7 @@ fun NavGraph(
             val uriString = backStackEntry.arguments?.getString("uri")?.takeIf { it.isNotBlank() && it != "{uri}" }
             PdfRotateScreen(
                 initialUri = uriString?.let { Uri.parse(it) },
-                onNavigateBack = { navController.popBackStack() }
+                onNavigateBack = navigateUpOrFinish
             )
         }
     }

@@ -23,8 +23,19 @@ class RotatePdfPagesUseCase @Inject constructor(
         outputFileName: String = "rotated_${System.currentTimeMillis()}.pdf",
         subFolder: String? = null
     ): Uri = withContext(Dispatchers.IO) {
+        if (!PDFBoxResourceLoader.isReady()) {
+            PDFBoxResourceLoader.init(context)
+        }
+
         val inputStream = FileHelper.readFileFromUri(context, pdfUri)
-        val document = PDDocument.load(inputStream)
+        // If load() throws, the stream must still be closed: keep it out of the
+        // document's try/finally by closing it on the failure path.
+        val document = try {
+            PDDocument.load(inputStream)
+        } catch (e: Exception) {
+            try { inputStream.close() } catch (_: Exception) {}
+            throw e
+        }
 
         try {
             val totalPages = document.numberOfPages
@@ -34,7 +45,9 @@ class RotatePdfPagesUseCase @Inject constructor(
                 if (targetPages == null || targetPages.contains(pageNumber)) {
                     val page = document.getPage(i)
                     val currentRotation = page.rotation
-                    page.rotation = (currentRotation + rotationDegrees) % 360
+                    // floorMod keeps the result in 0..359 even for negative inputs;
+                    // Kotlin's % can yield a negative /Rotate value.
+                    page.rotation = Math.floorMod(currentRotation + rotationDegrees, 360)
                 }
             }
 

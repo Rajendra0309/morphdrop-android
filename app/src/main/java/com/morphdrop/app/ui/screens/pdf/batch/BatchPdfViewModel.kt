@@ -91,6 +91,51 @@ class BatchPdfViewModel @Inject constructor(
     private var currentWorkId: UUID? = null
     private var workObserverJob: Job? = null
 
+    // Guards against double-tap duplicate enqueues: a second tap within a short
+    // window is ignored so KEEP doesn't leave us observing a dropped work request.
+    private var lastEnqueueName: String? = null
+    private var lastEnqueueAtMs: Long = 0L
+
+    private fun isDuplicateEnqueue(uniqueName: String): Boolean {
+        val now = System.currentTimeMillis()
+        return if (uniqueName == lastEnqueueName && now - lastEnqueueAtMs < 3000L) {
+            true
+        } else {
+            lastEnqueueName = uniqueName
+            lastEnqueueAtMs = now
+            false
+        }
+    }
+
+    /**
+     * Reads per-item batch results. The worker persists the results JSON to a temp
+     * file in the app cache dir and returns its URI under
+     * [BatchPdfWorker.KEY_RESULTS_FILE] (inline JSON was dropped to stay under
+     * WorkManager's ~10KB Data payload limit). Falls back to the legacy inline
+     * [BatchPdfWorker.KEY_RESULTS_JSON] for source compatibility.
+     */
+    private fun readBatchResults(outputData: androidx.work.Data): List<BatchPdfItemResult> {
+        val json: String? = outputData.getString(BatchPdfWorker.KEY_RESULTS_FILE)
+            ?.takeIf { it.isNotBlank() }
+            ?.let { uriString ->
+                try {
+                    context.contentResolver.openInputStream(Uri.parse(uriString))
+                        ?.bufferedReader()
+                        ?.use { it.readText() }
+                } catch (_: Exception) {
+                    null
+                }
+            }
+            ?: outputData.getString(BatchPdfWorker.KEY_RESULTS_JSON)
+        if (json.isNullOrBlank()) return emptyList()
+        return try {
+            val type = object : TypeToken<List<BatchPdfItemResult>>() {}.type
+            Gson().fromJson(json, type)
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
     fun onFilesSelected(uris: List<Uri>) {
         if (uris.isEmpty()) return
 
@@ -313,6 +358,11 @@ class BatchPdfViewModel @Inject constructor(
             .setInputData(dataBuilder.build())
             .build()
 
+        // In-memory duplicate guard: prevent rapid double-taps within 3s from
+        // enqueuing duplicate work requests.
+        val uniqueWorkName = "batch_pdf_${(op.name + files.joinToString("|") { it.uri.toString() }).hashCode()}"
+        if (isDuplicateEnqueue(uniqueWorkName)) return
+
         currentWorkId = workRequest.id
 
         _state.update {
@@ -351,18 +401,13 @@ class BatchPdfViewModel @Inject constructor(
 
                 when (workInfo.state) {
                     WorkInfo.State.SUCCEEDED -> {
+                        lastEnqueueName = null
                         val outputData = workInfo.outputData
-                        val json = outputData.getString(BatchPdfWorker.KEY_RESULTS_JSON)
                         val folder = outputData.getString(BatchPdfWorker.KEY_OUTPUT_FOLDER)
 
-                        val parsedResults: List<BatchPdfItemResult> = if (!json.isNullOrBlank()) {
-                            try {
-                                val type = object : TypeToken<List<BatchPdfItemResult>>() {}.type
-                                Gson().fromJson(json, type)
-                            } catch (_: Exception) {
-                                emptyList()
-                            }
-                        } else emptyList()
+                        // Results are persisted to a temp file (see BatchPdfWorker.KEY_RESULTS_FILE);
+                        // the inline KEY_RESULTS_JSON payload is no longer emitted.
+                        val parsedResults: List<BatchPdfItemResult> = readBatchResults(outputData)
 
                         _state.update {
                             it.copy(
@@ -375,6 +420,7 @@ class BatchPdfViewModel @Inject constructor(
                         }
                     }
                     WorkInfo.State.FAILED -> {
+                        lastEnqueueName = null
                         val error = workInfo.outputData.getString("error") ?: "Batch processing failed."
                         _state.update {
                             it.copy(
@@ -385,6 +431,7 @@ class BatchPdfViewModel @Inject constructor(
                         }
                     }
                     WorkInfo.State.CANCELLED -> {
+                        lastEnqueueName = null
                         _state.update {
                             it.copy(
                                 isProcessing = false,
@@ -402,6 +449,7 @@ class BatchPdfViewModel @Inject constructor(
     fun cancelBatchProcessing() {
         currentWorkId?.let { workManager.cancelWorkById(it) }
         workObserverJob?.cancel()
+        lastEnqueueName = null
         _state.update {
             it.copy(
                 isProcessing = false,

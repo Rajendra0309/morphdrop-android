@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import com.morphdrop.app.data.local.entity.FavoriteEntity
 import kotlinx.coroutines.flow.Flow
 
@@ -23,4 +24,17 @@ interface FavoriteDao {
 
     @Query("SELECT EXISTS(SELECT 1 FROM favorites WHERE conversionTypeId = :conversionTypeId)")
     suspend fun isFavoriteDirect(conversionTypeId: String): Boolean
+
+    /**
+     * Atomic check-then-toggle executed in a single transaction, so two
+     * concurrent toggles can never interleave into duplicates or a lost delete.
+     */
+    @Transaction
+    suspend fun toggleFavorite(conversionTypeId: String) {
+        if (isFavoriteDirect(conversionTypeId)) {
+            deleteFavoriteByTypeId(conversionTypeId)
+        } else {
+            insertFavorite(FavoriteEntity(conversionTypeId = conversionTypeId))
+        }
+    }
 }

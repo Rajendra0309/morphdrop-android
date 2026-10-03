@@ -78,10 +78,13 @@ class MergePdfUseCase @Inject constructor(
 
                 if (item.pageIndex in 0 until sourceDoc.numberOfPages) {
                     val page = sourceDoc.getPage(item.pageIndex)
+                    // Import first, then rotate the IMPORTED copy: mutating the cached
+                    // source page would compound the rotation when the same page index
+                    // is merged more than once.
+                    val importedPage = mergedDoc.importPage(page)
                     if (item.rotation != 0) {
-                        page.rotation = (page.rotation + item.rotation) % 360
+                        importedPage.rotation = Math.floorMod(importedPage.rotation + item.rotation, 360)
                     }
-                    mergedDoc.importPage(page)
                 }
             }
 
@@ -109,17 +112,31 @@ class MergePdfUseCase @Inject constructor(
     }
 
     suspend fun legacy(uris: List<Uri>, outputFileName: String): Uri {
-        // This is only for backward compatibility if needed, but we should use the new one.
-        // I'll implement it by mapping all pages of each URI.
+        // Kept for ConversionWorker compatibility; routes through invoke() but keeps
+        // its own resource handling so a corrupt file maps to MergeException.CorruptFile.
         val items = mutableListOf<MergePdfItem>()
         for (uri in uris) {
-            val inputStream = FileHelper.readFileFromUri(context, uri)
-            val doc = PDDocument.load(inputStream)
-            for (i in 0 until doc.numberOfPages) {
-                items.add(MergePdfItem(uri, i))
+            val inputStream = try {
+                FileHelper.readFileFromUri(context, uri)
+            } catch (e: Exception) {
+                throw MergeException.CorruptFile(uri)
             }
-            doc.close()
-            inputStream.close()
+            try {
+                val doc = try {
+                    PDDocument.load(inputStream)
+                } catch (e: Exception) {
+                    throw MergeException.CorruptFile(uri)
+                }
+                try {
+                    for (i in 0 until doc.numberOfPages) {
+                        items.add(MergePdfItem(uri, i))
+                    }
+                } finally {
+                    try { doc.close() } catch (_: Exception) {}
+                }
+            } finally {
+                try { inputStream.close() } catch (_: Exception) {}
+            }
         }
         return invoke(items, outputFileName)
     }

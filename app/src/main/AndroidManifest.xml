@@ -17,6 +17,14 @@
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
 
+    <!-- Large-screen support: tablets, foldables (unfolded) and Chromebooks
+         get adaptive layouts (navigation rail, multi-column grids). -->
+    <supports-screens
+        android:smallScreens="true"
+        android:normalScreens="true"
+        android:largeScreens="true"
+        android:xlargeScreens="true" />
+
     <application
         android:name=".MorphDropApplication"
         android:allowBackup="true"
@@ -31,6 +39,7 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTask"
             android:label="@string/app_name"
             android:theme="@style/Theme.App.Starting"
             android:configChanges="uiMode|orientation|screenSize|screenLayout|keyboardHidden"
@@ -139,6 +148,7 @@
         <activity
             android:name=".PdfViewerActivity"
             android:exported="true"
+            android:launchMode="singleTop"
             android:theme="@style/Theme.MorphDrop">
             <intent-filter tools:ignore="AppLinkUrlError">
                 <action android:name="android.intent.action.VIEW" />

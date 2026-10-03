@@ -5,8 +5,9 @@ import androidx.room.PrimaryKey
 
 @Entity(tableName = "favorites")
 data class FavoriteEntity(
-    @PrimaryKey(autoGenerate = true)
-    val id: Long = 0,
+    // conversionTypeId is the natural primary key: duplicates are impossible
+    // at the schema level, so a favorite can never be stored twice.
+    @PrimaryKey
     val conversionTypeId: String,
     val timestamp: Long = System.currentTimeMillis()
 )

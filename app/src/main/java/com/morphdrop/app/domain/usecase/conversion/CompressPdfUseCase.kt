@@ -4,13 +4,13 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
 import android.graphics.pdf.PdfRenderer
+import android.util.Log
 import com.morphdrop.app.domain.repository.SettingsRepository
 import com.morphdrop.app.util.FileHelper
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.cos.COSBase
 import com.tom_roush.pdfbox.cos.COSName
 import com.tom_roush.pdfbox.pdmodel.PDDocument
-import com.tom_roush.pdfbox.pdmodel.PDDocumentInformation
 import com.tom_roush.pdfbox.pdmodel.PDResources
 import com.tom_roush.pdfbox.pdmodel.graphics.form.PDFormXObject
 import com.tom_roush.pdfbox.pdmodel.graphics.image.JPEGFactory
@@ -39,6 +39,10 @@ class CompressPdfUseCase @Inject constructor(
     @param:ApplicationContext private val context: Context,
     private val settingsRepository: SettingsRepository
 ) {
+    companion object {
+        private const val TAG = "CompressPdfUseCase"
+    }
+
     init {
         try {
             PDFBoxResourceLoader.init(context)
@@ -48,50 +52,48 @@ class CompressPdfUseCase @Inject constructor(
     suspend fun analyzePdf(pdfUri: Uri): PdfSizeAnalysis = withContext(Dispatchers.IO) {
         val totalSize = FileHelper.getFileSize(context, pdfUri)
         try {
-            val inputStream = FileHelper.readFileFromUri(context, pdfUri)
-            val document = PDDocument.load(inputStream)
-            try {
-                var imageBytes = 0L
-                var imageCount = 0
-                val seenCosObjects = mutableSetOf<COSBase>()
+            // Nested use{}: if PDDocument.load() throws, the stream is still closed.
+            FileHelper.readFileFromUri(context, pdfUri).use { inputStream ->
+                PDDocument.load(inputStream).use { document ->
+                    var imageBytes = 0L
+                    var imageCount = 0
+                    val seenCosObjects = mutableSetOf<COSBase>()
 
-                fun inspectResources(resources: PDResources?) {
-                    if (resources == null) return
-                    for (name in resources.xObjectNames) {
-                        try {
-                            val xObj = resources.getXObject(name)
-                            if (xObj is PDImageXObject) {
-                                val cosObj = xObj.cosObject
-                                if (seenCosObjects.add(cosObj)) {
-                                    imageCount++
-                                    val stream = cosObj as? com.tom_roush.pdfbox.cos.COSStream
-                                    val len = stream?.length?.toLong() ?: 0L
-                                    imageBytes += if (len > 0) len else (xObj.width * xObj.height * 3L / 10L)
+                    fun inspectResources(resources: PDResources?) {
+                        if (resources == null) return
+                        for (name in resources.xObjectNames) {
+                            try {
+                                val xObj = resources.getXObject(name)
+                                if (xObj is PDImageXObject) {
+                                    val cosObj = xObj.cosObject
+                                    if (seenCosObjects.add(cosObj)) {
+                                        imageCount++
+                                        val stream = cosObj as? com.tom_roush.pdfbox.cos.COSStream
+                                        val len = stream?.length?.toLong() ?: 0L
+                                        imageBytes += if (len > 0) len else (xObj.width * xObj.height * 3L / 10L)
+                                    }
+                                } else if (xObj is PDFormXObject) {
+                                    inspectResources(xObj.resources)
                                 }
-                            } else if (xObj is PDFormXObject) {
-                                inspectResources(xObj.resources)
-                            }
-                        } catch (_: Exception) {}
+                            } catch (_: Exception) {}
+                        }
                     }
+
+                    for (page in document.pages) {
+                        inspectResources(page.resources)
+                    }
+
+                    val nonImage = (totalSize - imageBytes).coerceAtLeast(0L)
+                    val estMin = nonImage + (imageCount * 12 * 1024L)
+
+                    PdfSizeAnalysis(
+                        totalSizeBytes = totalSize,
+                        totalImageBytes = imageBytes,
+                        nonImageOverheadBytes = nonImage,
+                        imageCount = imageCount,
+                        estimatedMinBytes = estMin
+                    )
                 }
-
-                for (page in document.pages) {
-                    inspectResources(page.resources)
-                }
-
-                val nonImage = (totalSize - imageBytes).coerceAtLeast(0L)
-                val estMin = nonImage + (imageCount * 12 * 1024L)
-
-                PdfSizeAnalysis(
-                    totalSizeBytes = totalSize,
-                    totalImageBytes = imageBytes,
-                    nonImageOverheadBytes = nonImage,
-                    imageCount = imageCount,
-                    estimatedMinBytes = estMin
-                )
-            } finally {
-                document.close()
-                inputStream.close()
             }
         } catch (e: Exception) {
             PdfSizeAnalysis(
@@ -138,26 +140,31 @@ class CompressPdfUseCase @Inject constructor(
                 kotlinx.coroutines.yield()
 
                 val inputStream = FileHelper.readFileFromUri(context, pdfUri)
-                val doc = PDDocument.load(inputStream)
                 val currentBytes: ByteArray
                 try {
-                    doc.documentInformation = PDDocumentInformation().apply {
-                        producer = "MorphDrop PDF"
-                        creator = "MorphDrop"
-                    }
+                    val doc = PDDocument.load(inputStream)
+                    try {
+                        // Mutate the existing document information so author/title/
+                        // dates survive; do not replace it with a blank object.
+                        doc.documentInformation.apply {
+                            producer = "MorphDrop PDF"
+                            creator = "MorphDrop"
+                        }
 
-                    val imageMap = mutableMapOf<COSBase, PDImageXObject>()
-                    for (page in doc.pages) {
-                        kotlinx.coroutines.yield()
-                        compressResources(doc, page.resources, quality, scale, imageMap)
-                    }
+                        val imageMap = mutableMapOf<COSBase, PDImageXObject>()
+                        for (page in doc.pages) {
+                            kotlinx.coroutines.yield()
+                            compressResources(doc, page.resources, quality, scale, imageMap)
+                        }
 
-                    val baos = ByteArrayOutputStream()
-                    doc.save(baos)
-                    currentBytes = baos.toByteArray()
+                        val baos = ByteArrayOutputStream()
+                        doc.save(baos)
+                        currentBytes = baos.toByteArray()
+                    } finally {
+                        try { doc.close() } catch (_: Exception) {}
+                    }
                 } finally {
-                    doc.close()
-                    inputStream.close()
+                    try { inputStream.close() } catch (_: Exception) {}
                 }
 
                 onProgress?.invoke(iteration, maxIterations, currentBytes.size.toLong())
@@ -186,12 +193,11 @@ class CompressPdfUseCase @Inject constructor(
                 }
             }
 
-            val finalBytes = bestBytes ?: run {
-                val s = FileHelper.readFileFromUri(context, pdfUri)
-                val b = s.readBytes()
-                s.close()
-                b
-            }
+            val finalBytes = bestBytes ?: FileHelper.readFileFromUri(context, pdfUri).use { it.readBytes() }
+
+            // Terminal progress so observers always reach 100%, even when the
+            // binary search exits early or the loop ran to completion.
+            onProgress?.invoke(maxIterations, maxIterations, finalBytes.size.toLong())
 
             val sanitizedFileName = if (outputFileName.endsWith(".pdf", ignoreCase = true)) {
                 outputFileName
@@ -214,45 +220,50 @@ class CompressPdfUseCase @Inject constructor(
 
         // Standard Quality Level Compression (single pass)
         val inputStream = FileHelper.readFileFromUri(context, pdfUri)
-        val document = PDDocument.load(inputStream)
 
         try {
-            document.documentInformation = PDDocumentInformation().apply {
-                producer = "MorphDrop PDF"
-                creator = "MorphDrop"
+            val document = PDDocument.load(inputStream)
+            try {
+                // Mutate the existing document information so author/title/dates
+                // survive; do not replace it with a blank object.
+                document.documentInformation.apply {
+                    producer = "MorphDrop PDF"
+                    creator = "MorphDrop"
+                }
+
+                val imageMap = mutableMapOf<COSBase, PDImageXObject>()
+
+                for (page in document.pages) {
+                    kotlinx.coroutines.yield()
+                    compressResources(document, page.resources, compressionLevel.quality, compressionLevel.scaleFactor, imageMap)
+                }
+
+                val baos = ByteArrayOutputStream()
+                document.save(baos)
+                val bytes = baos.toByteArray()
+
+                val sanitizedFileName = if (outputFileName.endsWith(".pdf", ignoreCase = true)) {
+                    outputFileName
+                } else {
+                    "$outputFileName.pdf"
+                }
+
+                val outputUri = if (!subFolder.isNullOrBlank()) {
+                    FileHelper.saveToDirectory(context, subFolder, sanitizedFileName, bytes)
+                } else {
+                    FileHelper.saveToFile(context, settingsRepository, sanitizedFileName, bytes)
+                }
+
+                CompressResult(
+                    outputUri = outputUri,
+                    originalSize = originalSize,
+                    newSize = bytes.size.toLong()
+                )
+            } finally {
+                try { document.close() } catch (_: Exception) {}
             }
-
-            val imageMap = mutableMapOf<COSBase, PDImageXObject>()
-
-            for (page in document.pages) {
-                kotlinx.coroutines.yield()
-                compressResources(document, page.resources, compressionLevel.quality, compressionLevel.scaleFactor, imageMap)
-            }
-
-            val baos = ByteArrayOutputStream()
-            document.save(baos)
-            val bytes = baos.toByteArray()
-
-            val sanitizedFileName = if (outputFileName.endsWith(".pdf", ignoreCase = true)) {
-                outputFileName
-            } else {
-                "$outputFileName.pdf"
-            }
-
-            val outputUri = if (!subFolder.isNullOrBlank()) {
-                FileHelper.saveToDirectory(context, subFolder, sanitizedFileName, bytes)
-            } else {
-                FileHelper.saveToFile(context, settingsRepository, sanitizedFileName, bytes)
-            }
-
-            CompressResult(
-                outputUri = outputUri,
-                originalSize = originalSize,
-                newSize = bytes.size.toLong()
-            )
         } finally {
-            document.close()
-            inputStream.close()
+            try { inputStream.close() } catch (_: Exception) {}
         }
     }
 
@@ -278,33 +289,38 @@ class CompressPdfUseCase @Inject constructor(
                     continue
                 }
 
+                var bitmap: Bitmap? = null
+                var scaledBitmap: Bitmap? = null
+                var noAlphaBitmap: Bitmap? = null
                 try {
-                    val bitmap = xObject.image ?: continue
-                    
+                    bitmap = xObject.image ?: continue
+
                     val scaledWidth = (bitmap.width * scale).toInt().coerceAtLeast(1)
                     val scaledHeight = (bitmap.height * scale).toInt().coerceAtLeast(1)
 
-                    val scaledBitmap = if (scaledWidth != bitmap.width) {
+                    scaledBitmap = if (scaledWidth != bitmap.width || scaledHeight != bitmap.height) {
                         Bitmap.createScaledBitmap(bitmap, scaledWidth, scaledHeight, true)
-                    } else bitmap
+                    } else {
+                        bitmap
+                    }
 
                     // JPEG doesn't support alpha transparency, which causes silent failures.
                     // Flatten to a white background before compressing.
-                    val noAlphaBitmap = Bitmap.createBitmap(scaledBitmap.width, scaledBitmap.height, Bitmap.Config.ARGB_8888)
+                    noAlphaBitmap = Bitmap.createBitmap(scaledBitmap.width, scaledBitmap.height, Bitmap.Config.ARGB_8888)
                     val canvas = android.graphics.Canvas(noAlphaBitmap)
                     canvas.drawColor(android.graphics.Color.WHITE)
                     canvas.drawBitmap(scaledBitmap, 0f, 0f, null)
 
                     val compressedImage = JPEGFactory.createFromImage(document, noAlphaBitmap, quality)
-                    
+
                     // CRITICAL: Check if the new JPEG is actually smaller than the original image!
-                    // If the original was a 1-bit B&W scan (CCITTFax/JBIG2), converting to a 32-bit JPEG 
+                    // If the original was a 1-bit B&W scan (CCITTFax/JBIG2), converting to a 32-bit JPEG
                     // will MASSIVELY inflate the byte size, ruining compression.
                     var shouldReplace = true
                     try {
                         val oldStream = xObject.cosObject as? com.tom_roush.pdfbox.cos.COSStream
                         val newStream = compressedImage.cosObject as? com.tom_roush.pdfbox.cos.COSStream
-                        
+
                         if (oldStream != null && newStream != null) {
                             // Estimate size based on stream length dictionary entry or raw bytes
                             val oldLength = oldStream.length
@@ -321,12 +337,17 @@ class CompressPdfUseCase @Inject constructor(
                         // Map old object to new object for other pages to reuse
                         imageMap[cosObject] = compressedImage
                     }
-                    
-                    
-                    noAlphaBitmap.recycle()
-                    if (scaledBitmap != bitmap) scaledBitmap.recycle()
-                    bitmap.recycle()
-                } catch (_: Exception) {}
+                } catch (e: Exception) {
+                    // Surface the failure instead of silently skipping: the image keeps
+                    // its original encoding, but the user/log can see what was missed.
+                    Log.w(TAG, "Skipping image that failed to compress; keeping original encoding", e)
+                } finally {
+                    try { noAlphaBitmap?.recycle() } catch (_: Exception) {}
+                    try {
+                        if (scaledBitmap !== bitmap) scaledBitmap?.recycle()
+                    } catch (_: Exception) {}
+                    try { bitmap?.recycle() } catch (_: Exception) {}
+                }
             } else if (xObject is PDFormXObject) {
                 // Recursively handle nested resources (crucial for complex PDFs)
                 compressResources(document, xObject.resources, quality, scale, imageMap)

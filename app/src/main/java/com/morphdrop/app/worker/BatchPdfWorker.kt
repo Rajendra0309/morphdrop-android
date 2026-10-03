@@ -36,6 +36,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -106,6 +107,12 @@ class BatchPdfWorker @AssistedInject constructor(
         const val KEY_PROGRESS_FILE = "key_progress_file"
         const val KEY_PROGRESS_PERCENT = "key_progress_percent"
         const val KEY_RESULTS_JSON = "key_results_json"
+        // Convention: the per-item results JSON is persisted to a temp file in
+        // the app's cacheDir and only its URI string is returned under
+        // KEY_RESULTS_FILE. This avoids breaching WorkManager's ~10KB Data
+        // payload limit on large batches. KEY_RESULTS_JSON is kept as a
+        // constant for source compatibility but is no longer emitted.
+        const val KEY_RESULTS_FILE = "results_file"
         const val KEY_OUTPUT_FOLDER = "key_output_folder"
     }
 
@@ -134,7 +141,12 @@ class BatchPdfWorker @AssistedInject constructor(
                 cancelIntent = cancelPendingIntent
             )
             setForeground(foregroundInfo)
-        } catch (_: Throwable) {}
+        } catch (e: Throwable) {
+            // Log and explicitly continue without a foreground notification:
+            // the OS may constrain foreground-service starts, but the batch
+            // itself can still run to completion.
+            android.util.Log.w("BatchPdfWorker", "setForeground failed; continuing without foreground service", e)
+        }
 
         val rootFolder = settingsRepository.outputFolderName.first()
         val timestamp = SimpleDateFormat("yyyy-MM-dd_HH-mm", Locale.getDefault()).format(Date())
@@ -179,11 +191,9 @@ class BatchPdfWorker @AssistedInject constructor(
                     totalOriginalSize += size
 
                     try {
-                        val stream = FileHelper.readFileFromUri(appContext, uri)
-                        val doc = PDDocument.load(stream)
-                        val numPages = doc.numberOfPages
-                        doc.close()
-                        stream.close()
+                        val numPages = FileHelper.readFileFromUri(appContext, uri).use { stream ->
+                            PDDocument.load(stream).use { it.numberOfPages }
+                        }
 
                         for (p in 0 until numPages) {
                             mergeItems.add(MergePdfItem(uri = uri, pageIndex = p))
@@ -377,11 +387,9 @@ class BatchPdfWorker @AssistedInject constructor(
 
                                 val targetPages = if (scope != RotateScope.ALL_PAGES) {
                                     try {
-                                        val stream = FileHelper.readFileFromUri(appContext, uri)
-                                        val doc = PDDocument.load(stream)
-                                        val count = doc.numberOfPages
-                                        doc.close()
-                                        stream.close()
+                                        val count = FileHelper.readFileFromUri(appContext, uri).use { stream ->
+                                            PDDocument.load(stream).use { it.numberOfPages }
+                                        }
                                         (1..count).filter { p ->
                                             if (scope == RotateScope.EVEN_PAGES) p % 2 == 0 else p % 2 != 0
                                         }
@@ -447,14 +455,21 @@ class BatchPdfWorker @AssistedInject constructor(
 
             notificationHelper.cancelNotification(notificationId)
 
-            val summaryTitle = "Batch ${operation.displayName} Complete"
-            notificationHelper.showCompletionNotification(
-                notificationId = notificationId,
-                title = summaryTitle,
-                outputUri = outUris.firstOrNull()?.let { Uri.parse(it) }
-            )
-
             val jsonResults = Gson().toJson(itemResults)
+            val resultsFile = File(appContext.cacheDir, "batch_results_${id}.json")
+            try {
+                resultsFile.writeText(jsonResults)
+            } catch (e: Exception) {
+                return@withContext Result.failure(workDataOf("error" to "Failed to persist batch results: ${e.message}"))
+            }
+            // Expose via FileProvider (never a raw file:// URI); the ViewModel
+            // reads it back through ContentResolver, which handles content://.
+            val resultsFileUri = androidx.core.content.FileProvider.getUriForFile(
+                appContext,
+                "${appContext.packageName}.fileprovider",
+                resultsFile
+            ).toString()
+
             setProgress(workDataOf(
                 KEY_PROGRESS_CURRENT to inputUriStrings.size,
                 KEY_PROGRESS_TOTAL to inputUriStrings.size,
@@ -462,8 +477,29 @@ class BatchPdfWorker @AssistedInject constructor(
                 KEY_PROGRESS_PERCENT to 100
             ))
 
+            if (successCount == 0 && failCount > 0) {
+                // Every item failed: report failure, never a "Complete" notification.
+                notificationHelper.showErrorNotification(
+                    notificationId = notificationId,
+                    title = "Batch ${operation.displayName}",
+                    errorMessage = "All $failCount file(s) failed to process."
+                )
+                return@withContext Result.failure(workDataOf(
+                    "error" to "All $failCount file(s) failed to process.",
+                    KEY_RESULTS_FILE to resultsFileUri,
+                    KEY_OUTPUT_FOLDER to batchFolder
+                ))
+            }
+
+            val summaryTitle = "Batch ${operation.displayName} Complete"
+            notificationHelper.showCompletionNotification(
+                notificationId = notificationId,
+                title = summaryTitle,
+                outputUri = outUris.firstOrNull()?.let { Uri.parse(it) }
+            )
+
             Result.success(workDataOf(
-                KEY_RESULTS_JSON to jsonResults,
+                KEY_RESULTS_FILE to resultsFileUri,
                 KEY_OUTPUT_FOLDER to batchFolder
             ))
         } catch (e: CancellationException) {
