@@ -6,7 +6,8 @@ Currently, only the latest version of MorphDrop is supported with security updat
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 1.4.x   | :white_check_mark: |
+| 1.5.x   | :white_check_mark: |
+| 1.4.x   | :x:                |
 | 1.3.x   | :x:                |
 | 1.2.x   | :x:                |
 | 1.1.x   | :x:                |
