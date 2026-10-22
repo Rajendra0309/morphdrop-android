@@ -17,6 +17,7 @@ import com.morphdrop.app.ui.screens.history.HistoryScreen
 import com.morphdrop.app.ui.screens.home.HomeScreen
 import com.morphdrop.app.ui.screens.ocr.BatchOcrScreen
 import com.morphdrop.app.ui.screens.ocr.OcrScreen
+import com.morphdrop.app.ui.screens.photo.PhotoStudioScreen
 import com.morphdrop.app.ui.screens.processing.ProcessingScreen
 import com.morphdrop.app.ui.screens.result.ResultScreen
 import com.morphdrop.app.ui.screens.settings.SettingsScreen
@@ -111,6 +112,7 @@ fun NavGraph(
                 onNavigateToConfig = { conversionTypeId ->
                     when (conversionTypeId) {
                         "ocr_text_extractor" -> navController.navigate(Screen.Ocr.route)
+                        "photo_studio" -> navController.navigate(Screen.PhotoStudio.route)
                         "batch_ocr" -> navController.navigate(Screen.BatchOcr.route)
                         "batch_pdf" -> navController.navigate(Screen.BatchPdf.route)
                         "markdown_editor" -> navController.navigate(Screen.MarkdownEditor.createRoute(isNew = true))
@@ -127,6 +129,7 @@ fun NavGraph(
                 onQuickConvert = { conversionTypeId ->
                     when (conversionTypeId) {
                         "ocr_text_extractor" -> navController.navigate(Screen.Ocr.route)
+                        "photo_studio" -> navController.navigate(Screen.PhotoStudio.route)
                         "batch_ocr" -> navController.navigate(Screen.BatchOcr.route)
                         "batch_pdf" -> navController.navigate(Screen.BatchPdf.route)
                         "markdown_editor" -> navController.navigate(Screen.MarkdownEditor.createRoute(isNew = true))
@@ -237,6 +240,12 @@ fun NavGraph(
             OcrScreen(
                 onNavigateBack = navigateUpOrFinish,
                 onNavigateToBatchOcr = { navController.navigate(Screen.BatchOcr.route) }
+            )
+        }
+
+        composable(Screen.PhotoStudio.route) {
+            PhotoStudioScreen(
+                onNavigateBack = navigateUpOrFinish
             )
         }
 

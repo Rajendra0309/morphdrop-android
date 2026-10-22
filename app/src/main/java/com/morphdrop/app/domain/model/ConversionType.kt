@@ -5,6 +5,7 @@ import androidx.compose.material.icons.automirrored.outlined.Article
 import androidx.compose.material.icons.automirrored.outlined.CallSplit
 import androidx.compose.material.icons.automirrored.outlined.MergeType
 import androidx.compose.material.icons.automirrored.outlined.RotateRight
+import androidx.compose.material.icons.outlined.Badge
 import androidx.compose.material.icons.outlined.Collections
 import androidx.compose.material.icons.outlined.Compress
 import androidx.compose.material.icons.outlined.Description
@@ -271,6 +272,16 @@ data class ConversionType(
                 icon = Icons.Outlined.Compress,
                 category = CATEGORY_IMAGE_TOOLS,
                 isMultiFileAllowed = true
+            ),
+            ConversionType(
+                id = "photo_studio",
+                name = "Photo & Signature Studio",
+                description = "Exact-size exam photos and signatures with KB limits",
+                inputType = FileType.JPG,
+                outputType = FileType.JPG,
+                icon = Icons.Outlined.Badge,
+                category = CATEGORY_IMAGE_TOOLS,
+                isMultiFileAllowed = false
             )
         )
     }
