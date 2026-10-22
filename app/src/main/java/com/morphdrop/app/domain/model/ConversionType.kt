@@ -89,6 +89,16 @@ data class ConversionType(
                 isMultiFileAllowed = false
             ),
             ConversionType(
+                id = "pdf_to_docx",
+                name = "PDF to Word",
+                description = "Convert a text-based PDF into an editable Word document",
+                inputType = FileType.PDF,
+                outputType = FileType.DOCX,
+                icon = Icons.Outlined.Description,
+                category = CATEGORY_CONVERSIONS,
+                isMultiFileAllowed = false
+            ),
+            ConversionType(
                 id = "images_to_pdf",
                 name = "Images to PDF",
                 description = "Combine PNG, JPG, or WEBP into a PDF",

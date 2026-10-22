@@ -227,7 +227,7 @@ class ConversionConfigViewModel @Inject constructor(
             "excel_to_pdf" -> listOf("xls", "xlsx", "csv")
             "txt_to_pdf", "text_to_pdf" -> listOf("txt")
             "md_to_pdf" -> listOf("md", "markdown")
-            "pdf_to_images", "pdf_to_text", "split_pdf", "compress_pdf", "protect_pdf", "unlock_pdf", "organize_pdf", "merge_pdf" -> listOf("pdf")
+            "pdf_to_images", "pdf_to_text", "pdf_to_docx", "split_pdf", "compress_pdf", "protect_pdf", "unlock_pdf", "organize_pdf", "merge_pdf" -> listOf("pdf")
             "images_to_pdf", "compress_images", "image_converter" -> listOf("png", "jpg", "jpeg", "webp", "bmp")
             "metadata_editor" -> emptyList() // Empty list = ALL file types allowed!
             else -> listOf(t.inputType.extension)
@@ -283,7 +283,7 @@ class ConversionConfigViewModel @Inject constructor(
                 "txt_to_pdf", "text_to_pdf" -> mime.startsWith("text/")
                 "md_to_pdf" -> mime.contains("markdown") || mime.startsWith("text/")
                 "images_to_pdf", "compress_images", "image_converter" -> mime.startsWith("image/")
-                "pdf_to_images", "pdf_to_text", "split_pdf", "compress_pdf", "protect_pdf", "unlock_pdf", "organize_pdf", "merge_pdf" -> mime == "application/pdf"
+                "pdf_to_images", "pdf_to_text", "pdf_to_docx", "split_pdf", "compress_pdf", "protect_pdf", "unlock_pdf", "organize_pdf", "merge_pdf" -> mime == "application/pdf"
                 else -> false
             }
 
