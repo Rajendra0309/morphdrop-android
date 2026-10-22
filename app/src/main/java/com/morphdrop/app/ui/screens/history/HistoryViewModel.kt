@@ -25,7 +25,7 @@ enum class HistoryFilter(val label: String) {
     EXCEL("Excel")
 }
 
-private val IMAGE_TOOL_IDS = setOf("image_converter", "compress_images", "pdf_to_images", "images_to_pdf", "photo_studio")
+private val IMAGE_TOOL_IDS = setOf("image_converter", "compress_images", "pdf_to_images", "images_to_pdf", "photo_studio", "qr_studio")
 private val EXCEL_TOOL_IDS = setOf("excel_to_pdf")
 
 /** True when the history row belongs to the given filter. Old rows without a

@@ -7,6 +7,7 @@ import androidx.compose.material.icons.automirrored.outlined.MergeType
 import androidx.compose.material.icons.automirrored.outlined.RotateRight
 import androidx.compose.material.icons.outlined.Badge
 import androidx.compose.material.icons.outlined.Collections
+import androidx.compose.material.icons.outlined.QrCode2
 import androidx.compose.material.icons.outlined.Compress
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.EditNote
@@ -280,6 +281,16 @@ data class ConversionType(
                 inputType = FileType.JPG,
                 outputType = FileType.JPG,
                 icon = Icons.Outlined.Badge,
+                category = CATEGORY_IMAGE_TOOLS,
+                isMultiFileAllowed = false
+            ),
+            ConversionType(
+                id = "qr_studio",
+                name = "QR Code Studio",
+                description = "Create QR codes and scan QR codes and barcodes",
+                inputType = FileType.PNG,
+                outputType = FileType.PNG,
+                icon = Icons.Outlined.QrCode2,
                 category = CATEGORY_IMAGE_TOOLS,
                 isMultiFileAllowed = false
             )
