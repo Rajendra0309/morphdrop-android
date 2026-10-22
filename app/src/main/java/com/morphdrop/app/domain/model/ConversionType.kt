@@ -16,6 +16,7 @@ import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.PictureAsPdf
 import androidx.compose.material.icons.outlined.Slideshow
 import androidx.compose.material.icons.outlined.TableChart
+import androidx.compose.material.icons.outlined.TextSnippet
 import androidx.compose.material.icons.outlined.Transform
 import androidx.compose.ui.graphics.vector.ImageVector
 
@@ -74,6 +75,16 @@ data class ConversionType(
                 inputType = FileType.PDF,
                 outputType = FileType.PNG,
                 icon = Icons.Outlined.Collections,
+                category = CATEGORY_CONVERSIONS,
+                isMultiFileAllowed = false
+            ),
+            ConversionType(
+                id = "pdf_to_text",
+                name = "PDF to Text",
+                description = "Extract the text of a PDF into a plain text file",
+                inputType = FileType.PDF,
+                outputType = FileType.TXT,
+                icon = Icons.Outlined.TextSnippet,
                 category = CATEGORY_CONVERSIONS,
                 isMultiFileAllowed = false
             ),

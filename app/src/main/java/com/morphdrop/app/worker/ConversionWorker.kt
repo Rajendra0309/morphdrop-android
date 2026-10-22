@@ -20,6 +20,7 @@ import com.morphdrop.app.domain.usecase.conversion.MergePdfItem
 import com.morphdrop.app.domain.usecase.conversion.PdfPageEditorUseCase
 import com.morphdrop.app.domain.usecase.conversion.PdfPasswordUseCase
 import com.morphdrop.app.domain.usecase.conversion.PdfToImagesUseCase
+import com.morphdrop.app.domain.usecase.conversion.PdfToTextUseCase
 import com.morphdrop.app.domain.usecase.conversion.ReorderPdfPagesUseCase
 import com.morphdrop.app.domain.usecase.conversion.RotatePdfPagesUseCase
 import com.morphdrop.app.domain.usecase.conversion.SplitPdfUseCase
@@ -43,6 +44,7 @@ class ConversionWorker @AssistedInject constructor(
     @Assisted private val appContext: Context,
     @Assisted private val workerParams: WorkerParameters,
     private val pdfToImagesUseCase: PdfToImagesUseCase,
+    private val pdfToTextUseCase: PdfToTextUseCase,
     private val imagesToPdfUseCase: ImagesToPdfUseCase,
     private val excelToPdfUseCase: ExcelToPdfUseCase,
     private val textToPdfUseCase: TextToPdfUseCase,
@@ -158,6 +160,7 @@ class ConversionWorker @AssistedInject constructor(
             val ext = when (conversionType) {
                 "pdf_to_images", "split_pdf" -> "" // Folder
                 "images_to_pdf", "excel_to_pdf", "txt_to_pdf", "md_to_pdf", "compress_pdf" -> "pdf"
+                "pdf_to_text" -> "txt"
                 "image_converter", "compress_images" -> inputData.getString(KEY_TARGET_FORMAT) ?: "jpg"
                 "metadata_editor" -> inputExt
                 else -> if (inputExt.isNotBlank()) inputExt else "pdf"
@@ -272,6 +275,22 @@ class ConversionWorker @AssistedInject constructor(
                     val result = listOf(mdToPdfUseCase(uri, outputFileName = outputFileName))
                     notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 80, cancelPendingIntent)
                     setProgress(workDataOf("progress" to 80))
+                    result
+                }
+
+                "pdf_to_text" -> {
+                    checkCancellation()
+                    val uri = Uri.parse(requireNotNull(inputUriString))
+                    val result = listOf(pdfToTextUseCase(
+                        pdfUri = uri,
+                        outputFileName = outputFileName,
+                        onProgress = { p ->
+                            checkCancellation()
+                            val mappedProgress = 20 + (p * 0.7).toInt()
+                            notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), mappedProgress, cancelPendingIntent)
+                            setProgressAsync(workDataOf("progress" to mappedProgress))
+                        }
+                    ))
                     result
                 }
 
@@ -725,6 +744,7 @@ class ConversionWorker @AssistedInject constructor(
             "merge_pdf", "merge_pdfs" -> "Merge PDFs"
             "compress_pdf" -> "Compress PDF"
             "pdf_to_images" -> "PDF to Images"
+            "pdf_to_text" -> "PDF to Text"
             "images_to_pdf", "image_to_pdf" -> "Images to PDF"
             "excel_to_pdf" -> "Excel to PDF"
             "text_to_pdf", "txt_to_pdf" -> "Text to PDF"
