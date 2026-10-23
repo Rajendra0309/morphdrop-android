@@ -227,10 +227,15 @@ fun HistoryDetailScreenContent(
                                    else MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.8f)
                         )
 
-                        if (!item.success && !item.errorMessage.isNullOrBlank()) {
+                        if (!item.success) {
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
-                                text = item.errorMessage,
+                                text = if (!item.errorMessage.isNullOrBlank()) {
+                                    item.errorMessage
+                                } else {
+                                    // Rows saved before reasons were recorded.
+                                    "Reason not recorded for this older conversion"
+                                },
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onErrorContainer,
                                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
