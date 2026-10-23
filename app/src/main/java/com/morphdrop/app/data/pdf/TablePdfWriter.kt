@@ -249,7 +249,8 @@ object TablePdfWriter {
     }
 
     private fun textWidth(text: String, font: PDType1Font, fontSize: Float): Float =
-        font.getStringWidth(sanitize(text)) / 1000f * fontSize
+        // A multi-line cell measures as its widest line.
+        text.split('\n').maxOf { line -> font.getStringWidth(sanitize(line)) / 1000f * fontSize }
 
     /**
      * WinAnsi (CP1252) is the encoding of the standard fonts: replace the
@@ -266,6 +267,7 @@ object TablePdfWriter {
                     ch == '“' || ch == '”' -> '"'
                     ch == '–' || ch == '—' -> '-'
                     ch == '…' -> '.'
+                    ch == '\n' -> '\n' // wrapText splits lines on it
                     ch == '\t' -> ' '
                     ch.code < 32 -> ' '
                     else -> '?'

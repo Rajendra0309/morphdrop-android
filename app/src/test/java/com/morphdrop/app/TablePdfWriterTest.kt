@@ -29,7 +29,12 @@ class TablePdfWriterTest {
     }
 
     @Test
-    fun `control characters never reach the page`() {
+    fun `line breaks inside cells survive for the wrapper`() {
+        assertEquals("Line one\nLine two", TablePdfWriter.sanitize("Line one\nLine two"))
+    }
+
+    @Test
+    fun `other control characters never reach the page`() {
         assertEquals("a b c", TablePdfWriter.sanitize("a\u0000b\tc"))
     }
 }

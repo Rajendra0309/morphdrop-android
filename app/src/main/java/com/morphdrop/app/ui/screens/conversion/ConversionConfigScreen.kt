@@ -850,25 +850,30 @@ fun ConversionConfigScreenContent(
                 color = MaterialTheme.colorScheme.surface,
                 tonalElevation = 3.dp
             ) {
+                // The visible label names the format that will actually be
+                // produced when the tool offers a choice (e.g. "Convert to
+                // WEBP"); single-format tools keep the plain label, and the
+                // accessibility description always names the target.
+                val convertTarget = state.conversionType?.let {
+                    if (state.availableOutputFormats.size > 1) {
+                        state.outputFormat.uppercase()
+                    } else {
+                        it.outputType.displayName
+                    }
+                }
                 MorphButton(
-                    text = "Convert",
+                    text = if (state.availableOutputFormats.size > 1 && convertTarget != null) {
+                        "Convert to $convertTarget"
+                    } else {
+                        "Convert"
+                    },
                     onClick = onConvert,
                     enabled = state.isConvertEnabled,
                     variant = MorphButtonVariant.Primary,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 12.dp),
-                    contentDescription = state.conversionType?.let {
-                        // Name the format that will actually be produced:
-                        // when the tool offers a choice, that is the live
-                        // selection, not the type's nominal output type.
-                        val target = if (state.availableOutputFormats.size > 1) {
-                            state.outputFormat.uppercase()
-                        } else {
-                            it.outputType.displayName
-                        }
-                        "Convert to $target"
-                    }
+                    contentDescription = convertTarget?.let { "Convert to $it" }
                 )
             }
         }
