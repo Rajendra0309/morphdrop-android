@@ -11,6 +11,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -136,13 +137,16 @@ fun SignPdfScreen(
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.SemiBold
                 )
-                Box(
+                BoxWithConstraints(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(12.dp))
                         .background(MaterialTheme.colorScheme.surfaceContainerLow),
                     contentAlignment = Alignment.Center
                 ) {
+                    // The stamp uses a 36pt page margin (~6% of an A4 width);
+                    // the preview uses the same share of its own width.
+                    val stampMargin = maxWidth * 0.06f
                     when {
                         state.isLoadingPreview -> CircularProgressIndicator(
                             modifier = Modifier.padding(48.dp)
@@ -154,10 +158,15 @@ fun SignPdfScreen(
                         )
                     }
                     // Placement preview: the signature drawn on the page at
-                    // the chosen corner and size, exactly as it will stamp
-                    // (shown when this page is in the selected page scope).
+                    // the chosen corner and size, exactly as it will stamp —
+                    // but only on pages the selected scope actually stamps.
                     val sig = state.signatureBitmap
-                    if (sig != null && state.pagePreview != null && !state.isLoadingPreview) {
+                    val pageIsStampTarget = when (state.scope) {
+                        SignPdfUseCase.SCOPE_FIRST -> state.currentPage == 0
+                        SignPdfUseCase.SCOPE_LAST -> state.currentPage == state.pageCount - 1
+                        else -> true // this page, or all pages
+                    }
+                    if (sig != null && state.pagePreview != null && !state.isLoadingPreview && pageIsStampTarget) {
                         val overlayAlignment = when (state.position) {
                             SignPdfUseCase.POS_BOTTOM_LEFT -> Alignment.BottomStart
                             SignPdfUseCase.POS_TOP_RIGHT -> Alignment.TopEnd
@@ -172,13 +181,24 @@ fun SignPdfScreen(
                                 .align(overlayAlignment)
                                 .fillMaxWidth(state.widthPercent / 100f)
                                 .aspectRatio(sig.width.toFloat() / sig.height.coerceAtLeast(1))
-                                .padding(10.dp)
+                                .padding(stampMargin)
                         )
                     }
                 }
                 if (state.signatureBitmap != null && state.pagePreview != null) {
+                    val pageIsStampTarget = when (state.scope) {
+                        SignPdfUseCase.SCOPE_FIRST -> state.currentPage == 0
+                        SignPdfUseCase.SCOPE_LAST -> state.currentPage == state.pageCount - 1
+                        else -> true
+                    }
                     Text(
-                        text = "Preview: the signature shows where it will be stamped on this page.",
+                        text = if (pageIsStampTarget) {
+                            "Preview: the signature shows where it will be stamped on this page."
+                        } else if (state.scope == SignPdfUseCase.SCOPE_FIRST) {
+                            "The signature will be stamped on page 1 — open that page to preview it."
+                        } else {
+                            "The signature will be stamped on page ${state.pageCount} — open that page to preview it."
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
