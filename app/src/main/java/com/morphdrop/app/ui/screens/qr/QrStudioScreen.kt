@@ -59,6 +59,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -416,11 +417,17 @@ private fun QrScanTab(state: QrStudioUiState, viewModel: QrStudioViewModel) {
         )
     }
     var permissionRequested by remember { mutableStateOf(false) }
+    // Bumped on every permission verdict and on resume. After a second
+    // denial the other states keep their values, so without this the
+    // permanently-denied check (a system call read during composition)
+    // would never re-run and the Settings button would stay hidden.
+    var permissionEpoch by remember { mutableIntStateOf(0) }
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
         cameraPermissionGranted = granted
         permissionRequested = true
+        permissionEpoch++
     }
 
     // Coming back from the system Settings (or any pause) may change the
@@ -432,6 +439,7 @@ private fun QrScanTab(state: QrStudioUiState, viewModel: QrStudioViewModel) {
                 cameraPermissionGranted =
                     ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
                     PackageManager.PERMISSION_GRANTED
+                permissionEpoch++
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -454,6 +462,7 @@ private fun QrScanTab(state: QrStudioUiState, viewModel: QrStudioViewModel) {
 
     LaunchedEffect(state.scanMode) {
         if (state.scanMode == QrScanMode.CAMERA && !cameraPermissionGranted) {
+            permissionRequested = true
             permissionLauncher.launch(Manifest.permission.CAMERA)
         }
     }
@@ -506,11 +515,13 @@ private fun QrScanTab(state: QrStudioUiState, viewModel: QrStudioViewModel) {
                 // of a dead Allow button. LocalContext here is a theme
                 // wrapper, so the Activity has to be unwrapped first.
                 val activity = context.findActivity()
-                val permanentlyDenied = permissionRequested && activity != null &&
-                    !androidx.core.app.ActivityCompat.shouldShowRequestPermissionRationale(
-                        activity,
-                        Manifest.permission.CAMERA
-                    )
+                val permanentlyDenied = remember(permissionEpoch, permissionRequested, activity) {
+                    permissionRequested && activity != null &&
+                        !androidx.core.app.ActivityCompat.shouldShowRequestPermissionRationale(
+                            activity,
+                            Manifest.permission.CAMERA
+                        )
+                }
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(24.dp),
@@ -550,7 +561,10 @@ private fun QrScanTab(state: QrStudioUiState, viewModel: QrStudioViewModel) {
                         } else {
                             PrimaryButton(
                                 text = "Allow Camera",
-                                onClick = { permissionLauncher.launch(Manifest.permission.CAMERA) }
+                                onClick = {
+                                    permissionRequested = true
+                                    permissionLauncher.launch(Manifest.permission.CAMERA)
+                                }
                             )
                         }
                     }
