@@ -111,6 +111,7 @@ class ConversionWorker @AssistedInject constructor(
         const val KEY_STRIP_METADATA = "strip_metadata"
         const val KEY_NAME_PATTERN = "output_name_pattern"
         const val KEY_SIGNATURE_FILE = "signature_file"
+        const val KEY_OCR_SCRIPT = "ocr_script"
         const val KEY_SIGN_SCOPE = "sign_scope"
         const val KEY_SIGN_PAGE_INDEX = "sign_page_index"
         const val KEY_SIGN_POSITION = "sign_position"
@@ -472,9 +473,13 @@ class ConversionWorker @AssistedInject constructor(
                 "ocr_searchable_pdf" -> {
                     checkCancellation()
                     val uri = Uri.parse(requireNotNull(inputUriString))
+                    val script = inputData.getString(KEY_OCR_SCRIPT)
+                        ?.let { runCatching { com.morphdrop.app.domain.model.OcrScript.valueOf(it) }.getOrNull() }
+                        ?: com.morphdrop.app.domain.model.OcrScript.LATIN
                     val result = listOf(searchablePdfUseCase(
                         pdfUri = uri,
                         outputFileName = outputFileName,
+                        script = script,
                         onProgress = { p ->
                             checkCancellation()
                             val mappedProgress = 10 + (p * 0.85).toInt()

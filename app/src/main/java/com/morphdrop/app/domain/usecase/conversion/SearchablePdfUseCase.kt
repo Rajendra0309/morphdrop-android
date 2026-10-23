@@ -15,6 +15,8 @@ import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPage
 import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
 import com.tom_roush.pdfbox.pdmodel.common.PDRectangle
+import com.tom_roush.pdfbox.pdmodel.font.PDFont
+import com.tom_roush.pdfbox.pdmodel.font.PDType0Font
 import com.tom_roush.pdfbox.pdmodel.font.PDType1Font
 import com.tom_roush.pdfbox.pdmodel.graphics.image.JPEGFactory
 import com.tom_roush.pdfbox.pdmodel.graphics.state.RenderingMode
@@ -85,9 +87,14 @@ class SearchablePdfUseCase @Inject constructor(
         script: OcrScript,
         onProgress: (Int) -> Unit
     ): ByteArray {
-        val font = PDType1Font.HELVETICA
         val document = PDDocument()
         try {
+            // Latin text uses the standard Helvetica (WinAnsi). Devanagari
+            // needs a real Unicode font: try the device's own Noto fonts and
+            // embed one; if the device has none, fall back to Helvetica and
+            // the layer degrades to '?' for those characters.
+            val font: PDFont = loadTextFont(document, script)
+            val winAnsi = font is PDType1Font
             for (pageIndex in 0 until pageCount) {
                 coroutineContext.ensureActive()
                 val page = renderer.openPage(pageIndex)
@@ -125,11 +132,14 @@ class SearchablePdfUseCase @Inject constructor(
                             for (line in block.lines) {
                                 for (element in line.elements) {
                                     val box = element.boundingBox ?: continue
-                                    val word = TablePdfWriter.sanitize(element.text).trim()
+                                    val raw = element.text.trim()
+                                    val word = if (winAnsi) TablePdfWriter.sanitize(raw) else raw
                                     if (word.isEmpty()) continue
                                     val fontSize = (box.height() * scaleY * 0.92f).coerceIn(4f, 72f)
-                                    val naturalWidth = font.getStringWidth(word) / 1000f * fontSize
                                     val targetWidth = box.width() * scaleX
+                                    val naturalWidth = runCatching {
+                                        font.getStringWidth(word) / 1000f * fontSize
+                                    }.getOrDefault(targetWidth)
                                     stream.beginText()
                                     stream.setFont(font, fontSize)
                                     if (naturalWidth > 1f) {
@@ -157,6 +167,24 @@ class SearchablePdfUseCase @Inject constructor(
         } finally {
             document.close()
         }
+    }
+
+    /** Latin gets Helvetica; Devanagari tries to embed a device Noto font. */
+    private fun loadTextFont(document: PDDocument, script: OcrScript): PDFont {
+        if (script != OcrScript.DEVANAGARI) return PDType1Font.HELVETICA
+        val candidates = listOf(
+            "/system/fonts/NotoSansDevanagari-Regular.ttf",
+            "/system/fonts/NotoSansDevanagari.ttf",
+            "/system/fonts/NotoSans-Regular.ttf"
+        )
+        for (path in candidates) {
+            val file = File(path)
+            if (file.exists()) {
+                val ttf = runCatching { PDType0Font.load(document, file) }.getOrNull()
+                if (ttf != null) return ttf
+            }
+        }
+        return PDType1Font.HELVETICA
     }
 
     /**

@@ -59,6 +59,7 @@ data class ConversionConfigState(
     val pageRangeEnd: String = "",
     val outputFileName: String = "",
     val outputNamePattern: String = "",
+    val ocrScript: String = "LATIN",
     val isConvertEnabled: Boolean = false,
     val showQualitySlider: Boolean = false,
     val showPageRange: Boolean = false,
@@ -687,6 +688,10 @@ class ConversionConfigViewModel @Inject constructor(
         }
     }
 
+    fun onOcrScriptChanged(script: String) {
+        _state.update { it.copy(ocrScript = script) }
+    }
+
     fun onOutputNamePatternChanged(value: String) {
         _state.update { it.copy(outputNamePattern = value) }
     }
@@ -1024,6 +1029,7 @@ class ConversionConfigViewModel @Inject constructor(
                 .putString(com.morphdrop.app.worker.ConversionWorker.KEY_OUTPUT_FILE_NAME, currentState.outputFileName)
                 .putString(com.morphdrop.app.worker.ConversionWorker.KEY_TARGET_FORMAT, currentState.outputFormat)
                 .putInt(com.morphdrop.app.worker.ConversionWorker.KEY_QUALITY, currentState.quality)
+                .putString(com.morphdrop.app.worker.ConversionWorker.KEY_OCR_SCRIPT, currentState.ocrScript)
                 .putBoolean(com.morphdrop.app.worker.ConversionWorker.KEY_STRIP_METADATA, currentState.stripMetadata)
 
             if (currentState.outputNamePattern.isNotBlank()) {
