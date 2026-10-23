@@ -132,10 +132,13 @@ fun PhotoStudioScreen(
             val resultScrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
             ResultScreenContent(
                 state = ResultUiState(
-                    title = if (state.mode == StudioMode.PHOTO) {
-                        "Photo Created Successfully!"
-                    } else {
-                        "Signature Created Successfully!"
+                    title = when {
+                        state.resultNote != null && state.mode == StudioMode.PHOTO ->
+                            "Photo Created — Over the Size Limit"
+                        state.resultNote != null ->
+                            "Signature Created — Over the Size Limit"
+                        state.mode == StudioMode.PHOTO -> "Photo Created Successfully!"
+                        else -> "Signature Created Successfully!"
                     },
                     subtitle = "1 file created • ${FileHelper.formatFileSize(state.resultSize)} • " +
                         "${state.resultWidth} × ${state.resultHeight} px" +
@@ -317,14 +320,16 @@ private fun PhotoStudioContent(
                     val preview = state.previewBitmap
                     if (preview != null) {
                         // The preview box uses the exact output aspect ratio, so
-                        // the crop/letterbox shown here is what gets saved.
-                        val frameBackground = if (state.fillFrame) {
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
-                        } else {
-                            Color(StudioBackground.options.getOrNull(state.backgroundIndex)?.color ?: android.graphics.Color.WHITE)
-                        }
+                        // the crop/letterbox shown here is what gets saved. Its
+                        // background is the studio background colour: transparent
+                        // pixels flatten onto it in the saved JPG, so the preview
+                        // must show the same colour (not the theme surface).
+                        val frameBackground = Color(
+                            StudioBackground.options.getOrNull(state.backgroundIndex)?.color
+                                ?: android.graphics.Color.WHITE
+                        )
                         val frameRatio = if (state.targetHeight > 0) {
-                            (state.targetWidth.toFloat() / state.targetHeight).coerceIn(0.45f, 3.4f)
+                            (state.targetWidth.toFloat() / state.targetHeight).coerceIn(0.25f, 5f)
                         } else {
                             1f
                         }
