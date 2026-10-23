@@ -682,6 +682,8 @@ private fun candidateToolsForUri(context: android.content.Context, uri: Uri): Li
     val ids = when {
         ext in listOf("png", "jpg", "jpeg", "webp", "bmp") ->
             listOf("images_to_pdf", "image_converter", "compress_images", "metadata_editor")
+        ext in listOf("heic", "heif") ->
+            listOf("heic_to_image", "metadata_editor")
         ext == "pdf" -> listOf(
             "pdf_to_text", "pdf_to_docx", "pdf_to_images", "merge_pdf", "split_pdf", "compress_pdf",
             "protect_pdf", "unlock_pdf", "page_editor", "watermark_pdf",

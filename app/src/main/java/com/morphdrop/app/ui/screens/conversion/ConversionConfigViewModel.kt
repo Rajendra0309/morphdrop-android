@@ -200,6 +200,11 @@ class ConversionConfigViewModel @Inject constructor(
                             splitEveryN = preset.splitEveryN.toIntOrNull() ?: next.splitEveryN
                         )
                     }
+                    // The HEIC tool only writes JPG/PNG; never let a saved
+                    // format from another image tool (e.g. WEBP) leak in.
+                    if (type.id == "heic_to_image" && next.outputFormat !in listOf("jpg", "png")) {
+                        next = next.copy(outputFormat = "jpg")
+                    }
                     next.copy(isConvertEnabled = isStateValid(next))
                 }
             }
@@ -227,6 +232,7 @@ class ConversionConfigViewModel @Inject constructor(
             "excel_to_pdf" -> listOf("xls", "xlsx", "csv")
             "xlsx_to_csv" -> listOf("xlsx")
             "csv_to_xlsx", "csv_to_pdf" -> listOf("csv")
+            "heic_to_image" -> listOf("heic", "heif")
             "txt_to_pdf", "text_to_pdf" -> listOf("txt")
             "md_to_pdf" -> listOf("md", "markdown")
             "pdf_to_images", "pdf_to_text", "pdf_to_docx", "split_pdf", "compress_pdf", "protect_pdf", "unlock_pdf", "organize_pdf", "merge_pdf" -> listOf("pdf")
@@ -1190,6 +1196,7 @@ class ConversionConfigViewModel @Inject constructor(
         return when (type.id) {
             "pdf_to_images" -> listOf("png", "jpg")
             "image_converter" -> listOf("png", "jpg", "webp", "bmp")
+            "heic_to_image" -> listOf("jpg", "png")
             else -> listOf(type.outputType.extension)
         }
     }

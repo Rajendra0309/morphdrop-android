@@ -10,6 +10,7 @@ import androidx.compose.material.icons.outlined.Badge
 import androidx.compose.material.icons.outlined.Collections
 import androidx.compose.material.icons.outlined.QrCode2
 import androidx.compose.material.icons.outlined.Compress
+import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.outlined.FormatListNumbered
@@ -304,6 +305,16 @@ data class ConversionType(
                 inputType = FileType.JPG,
                 outputType = FileType.JPG,
                 icon = Icons.Outlined.Compress,
+                category = CATEGORY_IMAGE_TOOLS,
+                isMultiFileAllowed = true
+            ),
+            ConversionType(
+                id = "heic_to_image",
+                name = "HEIC to Image",
+                description = "Convert HEIC/HEIF photos to JPG or PNG",
+                inputType = FileType.HEIC,
+                outputType = FileType.JPG,
+                icon = Icons.Outlined.PhotoLibrary,
                 category = CATEGORY_IMAGE_TOOLS,
                 isMultiFileAllowed = true
             ),

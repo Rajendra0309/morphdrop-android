@@ -131,6 +131,7 @@ fun ConversionConfigScreen(
         "excel_to_pdf" -> arrayOf("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.ms-excel", "text/csv")
         "xlsx_to_csv" -> arrayOf("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         "csv_to_xlsx", "csv_to_pdf" -> arrayOf("text/csv", "text/comma-separated-values", "text/plain")
+        "heic_to_image" -> arrayOf("image/*")
         "text_to_pdf" -> arrayOf("text/plain")
         "md_to_pdf" -> arrayOf("text/markdown", "text/x-markdown", "text/plain")
         "pdf_to_images", "pdf_to_text", "pdf_to_docx", "split_pdf", "compress_pdf", "protect_pdf", "unlock_pdf", "organize_pdf", "merge_pdf" -> arrayOf("application/pdf")

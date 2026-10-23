@@ -27,6 +27,7 @@ import com.morphdrop.app.domain.usecase.conversion.RotatePdfPagesUseCase
 import com.morphdrop.app.domain.usecase.conversion.SplitPdfUseCase
 import com.morphdrop.app.domain.usecase.conversion.TextToPdfUseCase
 import com.morphdrop.app.domain.usecase.conversion.CsvToXlsxUseCase
+import com.morphdrop.app.domain.usecase.conversion.HeicToImageUseCase
 import com.morphdrop.app.domain.usecase.conversion.WatermarkPdfUseCase
 import com.morphdrop.app.domain.usecase.conversion.XlsxToCsvUseCase
 import com.morphdrop.app.domain.usecase.conversion.AddPageNumbersUseCase
@@ -53,6 +54,7 @@ class ConversionWorker @AssistedInject constructor(
     private val excelToPdfUseCase: ExcelToPdfUseCase,
     private val xlsxToCsvUseCase: XlsxToCsvUseCase,
     private val csvToXlsxUseCase: CsvToXlsxUseCase,
+    private val heicToImageUseCase: HeicToImageUseCase,
     private val textToPdfUseCase: TextToPdfUseCase,
     private val mdToPdfUseCase: MdToPdfUseCase,
     private val imageConverterUseCase: ImageConverterUseCase,
@@ -170,7 +172,7 @@ class ConversionWorker @AssistedInject constructor(
                 "pdf_to_docx" -> "docx"
                 "xlsx_to_csv" -> "csv"
                 "csv_to_xlsx" -> "xlsx"
-                "image_converter", "compress_images" -> inputData.getString(KEY_TARGET_FORMAT) ?: "jpg"
+                "image_converter", "compress_images", "heic_to_image" -> inputData.getString(KEY_TARGET_FORMAT) ?: "jpg"
                 "metadata_editor" -> inputExt
                 else -> if (inputExt.isNotBlank()) inputExt else "pdf"
             }
@@ -436,6 +438,72 @@ class ConversionWorker @AssistedInject constructor(
                             outputFileName = genName
                         )
 
+                        convertedUris.add(convertedUri)
+                        outputsToCleanup.add(convertedUri)
+                        convertedCount++
+                    }
+
+                    checkCancellation()
+                    notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 100, cancelPendingIntent)
+                    setProgress(workDataOf("progress" to 100))
+                    convertedUris
+                }
+
+                "heic_to_image" -> {
+                    val uris = inputUrisArray?.map { Uri.parse(it) }
+                        ?: listOf(Uri.parse(requireNotNull(inputUriString)))
+
+                    totalImageCount = uris.size
+                    isBatchImageConversion = totalImageCount > 1
+
+                    val targetFormat = (inputData.getString(KEY_TARGET_FORMAT) ?: "jpg")
+                        .lowercase().takeIf { it == "jpg" || it == "jpeg" || it == "png" } ?: "jpg"
+                    val quality = inputData.getInt(KEY_QUALITY, 90)
+
+                    // Same batch convention as the image converter: single
+                    // files land in MorphDrop/, batches in a dated subfolder.
+                    val batchSubFolder = if (isBatchImageConversion) {
+                        val timestamp = SimpleDateFormat("yyyy-MM-dd_HH-mm", Locale.US).format(Date())
+                        "MorphDrop/Batch_[$timestamp]"
+                    } else null
+
+                    val convertedUris = mutableListOf<Uri>()
+                    for ((idx, u) in uris.withIndex()) {
+                        checkCancellation()
+                        val currentStatusText = if (isBatchImageConversion) {
+                            "Converting ${idx + 1} of $totalImageCount..."
+                        } else {
+                            "Converting HEIC Photo..."
+                        }
+                        val progressPercent = ((idx.toFloat() / totalImageCount) * 90).toInt().coerceAtLeast(10)
+                        notificationHelper.showProgressNotification(
+                            notificationId,
+                            currentStatusText,
+                            progressPercent,
+                            cancelPendingIntent
+                        )
+                        setProgress(workDataOf(
+                            "progress" to progressPercent,
+                            "stage_text" to currentStatusText,
+                            "converted_count" to convertedCount,
+                            "total_count" to totalImageCount
+                        ))
+
+                        val originalName = FileHelper.getFileName(appContext, u).substringBeforeLast('.')
+                        val genName = if (isBatchImageConversion) {
+                            "$originalName.$targetFormat"
+                        } else {
+                            outputFileName
+                        }
+                        generatedFileNames.add(genName)
+
+                        val convertedUri = heicToImageUseCase(
+                            inputUri = u,
+                            outputFormat = targetFormat,
+                            quality = quality,
+                            outputFolderName = batchSubFolder,
+                            outputFileName = genName
+                        )
                         convertedUris.add(convertedUri)
                         outputsToCleanup.add(convertedUri)
                         convertedCount++
@@ -809,6 +877,7 @@ class ConversionWorker @AssistedInject constructor(
             "xlsx_to_csv" -> "Excel to CSV"
             "csv_to_xlsx" -> "CSV to Excel"
             "csv_to_pdf" -> "CSV to PDF"
+            "heic_to_image" -> "HEIC to Image"
             "text_to_pdf", "txt_to_pdf" -> "Text to PDF"
             "md_to_pdf", "markdown_to_pdf" -> "Markdown to PDF"
             "image_converter" -> "Image Converter"
