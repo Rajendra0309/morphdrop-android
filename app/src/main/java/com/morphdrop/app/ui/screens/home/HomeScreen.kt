@@ -685,7 +685,7 @@ private fun candidateToolsForUri(context: android.content.Context, uri: Uri): Li
         ext in listOf("heic", "heif") ->
             listOf("heic_to_image", "metadata_editor")
         ext == "pdf" -> listOf(
-            "pdf_to_text", "pdf_to_docx", "pdf_to_images", "merge_pdf", "split_pdf", "compress_pdf",
+            "pdf_to_text", "pdf_to_docx", "ocr_searchable_pdf", "pdf_to_images", "merge_pdf", "split_pdf", "compress_pdf",
             "protect_pdf", "unlock_pdf", "page_editor", "watermark_pdf",
             "page_numbers_pdf", "rotate_pdf", "metadata_editor"
         )

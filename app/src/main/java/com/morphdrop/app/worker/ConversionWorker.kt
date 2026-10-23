@@ -28,6 +28,7 @@ import com.morphdrop.app.domain.usecase.conversion.SplitPdfUseCase
 import com.morphdrop.app.domain.usecase.conversion.TextToPdfUseCase
 import com.morphdrop.app.domain.usecase.conversion.CsvToXlsxUseCase
 import com.morphdrop.app.domain.usecase.conversion.HeicToImageUseCase
+import com.morphdrop.app.domain.usecase.conversion.SearchablePdfUseCase
 import com.morphdrop.app.domain.usecase.conversion.WatermarkPdfUseCase
 import com.morphdrop.app.domain.usecase.conversion.XlsxToCsvUseCase
 import com.morphdrop.app.domain.usecase.conversion.AddPageNumbersUseCase
@@ -55,6 +56,7 @@ class ConversionWorker @AssistedInject constructor(
     private val xlsxToCsvUseCase: XlsxToCsvUseCase,
     private val csvToXlsxUseCase: CsvToXlsxUseCase,
     private val heicToImageUseCase: HeicToImageUseCase,
+    private val searchablePdfUseCase: SearchablePdfUseCase,
     private val textToPdfUseCase: TextToPdfUseCase,
     private val mdToPdfUseCase: MdToPdfUseCase,
     private val imageConverterUseCase: ImageConverterUseCase,
@@ -168,7 +170,7 @@ class ConversionWorker @AssistedInject constructor(
             val inputExt = inputFileName.substringAfterLast('.', "").lowercase()
             val ext = when (conversionType) {
                 "pdf_to_images", "split_pdf" -> "" // Folder
-                "images_to_pdf", "excel_to_pdf", "csv_to_pdf", "txt_to_pdf", "md_to_pdf", "compress_pdf" -> "pdf"
+                "images_to_pdf", "excel_to_pdf", "csv_to_pdf", "ocr_searchable_pdf", "txt_to_pdf", "md_to_pdf", "compress_pdf" -> "pdf"
                 "pdf_to_text" -> "txt"
                 "pdf_to_docx" -> "docx"
                 "xlsx_to_csv" -> "csv"
@@ -454,6 +456,22 @@ class ConversionWorker @AssistedInject constructor(
                     notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 100, cancelPendingIntent)
                     setProgress(workDataOf("progress" to 100))
                     convertedUris
+                }
+
+                "ocr_searchable_pdf" -> {
+                    checkCancellation()
+                    val uri = Uri.parse(requireNotNull(inputUriString))
+                    val result = listOf(searchablePdfUseCase(
+                        pdfUri = uri,
+                        outputFileName = outputFileName,
+                        onProgress = { p ->
+                            checkCancellation()
+                            val mappedProgress = 10 + (p * 0.85).toInt()
+                            notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), mappedProgress, cancelPendingIntent)
+                            setProgressAsync(workDataOf("progress" to mappedProgress))
+                        }
+                    ))
+                    result
                 }
 
                 "heic_to_image" -> {
@@ -895,6 +913,7 @@ class ConversionWorker @AssistedInject constructor(
             "csv_to_xlsx" -> "CSV to Excel"
             "csv_to_pdf" -> "CSV to PDF"
             "heic_to_image" -> "HEIC to Image"
+            "ocr_searchable_pdf" -> "OCR to Searchable PDF"
             "image_resize" -> "Resize Images"
             "text_to_pdf", "txt_to_pdf" -> "Text to PDF"
             "md_to_pdf", "markdown_to_pdf" -> "Markdown to PDF"

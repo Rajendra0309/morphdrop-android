@@ -16,6 +16,7 @@ import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.outlined.FormatListNumbered
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.DocumentScanner
 import androidx.compose.material.icons.outlined.Layers
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.PictureAsPdf
@@ -187,6 +188,16 @@ data class ConversionType(
             ),
 
             // PDF Tools
+            ConversionType(
+                id = "ocr_searchable_pdf",
+                name = "OCR to Searchable PDF",
+                description = "Add a searchable text layer to a scanned PDF",
+                inputType = FileType.PDF,
+                outputType = FileType.PDF,
+                icon = Icons.Outlined.DocumentScanner,
+                category = CATEGORY_PDF_TOOLS,
+                isMultiFileAllowed = false
+            ),
             ConversionType(
                 id = "batch_pdf",
                 name = "Batch PDF Operations",
