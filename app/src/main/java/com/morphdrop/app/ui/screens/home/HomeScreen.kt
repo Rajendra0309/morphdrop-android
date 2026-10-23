@@ -9,6 +9,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,6 +27,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -35,6 +37,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.PictureAsPdf
@@ -65,6 +68,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -568,10 +575,35 @@ private fun ToolPickerDialog(
                     overflow = TextOverflow.Ellipsis
                 )
                 Spacer(modifier = Modifier.height(16.dp))
-                // The list scrolls inside a capped dialog: with 11+ tools
+                // The list scrolls inside a capped dialog: with 13 tools
                 // for a PDF, a plain Column overflowed the screen and the
-                // last options were unreachable.
-                LazyColumn(modifier = Modifier.weight(1f, fill = false)) {
+                // last options were unreachable. A scrollbar thumb plus a
+                // "scroll for more" pill make the scrolling discoverable.
+                val listState = rememberLazyListState()
+                val thumbColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
+                Box(
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .fillMaxWidth()
+                        .drawWithContent {
+                            drawContent()
+                            val info = listState.layoutInfo
+                            val total = info.totalItemsCount
+                            val visible = info.visibleItemsInfo.size
+                            if (total > visible && visible > 0) {
+                                val thumbHeight = size.height * visible / total
+                                val firstIndex = info.visibleItemsInfo.first().index
+                                val thumbY = size.height * firstIndex / total
+                                drawRoundRect(
+                                    color = thumbColor,
+                                    topLeft = Offset(size.width - 4.dp.toPx(), thumbY),
+                                    size = Size(4.dp.toPx(), thumbHeight),
+                                    cornerRadius = CornerRadius(2.dp.toPx())
+                                )
+                            }
+                        }
+                ) {
+                    LazyColumn(state = listState, modifier = Modifier.fillMaxWidth()) {
                     items(candidates, key = { it.id }) { tool ->
                         Row(
                             modifier = Modifier
@@ -599,6 +631,31 @@ private fun ToolPickerDialog(
                                 Spacer(modifier = Modifier.height(4.dp))
                                 TransformIndicator(conversionType = tool, compact = true)
                             }
+                        }
+                    }
+                    }
+                    if (listState.canScrollForward) {
+                        Row(
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(bottom = 8.dp)
+                                .clip(RoundedCornerShape(50))
+                                .background(MaterialTheme.colorScheme.primaryContainer)
+                                .padding(horizontal = 10.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Scroll for more",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                            Icon(
+                                imageVector = Icons.Filled.KeyboardArrowDown,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
                         }
                     }
                 }
