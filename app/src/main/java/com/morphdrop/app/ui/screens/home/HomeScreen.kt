@@ -47,6 +47,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -271,160 +272,120 @@ fun HomeScreenContent(
         },
         reserveFloatingNavSpace = !hasNavigationRail
     ) { innerPadding ->
-        LazyVerticalGrid(
-            state = gridState,
-            columns = GridCells.Fixed(gridColumns),
-            contentPadding = PaddingValues(
-                start = 16.dp,
-                end = 16.dp,
-                top = innerPadding.calculateTopPadding() + 8.dp,
-                bottom = innerPadding.calculateBottomPadding() + 48.dp
-            ),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier.fillMaxSize()
-        ) {
-            // In-home search bar, always at the top.
-            item(span = { GridItemSpan(maxLineSpan) }) {
-                MorphDropSearchBar(
-                    query = searchQuery,
-                    onQueryChange = onSearchQueryChange,
-                    active = false,
-                    onActiveChange = { },
-                    focusRequester = focusRequester,
-                    modifier = Modifier.padding(bottom = 4.dp)
-                )
-            }
+        // Option 1 layout: search and category filter chips are pinned
+        // under the app bar; the grid below them changes with the filter.
+        var selectedFilter by remember { mutableStateOf(HomeFilter.ALL) }
+        val favoriteIds = favoriteTypes.map { it.id }.toSet()
+        fun matchesFilter(type: ConversionType): Boolean = when (selectedFilter) {
+            HomeFilter.ALL -> true
+            HomeFilter.FAVORITES -> type.id in favoriteIds
+            HomeFilter.CONVERSIONS -> type.category == ConversionType.CATEGORY_CONVERSIONS
+            HomeFilter.PDF_TOOLS -> type.category == ConversionType.CATEGORY_PDF_TOOLS
+            HomeFilter.IMAGE_TOOLS -> type.category == ConversionType.CATEGORY_IMAGE_TOOLS
+        }
+        val visibleTypes = filteredTypes.filter { matchesFilter(it) }
+        val searching = searchQuery.isNotBlank()
 
-            // Continue reading: jump back into the last-viewed PDF at the
-            // exact page. Shown only when not searching.
-            if (searchQuery.isBlank() && lastOpenedPdf != null) {
-                item(span = { GridItemSpan(maxLineSpan) }) {
-                    ContinueReadingCard(
-                        lastPdf = lastOpenedPdf,
-                        onOpen = onOpenLastPdf,
-                        onDismiss = onDismissLastPdf
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(top = innerPadding.calculateTopPadding())
+        ) {
+            MorphDropSearchBar(
+                query = searchQuery,
+                onQueryChange = onSearchQueryChange,
+                active = false,
+                onActiveChange = { },
+                focusRequester = focusRequester,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 4.dp)
+            )
+
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                item {
+                    FilterChip(
+                        selected = selectedFilter == HomeFilter.ALL,
+                        onClick = { selectedFilter = HomeFilter.ALL },
+                        label = { Text("All ${ConversionType.defaultList.size}") },
+                        modifier = Modifier.semantics {
+                            contentDescription = "Show all ${ConversionType.defaultList.size} tools"
+                        }
                     )
                 }
-            }
-
-            // Intent strip: "what do you want to do?" one-tap shortcuts to the
-            // most-used tools. Visible only when not searching.
-            if (searchQuery.isBlank()) {
-                item(span = { GridItemSpan(maxLineSpan) }) {
-                    IntentStrip(onIntentClick = onNavigateToConfig)
-                }
-            }
-
-            if (searchQuery.isNotBlank()) {
-                if (filteredTypes.isEmpty()) {
-                    item(span = { GridItemSpan(maxLineSpan) }) {
-                        EmptyState(
-                            icon = Icons.Default.SearchOff,
-                            title = "No tools match \"$searchQuery\"",
-                            body = "Try a different keyword, like \"PDF\" or \"image\".",
-                            actionLabel = "Clear search",
-                            onAction = { onSearchQueryChange("") }
-                        )
-                    }
-                } else {
-                    items(filteredTypes, key = { it.id }) { item ->
-                        ConversionCard(
-                            conversionType = item,
-                            onClick = { onNavigateToConfig(item.id) },
-                            onLongClick = {
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                onQuickConvert(item.id)
-                            },
-                            onFavoriteToggle = { onToggleFavorite(item.id) },
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-                }
-            } else {
-                // (a) Drop zone launchpad
-                item(span = { GridItemSpan(maxLineSpan) }) {
-                    DropZoneCard(onPickFile = { dropZonePicker.launch(arrayOf("*/*")) })
-                }
-
-                // (b) Recent conversions
-                if (recentConversions.isNotEmpty()) {
-                    item(span = { GridItemSpan(maxLineSpan) }) {
-                        SectionHeader(
-                            title = "Recent",
-                            icon = Icons.Default.History,
-                            modifier = Modifier.padding(top = 8.dp)
-                        )
-                    }
-                    item(span = { GridItemSpan(maxLineSpan) }) {
-                        LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            contentPadding = PaddingValues(vertical = 4.dp)
-                        ) {
-                            items(recentConversions, key = { it.id }) { entity ->
-                                RecentConversionChip(
-                                    entity = entity,
-                                    onClick = {
-                                        val tool = resolveConversionType(entity.conversionTypeId, entity.conversionType)
-                                        if (tool != null) onNavigateToConfig(tool.id)
-                                        else onNavigate(Screen.History.route)
-                                    }
-                                )
-                            }
+                item {
+                    FilterChip(
+                        selected = selectedFilter == HomeFilter.FAVORITES,
+                        onClick = { selectedFilter = HomeFilter.FAVORITES },
+                        label = { Text("Favorites") },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.Favorite,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        },
+                        modifier = Modifier.semantics {
+                            contentDescription = "Show favorite tools, ${favoriteTypes.size} pinned"
                         }
-                    }
+                    )
                 }
-
-                // (c) Favorites rail
-                if (favoriteTypes.isNotEmpty()) {
-                    item(span = { GridItemSpan(maxLineSpan) }) {
-                        SectionHeader(
-                            title = "Favorites",
-                            icon = Icons.Default.Favorite,
-                            modifier = Modifier.padding(top = 8.dp)
-                        )
-                    }
-                    item(span = { GridItemSpan(maxLineSpan) }) {
-                        LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            contentPadding = PaddingValues(vertical = 4.dp)
-                        ) {
-                            items(favoriteTypes, key = { it.id }) { item ->
-                                ConversionCard(
-                                    conversionType = item,
-                                    onClick = { onNavigateToConfig(item.id) },
-                                    onLongClick = {
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        onQuickConvert(item.id)
-                                    },
-                                    onFavoriteToggle = { onToggleFavorite(item.id) },
-                                    modifier = Modifier.width(170.dp),
-                                    isCompact = true
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // (d) Categorized tools
-                val categories = listOf(
-                    ConversionType.CATEGORY_CONVERSIONS,
-                    ConversionType.CATEGORY_PDF_TOOLS,
-                    ConversionType.CATEGORY_IMAGE_TOOLS
+                val categoryFilters = listOf(
+                    HomeFilter.CONVERSIONS to ConversionType.CATEGORY_CONVERSIONS,
+                    HomeFilter.PDF_TOOLS to ConversionType.CATEGORY_PDF_TOOLS,
+                    HomeFilter.IMAGE_TOOLS to ConversionType.CATEGORY_IMAGE_TOOLS
                 )
-                categories.forEach { categoryName ->
-                    val itemsInCategory = filteredTypes.filter { it.category == categoryName }
-                    if (itemsInCategory.isNotEmpty()) {
+                categoryFilters.forEach { (filter, categoryName) ->
+                    val count = ConversionType.defaultList.count { it.category == categoryName }
+                    item {
+                        FilterChip(
+                            selected = selectedFilter == filter,
+                            onClick = { selectedFilter = filter },
+                            label = { Text("$categoryName $count") },
+                            modifier = Modifier.semantics {
+                                contentDescription = "Filter by $categoryName, $count tools"
+                            }
+                        )
+                    }
+                }
+            }
+
+            LazyVerticalGrid(
+                state = gridState,
+                columns = GridCells.Fixed(gridColumns),
+                contentPadding = PaddingValues(
+                    start = 16.dp,
+                    end = 16.dp,
+                    top = 8.dp,
+                    bottom = innerPadding.calculateBottomPadding() + 48.dp
+                ),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.fillMaxSize()
+            ) {
+                if (searching) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Text(
+                            text = "${visibleTypes.size} result${if (visibleTypes.size == 1) "" else "s"} for \"$searchQuery\"",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(bottom = 4.dp)
+                        )
+                    }
+                    if (visibleTypes.isEmpty()) {
                         item(span = { GridItemSpan(maxLineSpan) }) {
-                            Text(
-                                text = categoryName,
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)
+                            EmptyState(
+                                icon = Icons.Default.SearchOff,
+                                title = "No tools match \"$searchQuery\"",
+                                body = "Try a different keyword, like \"PDF\" or \"image\".",
+                                actionLabel = "Clear search",
+                                onAction = { onSearchQueryChange("") }
                             )
                         }
-                        items(itemsInCategory, key = { it.id }) { item ->
+                    } else {
+                        items(visibleTypes, key = { it.id }) { item ->
                             ConversionCard(
                                 conversionType = item,
                                 onClick = { onNavigateToConfig(item.id) },
@@ -437,10 +398,187 @@ fun HomeScreenContent(
                             )
                         }
                     }
+                } else if (selectedFilter == HomeFilter.FAVORITES) {
+                    if (favoriteTypes.isEmpty()) {
+                        item(span = { GridItemSpan(maxLineSpan) }) {
+                            EmptyState(
+                                icon = Icons.Default.Favorite,
+                                title = "No favorites yet",
+                                body = "Long-press a tool or tap its heart to pin it here.",
+                                actionLabel = "Browse all tools",
+                                onAction = { selectedFilter = HomeFilter.ALL }
+                            )
+                        }
+                    } else {
+                        items(favoriteTypes, key = { it.id }) { item ->
+                            ConversionCard(
+                                conversionType = item,
+                                onClick = { onNavigateToConfig(item.id) },
+                                onLongClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    onQuickConvert(item.id)
+                                },
+                                onFavoriteToggle = { onToggleFavorite(item.id) },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+                } else if (selectedFilter != HomeFilter.ALL) {
+                    val categoryName = when (selectedFilter) {
+                        HomeFilter.CONVERSIONS -> ConversionType.CATEGORY_CONVERSIONS
+                        HomeFilter.PDF_TOOLS -> ConversionType.CATEGORY_PDF_TOOLS
+                        else -> ConversionType.CATEGORY_IMAGE_TOOLS
+                    }
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Text(
+                            text = "$categoryName · ${visibleTypes.size} tools",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.padding(top = 4.dp, bottom = 4.dp)
+                        )
+                    }
+                    items(visibleTypes, key = { it.id }) { item ->
+                        ConversionCard(
+                            conversionType = item,
+                            onClick = { onNavigateToConfig(item.id) },
+                            onLongClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                onQuickConvert(item.id)
+                            },
+                            onFavoriteToggle = { onToggleFavorite(item.id) },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                } else {
+                    // All: continue reading, intents, drop zone, rails, then
+                    // the full tool grid grouped by category.
+                    if (lastOpenedPdf != null) {
+                        item(span = { GridItemSpan(maxLineSpan) }) {
+                            ContinueReadingCard(
+                                lastPdf = lastOpenedPdf,
+                                onOpen = onOpenLastPdf,
+                                onDismiss = onDismissLastPdf
+                            )
+                        }
+                    }
+
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        IntentStrip(onIntentClick = onNavigateToConfig)
+                    }
+
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        DropZoneCard(onPickFile = { dropZonePicker.launch(arrayOf("*/*")) })
+                    }
+
+                    if (recentConversions.isNotEmpty()) {
+                        item(span = { GridItemSpan(maxLineSpan) }) {
+                            SectionHeader(
+                                title = "Recent",
+                                icon = Icons.Default.History,
+                                modifier = Modifier.padding(top = 8.dp)
+                            )
+                        }
+                        item(span = { GridItemSpan(maxLineSpan) }) {
+                            LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                contentPadding = PaddingValues(vertical = 4.dp)
+                            ) {
+                                items(recentConversions, key = { it.id }) { entity ->
+                                    RecentConversionChip(
+                                        entity = entity,
+                                        onClick = {
+                                            val tool = resolveConversionType(entity.conversionTypeId, entity.conversionType)
+                                            if (tool != null) onNavigateToConfig(tool.id)
+                                            else onNavigate(Screen.History.route)
+                                        }
+                                    )
+                                }
+                                item {
+                                    RecentSeeAllChip(onClick = { onNavigate(Screen.History.route) })
+                                }
+                            }
+                        }
+                    }
+
+                    if (favoriteTypes.isNotEmpty()) {
+                        item(span = { GridItemSpan(maxLineSpan) }) {
+                            SectionHeader(
+                                title = "Favorites",
+                                icon = Icons.Default.Favorite,
+                                modifier = Modifier.padding(top = 8.dp)
+                            )
+                        }
+                        item(span = { GridItemSpan(maxLineSpan) }) {
+                            LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                contentPadding = PaddingValues(vertical = 4.dp)
+                            ) {
+                                items(favoriteTypes.take(6), key = { it.id }) { item ->
+                                    ConversionCard(
+                                        conversionType = item,
+                                        onClick = { onNavigateToConfig(item.id) },
+                                        onLongClick = {
+                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            onQuickConvert(item.id)
+                                        },
+                                        onFavoriteToggle = { onToggleFavorite(item.id) },
+                                        modifier = Modifier.width(170.dp),
+                                        isCompact = true
+                                    )
+                                }
+                                if (favoriteTypes.size > 6) {
+                                    item {
+                                        FavoritesSeeAllCard(
+                                            count = favoriteTypes.size,
+                                            onClick = { selectedFilter = HomeFilter.FAVORITES }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    val categories = listOf(
+                        ConversionType.CATEGORY_CONVERSIONS,
+                        ConversionType.CATEGORY_PDF_TOOLS,
+                        ConversionType.CATEGORY_IMAGE_TOOLS
+                    )
+                    categories.forEach { categoryName ->
+                        val itemsInCategory = visibleTypes.filter { it.category == categoryName }
+                        if (itemsInCategory.isNotEmpty()) {
+                            item(span = { GridItemSpan(maxLineSpan) }) {
+                                Text(
+                                    text = categoryName,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)
+                                )
+                            }
+                            items(itemsInCategory, key = { it.id }) { item ->
+                                ConversionCard(
+                                    conversionType = item,
+                                    onClick = { onNavigateToConfig(item.id) },
+                                    onLongClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        onQuickConvert(item.id)
+                                    },
+                                    onFavoriteToggle = { onToggleFavorite(item.id) },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
     }
+}
+
+/** Home grid filter: everything, favorites, or one tool category. */
+private enum class HomeFilter {
+    ALL, FAVORITES, CONVERSIONS, PDF_TOOLS, IMAGE_TOOLS
 }
 
 /** Dashed drop-zone card that opens the system file picker. */
@@ -489,6 +627,58 @@ private fun DropZoneCard(onPickFile: () -> Unit) {
                     color = scheme.onSurfaceVariant
                 )
             }
+        }
+    }
+}
+
+/** Trailing rail item that jumps to the full History list. */
+@Composable
+private fun RecentSeeAllChip(onClick: () -> Unit) {
+    val scheme = MaterialTheme.colorScheme
+    Card(
+        onClick = onClick,
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = scheme.surfaceContainerLow),
+        modifier = Modifier.width(110.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "See all",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = scheme.primary
+            )
+        }
+    }
+}
+
+/** Trailing rail card shown when more favorites exist than the rail holds. */
+@Composable
+private fun FavoritesSeeAllCard(count: Int, onClick: () -> Unit) {
+    val scheme = MaterialTheme.colorScheme
+    Card(
+        onClick = onClick,
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = scheme.surfaceContainerLow),
+        modifier = Modifier.width(110.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "See all $count",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = scheme.primary
+            )
         }
     }
 }
