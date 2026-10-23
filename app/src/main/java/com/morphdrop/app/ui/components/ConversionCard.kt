@@ -32,6 +32,9 @@ import androidx.compose.ui.unit.dp
 import com.morphdrop.app.domain.model.ConversionType
 import com.morphdrop.app.ui.theme.chipColors
 
+/** Tools whose output format is chosen per conversion, so no single "to X" label is honest. */
+private val MULTI_FORMAT_TOOL_IDS = setOf("image_converter", "image_resize", "heic_to_image", "pdf_to_images")
+
 @Composable
 fun ConversionCard(
     conversionType: ConversionType,
@@ -65,8 +68,11 @@ fun ConversionCard(
             )
             .semantics {
                 contentDescription =
-                    if (conversionType.id == "photo_studio" || conversionType.id == "qr_studio") {
-                        // Studios are not "X to Y" conversions.
+                    if (conversionType.id == "photo_studio" || conversionType.id == "qr_studio" ||
+                        conversionType.id in MULTI_FORMAT_TOOL_IDS
+                    ) {
+                        // Studios are not "X to Y" conversions, and
+                        // multi-format tools have no single output type.
                         "${conversionType.name}: ${conversionType.description}" + quickConvertSuffix
                     } else {
                         "${conversionType.name}: ${conversionType.inputType.displayName} " +

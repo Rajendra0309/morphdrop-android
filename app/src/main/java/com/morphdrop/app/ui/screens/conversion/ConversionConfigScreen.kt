@@ -614,6 +614,46 @@ fun ConversionConfigScreenContent(
                     }
                 }
 
+                // The dedicated Resize tool leads with its resize controls
+                // instead of hiding them under Advanced Settings.
+                if (state.conversionType?.id == "image_resize") {
+                    ConfigSection(title = "Resize Options") {
+                        ResizeOptionsContent(
+                            state = state,
+                            onResizeOptionSelected = onResizeOptionSelected,
+                            onTargetWidthChanged = onTargetWidthChanged,
+                            onTargetHeightChanged = onTargetHeightChanged
+                        )
+                        Text(
+                            text = "Exact size keeps the whole image and fills the rest " +
+                                "with the padding colour; percentages scale proportionally.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                // The Compress tool leads with quality and target size.
+                if (state.conversionType?.id == "compress_images") {
+                    ConfigSection(title = "Compression Quality: ${state.quality}%") {
+                        Slider(
+                            value = state.quality.toFloat(),
+                            onValueChange = { onQualityChanged(it.toInt()) },
+                            valueRange = 0f..100f
+                        )
+                    }
+                    ConfigSection(title = "Target Size (optional)") {
+                        OutlinedTextField(
+                            value = state.targetSizeKb,
+                            onValueChange = onTargetSizeKbChanged,
+                            label = { Text("Max size (KB)") },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            singleLine = true
+                        )
+                    }
+                }
+
                 // Advanced Settings ExpandableCard for Image Tools
                 if (isImageConversion) {
                     OutlinedButton(
@@ -626,48 +666,26 @@ fun ConversionConfigScreenContent(
 
                     AnimatedVisibility(visible = showAdvancedSettings) {
                         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                            // Quality Slider
-                            ConfigSection(title = "Compression Quality: ${state.quality}%") {
-                                Slider(
-                                    value = state.quality.toFloat(),
-                                    onValueChange = { onQualityChanged(it.toInt()) },
-                                    valueRange = 0f..100f
-                                )
+                            // Quality Slider (Compress shows it in the main config)
+                            if (state.conversionType?.id != "compress_images") {
+                                ConfigSection(title = "Compression Quality: ${state.quality}%") {
+                                    Slider(
+                                        value = state.quality.toFloat(),
+                                        onValueChange = { onQualityChanged(it.toInt()) },
+                                        valueRange = 0f..100f
+                                    )
+                                }
                             }
 
-                            // Resize Options
-                            ConfigSection(title = "Resize Options") {
-                                val resizeOptions = listOf("Original", "50%", "25%", "Custom")
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    resizeOptions.forEach { option ->
-                                        FilterChip(
-                                            selected = state.resizeOption == option,
-                                            onClick = { onResizeOptionSelected(option) },
-                                            label = { Text(option) }
-                                        )
-                                    }
-                                }
-
-                                if (state.resizeOption == "Custom") {
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                        OutlinedTextField(
-                                            value = state.targetWidth,
-                                            onValueChange = onTargetWidthChanged,
-                                            label = { Text("Width (px)") },
-                                            modifier = Modifier.weight(1f),
-                                            shape = RoundedCornerShape(12.dp),
-                                            singleLine = true
-                                        )
-                                        OutlinedTextField(
-                                            value = state.targetHeight,
-                                            onValueChange = onTargetHeightChanged,
-                                            label = { Text("Height (px)") },
-                                            modifier = Modifier.weight(1f),
-                                            shape = RoundedCornerShape(12.dp),
-                                            singleLine = true
-                                        )
-                                    }
+                            // Resize Options (the Resize tool shows them in the main config)
+                            if (state.conversionType?.id != "image_resize") {
+                                ConfigSection(title = "Resize Options") {
+                                    ResizeOptionsContent(
+                                        state = state,
+                                        onResizeOptionSelected = onResizeOptionSelected,
+                                        onTargetWidthChanged = onTargetWidthChanged,
+                                        onTargetHeightChanged = onTargetHeightChanged
+                                    )
                                 }
                             }
 
@@ -841,7 +859,15 @@ fun ConversionConfigScreenContent(
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 12.dp),
                     contentDescription = state.conversionType?.let {
-                        "Convert to ${it.outputType.displayName}"
+                        // Name the format that will actually be produced:
+                        // when the tool offers a choice, that is the live
+                        // selection, not the type's nominal output type.
+                        val target = if (state.availableOutputFormats.size > 1) {
+                            state.outputFormat.uppercase()
+                        } else {
+                            it.outputType.displayName
+                        }
+                        "Convert to $target"
                     }
                 )
             }
@@ -1036,6 +1062,47 @@ private fun FileDropZone(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun ResizeOptionsContent(
+    state: ConversionConfigState,
+    onResizeOptionSelected: (String) -> Unit,
+    onTargetWidthChanged: (String) -> Unit,
+    onTargetHeightChanged: (String) -> Unit
+) {
+    val resizeOptions = listOf("Original", "50%", "25%", "Custom")
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        resizeOptions.forEach { option ->
+            FilterChip(
+                selected = state.resizeOption == option,
+                onClick = { onResizeOptionSelected(option) },
+                label = { Text(option) }
+            )
+        }
+    }
+
+    if (state.resizeOption == "Custom") {
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            OutlinedTextField(
+                value = state.targetWidth,
+                onValueChange = onTargetWidthChanged,
+                label = { Text("Width (px)") },
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(12.dp),
+                singleLine = true
+            )
+            OutlinedTextField(
+                value = state.targetHeight,
+                onValueChange = onTargetHeightChanged,
+                label = { Text("Height (px)") },
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(12.dp),
+                singleLine = true
+            )
         }
     }
 }
