@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -31,7 +32,6 @@ import androidx.compose.material.icons.outlined.Badge
 import androidx.compose.material.icons.outlined.Crop
 import androidx.compose.material.icons.outlined.DataUsage
 import androidx.compose.material.icons.outlined.Draw
-import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.UploadFile
 import androidx.compose.material3.Card
@@ -43,6 +43,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberTopAppBarState
@@ -233,6 +234,27 @@ private fun PhotoStudioContent(
                 onBackClick = onNavigateBack,
                 modifier = Modifier.statusBarsPadding()
             )
+        },
+        bottomBar = {
+            Surface(shadowElevation = 6.dp, color = MaterialTheme.colorScheme.surface) {
+                Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)) {
+                    if (state.targetWidth > 0 && state.targetHeight > 0) {
+                        Text(
+                            text = "Output: ${state.targetWidth} × ${state.targetHeight} px · JPG" +
+                                (state.targetSizeKb?.let { " · up to $it KB" } ?: ""),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+                    PrimaryButton(
+                        text = if (state.mode == StudioMode.PHOTO) "Create Photo" else "Create Signature",
+                        onClick = onCreateClick,
+                        enabled = state.canCreate,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
         }
     ) { innerPadding ->
         Column(
@@ -294,34 +316,39 @@ private fun PhotoStudioContent(
                 Column(modifier = Modifier.padding(16.dp)) {
                     val preview = state.previewBitmap
                     if (preview != null) {
+                        // The preview box uses the exact output aspect ratio, so
+                        // the crop/letterbox shown here is what gets saved.
                         val frameBackground = if (state.fillFrame) {
                             MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
                         } else {
                             Color(StudioBackground.options.getOrNull(state.backgroundIndex)?.color ?: android.graphics.Color.WHITE)
                         }
+                        val frameRatio = if (state.targetHeight > 0) {
+                            (state.targetWidth.toFloat() / state.targetHeight).coerceIn(0.45f, 3.4f)
+                        } else {
+                            1f
+                        }
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(230.dp)
-                                .clip(RoundedCornerShape(16.dp))
+                                .aspectRatio(frameRatio)
+                                .clip(RoundedCornerShape(12.dp))
                                 .background(frameBackground),
                             contentAlignment = Alignment.Center
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth(0.86f)
-                                    .clip(RoundedCornerShape(8.dp))
-                            ) {
-                                Image(
-                                    bitmap = preview.asImageBitmap(),
-                                    contentDescription = "Selected image preview",
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(214.dp),
-                                    contentScale = if (state.fillFrame) ContentScale.Crop else ContentScale.Fit
-                                )
-                            }
+                            Image(
+                                bitmap = preview.asImageBitmap(),
+                                contentDescription = "Selected image preview",
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = if (state.fillFrame) ContentScale.Crop else ContentScale.Fit
+                            )
                         }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "This frame is exactly what will be saved — ${state.targetWidth} × ${state.targetHeight} px",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                         Spacer(modifier = Modifier.height(12.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -424,6 +451,12 @@ private fun PhotoStudioContent(
                             modifier = Modifier.weight(1f)
                         )
                     }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Width and height must be between 16 and 8000 px.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
 
@@ -498,31 +531,6 @@ private fun PhotoStudioContent(
                 )
             }
 
-            // Summary + action
-            if (state.targetWidth > 0 && state.targetHeight > 0) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Outlined.Image,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Output: ${state.targetWidth} × ${state.targetHeight} px · JPG" +
-                            (state.targetSizeKb?.let { " · up to $it KB" } ?: ""),
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-            }
-
-            PrimaryButton(
-                text = if (state.mode == StudioMode.PHOTO) "Create Photo" else "Create Signature",
-                onClick = onCreateClick,
-                enabled = state.canCreate,
-                modifier = Modifier.fillMaxWidth()
-            )
             Spacer(modifier = Modifier.height(24.dp))
         }
     }

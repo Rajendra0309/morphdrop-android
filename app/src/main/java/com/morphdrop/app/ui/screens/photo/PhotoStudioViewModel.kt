@@ -10,6 +10,8 @@ import androidx.lifecycle.viewModelScope
 import com.morphdrop.app.data.local.entity.ConversionHistoryEntity
 import com.morphdrop.app.domain.repository.HistoryRepository
 import com.morphdrop.app.domain.usecase.conversion.PhotoStudioUseCase
+import com.morphdrop.app.domain.usecase.conversion.applyExifOrientation
+import com.morphdrop.app.domain.usecase.conversion.readExifOrientation
 import com.morphdrop.app.util.FileHelper
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -28,9 +30,9 @@ data class StudioPreset(val label: String, val width: Int, val height: Int)
 
 object StudioPresets {
     val photo = listOf(
-        StudioPreset("Passport · 35×45 mm", 413, 531),
+        StudioPreset("Passport", 413, 531),
         StudioPreset("Square ID", 600, 600),
-        StudioPreset("Print · 4×6 in", 1200, 1800)
+        StudioPreset("Print 4×6", 1200, 1800)
     )
     val signature = listOf(
         StudioPreset("Standard", 560, 160),
@@ -150,9 +152,12 @@ class PhotoStudioViewModel @Inject constructor(
                 sample *= 2
             }
             val options = BitmapFactory.Options().apply { inSampleSize = sample }
-            context.contentResolver.openInputStream(uri)?.use {
+            val decoded = context.contentResolver.openInputStream(uri)?.use {
                 BitmapFactory.decodeStream(it, null, options)
-            }
+            } ?: return null
+            // Match the saved output: camera photos are often stored rotated
+            // with the real orientation in EXIF.
+            applyExifOrientation(decoded, readExifOrientation(context, uri))
         } catch (e: Exception) {
             null
         }
