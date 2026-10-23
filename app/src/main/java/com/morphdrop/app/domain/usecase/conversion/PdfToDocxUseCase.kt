@@ -25,11 +25,11 @@ import kotlin.math.roundToInt
  * then rebuilt as document structure: noticeably larger lines become
  * headings, and body lines are merged back into paragraphs using the
  * document's own line spacing. Two-column pages are read column by column.
+ * Embedded images are carried over as pictures at the end of their page.
  * The result is a clean, editable document — not a pixel-perfect clone of
  * the PDF layout (text boxes and tables do not survive as layout, only as
- * text, and embedded images are not carried over). Scanned PDFs have no
- * text layer and fail with [NoTextLayerException] so the UI can suggest
- * OCR instead.
+ * text). Scanned PDFs have no text layer and fail with
+ * [NoTextLayerException] so the UI can suggest OCR instead.
  */
 class PdfToDocxUseCase @Inject constructor(
     @param:ApplicationContext private val context: Context,
@@ -96,14 +96,67 @@ class PdfToDocxUseCase @Inject constructor(
             onProgress(80)
 
             // One entry per original page, empty ones included, so page
-            // boundaries survive even when a page has no text.
+            // boundaries survive even when a page has no text. Embedded
+            // images are extracted per page and appended after its text.
             val linesByPage = stripper.lines.groupBy { it.pageIndex }
+            val pageImages = mutableListOf<List<DocxBlock.Image>>()
+            val pageImageFailures = mutableListOf<Int>()
             val pages = (0 until doc.numberOfPages).map { pageIndex ->
+                val (images, failures) = extractPageImages(doc.getPage(pageIndex))
+                pageImages.add(images)
+                pageImageFailures.add(failures)
                 val pageLines = linesByPage[pageIndex].orEmpty()
                 if (pageLines.isEmpty()) emptyList() else readingOrder(pageLines)
             }
-            buildDocxBlocks(pages)
+            buildDocxBlocks(pages, pageImages, pageImageFailures)
         }
+    }
+
+    /**
+     * Decodes the image XObjects of one page into DOCX-ready pictures.
+     * Images with transparency stay PNG; opaque images become JPEG so
+     * photo-heavy PDFs do not balloon the document. Undecodable images
+     * (exotic PDF filters) are counted so the output can note the loss.
+     */
+    private fun extractPageImages(
+        page: com.tom_roush.pdfbox.pdmodel.PDPage
+    ): Pair<List<DocxBlock.Image>, Int> {
+        val images = mutableListOf<DocxBlock.Image>()
+        var failures = 0
+        val resources = page.resources ?: return images to failures
+        val names = try {
+            resources.xObjectNames
+        } catch (e: Exception) {
+            return images to failures
+        }
+        for (name in names) {
+            try {
+                val xObject = resources.getXObject(name)
+                if (xObject is com.tom_roush.pdfbox.pdmodel.graphics.image.PDImageXObject) {
+                    val bitmap = xObject.getImage()
+                    if (bitmap == null) {
+                        failures++
+                        continue
+                    }
+                    val stream = java.io.ByteArrayOutputStream()
+                    val encoded = if (bitmap.hasAlpha()) {
+                        bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, stream) to "png"
+                    } else {
+                        bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, stream) to "jpg"
+                    }
+                    if (encoded.first) {
+                        images.add(
+                            DocxBlock.Image(stream.toByteArray(), bitmap.width, bitmap.height, encoded.second)
+                        )
+                    } else {
+                        failures++
+                    }
+                }
+            } catch (e: Exception) {
+                failures++
+            }
+        }
+        return images to failures
     }
 }
 
@@ -114,7 +167,11 @@ class PdfToDocxUseCase @Inject constructor(
  * (leading), so 1.5-spaced documents merge their wrapped lines while real
  * paragraph gaps — visibly larger than the normal leading — still split.
  */
-internal fun buildDocxBlocks(orderedPages: List<List<PdfTextLine>>): List<DocxBlock> {
+internal fun buildDocxBlocks(
+    orderedPages: List<List<PdfTextLine>>,
+    pageImages: List<List<DocxBlock.Image>> = emptyList(),
+    pageImageFailures: List<Int> = emptyList()
+): List<DocxBlock> {
     val allLines = orderedPages.flatten()
     if (allLines.isEmpty()) return emptyList()
 
@@ -162,21 +219,37 @@ internal fun buildDocxBlocks(orderedPages: List<List<PdfTextLine>>): List<DocxBl
         }
     }
 
+    fun appendImageFailureNote(pageIndex: Int) {
+        val failed = pageImageFailures.getOrElse(pageIndex) { 0 }
+        if (failed > 0) {
+            blocks.add(
+                DocxBlock.Paragraph(
+                    "[Page ${pageIndex + 1}: $failed image(s) could not be included.]"
+                )
+            )
+        }
+    }
+
     orderedPages.forEachIndexed { pageIndex, lines ->
         if (pageIndex > 0 && (blocks.isNotEmpty() || paragraph.isNotEmpty())) {
             flushParagraph()
             blocks.add(DocxBlock.PageBreak)
             previousLine = null
         }
+        val images = pageImages.getOrElse(pageIndex) { emptyList() }
         if (lines.isEmpty()) {
-            // Keep the page's place instead of silently dropping it.
-            blocks.add(
-                DocxBlock.Paragraph(
-                    "[Page ${pageIndex + 1}: no readable text — this page may be a scanned image " +
-                        "or a picture, which Word conversion cannot include. " +
-                        "Use Extract Text (OCR) to read scanned pages.]"
+            if (images.isEmpty()) {
+                // Keep the page's place instead of silently dropping it.
+                blocks.add(
+                    DocxBlock.Paragraph(
+                        "[Page ${pageIndex + 1}: no readable text — this page may be a scanned image. " +
+                            "Use Extract Text (OCR) to read scanned pages.]"
+                    )
                 )
-            )
+            } else {
+                blocks.addAll(images)
+            }
+            appendImageFailureNote(pageIndex)
             previousLine = null
             return@forEachIndexed
         }
@@ -210,6 +283,13 @@ internal fun buildDocxBlocks(orderedPages: List<List<PdfTextLine>>): List<DocxBl
             }
             previousLine = line
         }
+        // The page's pictures follow its text.
+        if (images.isNotEmpty()) {
+            flushParagraph()
+            blocks.addAll(images)
+            previousLine = null
+        }
+        appendImageFailureNote(pageIndex)
     }
     flushParagraph()
     return blocks

@@ -72,4 +72,42 @@ class DocxWriterTest {
         assertTrue(document.contains("A &amp; B &lt;Test&gt;"))
         assertTrue(document.contains("5 &gt; 3 &amp; 2 &lt; 4"))
     }
+
+    @Test
+    fun `images are written as media parts with relationships`() {
+        val pngBytes = byteArrayOf(1, 2, 3, 4, 5)
+        val bytes = DocxWriter.write(
+            listOf(
+                DocxBlock.Paragraph("Before"),
+                DocxBlock.Image(pngBytes, widthPx = 200, heightPx = 100, extension = "png"),
+                DocxBlock.Paragraph("After")
+            )
+        )
+        // Raw parts (media bytes are not valid UTF-8 text in general).
+        val rawParts = mutableMapOf<String, ByteArray>()
+        ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->
+            var entry = zip.nextEntry
+            while (entry != null) {
+                rawParts[entry.name] = zip.readBytes()
+                entry = zip.nextEntry
+            }
+        }
+        assertTrue(rawParts.containsKey("word/media/image1.png"))
+        assertTrue(pngBytes.contentEquals(rawParts.getValue("word/media/image1.png")))
+
+        val document = rawParts.getValue("word/document.xml").toString(Charsets.UTF_8)
+        assertTrue(document.contains("<w:drawing>"))
+        assertTrue(document.contains("r:embed=\"rId2\""))
+
+        val rels = rawParts.getValue("word/_rels/document.xml.rels").toString(Charsets.UTF_8)
+        assertTrue(rels.contains("relationships/image"))
+        assertTrue(rels.contains("media/image1.png"))
+
+        val contentTypes = rawParts.getValue("[Content_Types].xml").toString(Charsets.UTF_8)
+        assertTrue(contentTypes.contains("image/png"))
+
+        // The document XML must stay well formed with an image inside.
+        DocumentBuilderFactory.newInstance().newDocumentBuilder()
+            .parse(document.byteInputStream())
+    }
 }
