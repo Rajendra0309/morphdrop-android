@@ -687,7 +687,8 @@ private fun candidateToolsForUri(context: android.content.Context, uri: Uri): Li
             "protect_pdf", "unlock_pdf", "page_editor", "watermark_pdf",
             "page_numbers_pdf", "rotate_pdf", "metadata_editor"
         )
-        ext in listOf("xlsx", "xls", "csv") -> listOf("excel_to_pdf", "metadata_editor")
+        ext == "xlsx" -> listOf("excel_to_pdf", "xlsx_to_csv", "metadata_editor")
+        ext in listOf("xls", "csv") -> listOf("excel_to_pdf", "metadata_editor")
         ext == "txt" -> listOf("txt_to_pdf", "metadata_editor")
         ext in listOf("md", "markdown") -> listOf("md_to_pdf", "metadata_editor")
         // Fallback for unknown extensions: sniff the MIME type.

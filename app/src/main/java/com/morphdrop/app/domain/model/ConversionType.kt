@@ -19,6 +19,7 @@ import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.PictureAsPdf
 import androidx.compose.material.icons.outlined.Slideshow
 import androidx.compose.material.icons.outlined.TableChart
+import androidx.compose.material.icons.outlined.TableRows
 import androidx.compose.material.icons.outlined.TextSnippet
 import androidx.compose.material.icons.outlined.Transform
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -118,6 +119,16 @@ data class ConversionType(
                 inputType = FileType.XLSX,
                 outputType = FileType.PDF,
                 icon = Icons.Outlined.TableChart,
+                category = CATEGORY_CONVERSIONS,
+                isMultiFileAllowed = false
+            ),
+            ConversionType(
+                id = "xlsx_to_csv",
+                name = "Excel to CSV",
+                description = "Convert the first sheet of an XLSX file to CSV",
+                inputType = FileType.XLSX,
+                outputType = FileType.CSV,
+                icon = Icons.Outlined.TableRows,
                 category = CATEGORY_CONVERSIONS,
                 isMultiFileAllowed = false
             ),

@@ -27,6 +27,7 @@ import com.morphdrop.app.domain.usecase.conversion.RotatePdfPagesUseCase
 import com.morphdrop.app.domain.usecase.conversion.SplitPdfUseCase
 import com.morphdrop.app.domain.usecase.conversion.TextToPdfUseCase
 import com.morphdrop.app.domain.usecase.conversion.WatermarkPdfUseCase
+import com.morphdrop.app.domain.usecase.conversion.XlsxToCsvUseCase
 import com.morphdrop.app.domain.usecase.conversion.AddPageNumbersUseCase
 import com.morphdrop.app.domain.model.WatermarkConfig
 import com.morphdrop.app.domain.model.PageNumberConfig
@@ -49,6 +50,7 @@ class ConversionWorker @AssistedInject constructor(
     private val pdfToDocxUseCase: PdfToDocxUseCase,
     private val imagesToPdfUseCase: ImagesToPdfUseCase,
     private val excelToPdfUseCase: ExcelToPdfUseCase,
+    private val xlsxToCsvUseCase: XlsxToCsvUseCase,
     private val textToPdfUseCase: TextToPdfUseCase,
     private val mdToPdfUseCase: MdToPdfUseCase,
     private val imageConverterUseCase: ImageConverterUseCase,
@@ -164,6 +166,7 @@ class ConversionWorker @AssistedInject constructor(
                 "images_to_pdf", "excel_to_pdf", "txt_to_pdf", "md_to_pdf", "compress_pdf" -> "pdf"
                 "pdf_to_text" -> "txt"
                 "pdf_to_docx" -> "docx"
+                "xlsx_to_csv" -> "csv"
                 "image_converter", "compress_images" -> inputData.getString(KEY_TARGET_FORMAT) ?: "jpg"
                 "metadata_editor" -> inputExt
                 else -> if (inputExt.isNotBlank()) inputExt else "pdf"
@@ -244,6 +247,22 @@ class ConversionWorker @AssistedInject constructor(
                     val uri = Uri.parse(requireNotNull(inputUriString))
                     val result = listOf(excelToPdfUseCase(
                         xlsxUri = uri, 
+                        outputFileName = outputFileName,
+                        onProgress = { p ->
+                            checkCancellation()
+                            val mappedProgress = 20 + (p * 0.7).toInt()
+                            notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), mappedProgress, cancelPendingIntent)
+                            setProgressAsync(workDataOf("progress" to mappedProgress))
+                        }
+                    ))
+                    result
+                }
+
+                "xlsx_to_csv" -> {
+                    checkCancellation()
+                    val uri = Uri.parse(requireNotNull(inputUriString))
+                    val result = listOf(xlsxToCsvUseCase(
+                        xlsxUri = uri,
                         outputFileName = outputFileName,
                         onProgress = { p ->
                             checkCancellation()
@@ -768,6 +787,7 @@ class ConversionWorker @AssistedInject constructor(
             "pdf_to_docx" -> "PDF to Word"
             "images_to_pdf", "image_to_pdf" -> "Images to PDF"
             "excel_to_pdf" -> "Excel to PDF"
+            "xlsx_to_csv" -> "Excel to CSV"
             "text_to_pdf", "txt_to_pdf" -> "Text to PDF"
             "md_to_pdf", "markdown_to_pdf" -> "Markdown to PDF"
             "image_converter" -> "Image Converter"

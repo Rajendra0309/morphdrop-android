@@ -225,6 +225,8 @@ class ConversionConfigViewModel @Inject constructor(
         val t = type ?: return emptyList()
         return when (t.id) {
             "excel_to_pdf" -> listOf("xls", "xlsx", "csv")
+            "xlsx_to_csv" -> listOf("xlsx")
+            "csv_to_xlsx", "csv_to_pdf" -> listOf("csv")
             "txt_to_pdf", "text_to_pdf" -> listOf("txt")
             "md_to_pdf" -> listOf("md", "markdown")
             "pdf_to_images", "pdf_to_text", "pdf_to_docx", "split_pdf", "compress_pdf", "protect_pdf", "unlock_pdf", "organize_pdf", "merge_pdf" -> listOf("pdf")

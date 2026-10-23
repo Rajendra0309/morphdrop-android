@@ -16,5 +16,7 @@ enum class FileType(
     BMP("BMP", "bmp", Color(0xFF673AB7)),
     TXT("TXT", "txt", Color(0xFF607D8B)),
     MD("MD", "md", Color(0xFF00E676)),
-    DOCX("DOCX", "docx", Color(0xFF1565C0)) // Word Blue
+    DOCX("DOCX", "docx", Color(0xFF1565C0)), // Word Blue
+    CSV("CSV", "csv", Color(0xFF00897B)), // Teal
+    HEIC("HEIC", "heic", Color(0xFF5E35B1)) // Deep Purple
 }
