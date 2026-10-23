@@ -240,6 +240,7 @@ fun ConversionConfigScreen(
         onTargetWidthChanged = viewModel::onTargetWidthChanged,
         onTargetHeightChanged = viewModel::onTargetHeightChanged,
         onPaddingColorChanged = viewModel::onPaddingColorChanged,
+        onOcrScriptChanged = viewModel::onOcrScriptChanged,
         onTargetSizeKbChanged = viewModel::onTargetSizeKbChanged,
         onCompressionPresetSelected = viewModel::onCompressionPresetSelected,
         onPdfCompressionPresetSelected = viewModel::onPdfCompressionPresetSelected,
@@ -413,6 +414,7 @@ fun ConversionConfigScreenContent(
     onTargetWidthChanged: (String) -> Unit,
     onTargetHeightChanged: (String) -> Unit,
     onPaddingColorChanged: (Int) -> Unit,
+    onOcrScriptChanged: (String) -> Unit = {},
     onTargetSizeKbChanged: (String) -> Unit,
     onCompressionPresetSelected: (String) -> Unit,
     onPdfCompressionPresetSelected: (String) -> Unit,
@@ -614,6 +616,30 @@ fun ConversionConfigScreenContent(
                     }
                 }
 
+                // OCR to Searchable PDF: recognition language.
+                if (state.conversionType?.id == "ocr_searchable_pdf") {
+                    ConfigSection(title = "Text Language") {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FilterChip(
+                                selected = state.ocrScript == "LATIN",
+                                onClick = { onOcrScriptChanged("LATIN") },
+                                label = { Text("Latin (English)") }
+                            )
+                            FilterChip(
+                                selected = state.ocrScript == "DEVANAGARI",
+                                onClick = { onOcrScriptChanged("DEVANAGARI") },
+                                label = { Text("Devanagari (Hindi)") }
+                            )
+                        }
+                        Text(
+                            text = "Pick the script the scan is written in. The text layer " +
+                                "uses a matching font when the device provides one.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
                 // The dedicated Resize tool leads with its resize controls
                 // instead of hiding them under Advanced Settings.
                 if (state.conversionType?.id == "image_resize") {
@@ -665,6 +691,13 @@ fun ConversionConfigScreenContent(
                             valueRange = 0f..100f
                         )
                     }
+                    Text(
+                        text = "Output format: ${state.outputFormat.uppercase()}. " +
+                            "Portals usually ask for JPG — if yours does, set the format " +
+                            "in the Output Format section below.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                     ConfigSection(title = "Target Size (optional)") {
                         OutlinedTextField(
                             value = state.targetSizeKb,
