@@ -23,6 +23,7 @@ import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.PictureAsPdf
 import androidx.compose.material.icons.outlined.Slideshow
 import androidx.compose.material.icons.outlined.GridOn
+import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.TableChart
 import androidx.compose.material.icons.outlined.TableRows
 import androidx.compose.material.icons.outlined.TextSnippet
@@ -197,6 +198,26 @@ data class ConversionType(
                 outputType = FileType.PDF,
                 icon = Icons.Outlined.DocumentScanner,
                 category = CATEGORY_PDF_TOOLS,
+                isMultiFileAllowed = false
+            ),
+            ConversionType(
+                id = "pdf_to_excel",
+                name = "PDF to Excel",
+                description = "Extract a table from a text-based PDF into a spreadsheet",
+                inputType = FileType.PDF,
+                outputType = FileType.XLSX,
+                icon = Icons.Outlined.TableChart,
+                category = CATEGORY_CONVERSIONS,
+                isMultiFileAllowed = false
+            ),
+            ConversionType(
+                id = "pdf_to_csv",
+                name = "PDF to CSV",
+                description = "Extract a table from a text-based PDF into CSV",
+                inputType = FileType.PDF,
+                outputType = FileType.CSV,
+                icon = Icons.Outlined.GridView,
+                category = CATEGORY_CONVERSIONS,
                 isMultiFileAllowed = false
             ),
             ConversionType(

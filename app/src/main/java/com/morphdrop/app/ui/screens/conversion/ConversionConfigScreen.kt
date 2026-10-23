@@ -134,7 +134,7 @@ fun ConversionConfigScreen(
         "heic_to_image" -> arrayOf("image/*")
         "text_to_pdf" -> arrayOf("text/plain")
         "md_to_pdf" -> arrayOf("text/markdown", "text/x-markdown", "text/plain")
-        "pdf_to_images", "pdf_to_text", "pdf_to_docx", "ocr_searchable_pdf", "split_pdf", "compress_pdf", "protect_pdf", "unlock_pdf", "organize_pdf", "merge_pdf" -> arrayOf("application/pdf")
+        "pdf_to_images", "pdf_to_text", "pdf_to_docx", "pdf_to_csv", "pdf_to_excel", "ocr_searchable_pdf", "split_pdf", "compress_pdf", "protect_pdf", "unlock_pdf", "organize_pdf", "merge_pdf" -> arrayOf("application/pdf")
         "images_to_pdf", "compress_images", "image_converter", "image_resize" -> arrayOf("image/*")
         else -> arrayOf("*/*")
     }
