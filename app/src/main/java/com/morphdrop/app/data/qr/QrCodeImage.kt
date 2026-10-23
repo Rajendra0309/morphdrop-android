@@ -35,7 +35,7 @@ object QrCodeImage {
         if (payload.isBlank()) return null
         return try {
             val hints = mapOf(
-                EncodeHintType.MARGIN to 2,
+                EncodeHintType.MARGIN to 4, // standard 4-module quiet zone
                 EncodeHintType.CHARACTER_SET to "UTF-8"
             )
             val matrix = QRCodeWriter().encode(

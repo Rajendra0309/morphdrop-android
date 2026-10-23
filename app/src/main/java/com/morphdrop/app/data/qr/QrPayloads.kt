@@ -23,7 +23,7 @@ object QrPayloads {
 
     fun sms(number: String, message: String): String {
         val base = "sms:${number.filter { it.isDigit() || it == '+' }}"
-        return if (message.isBlank()) base else "$base?&body=${message.encodeQueryValue()}"
+        return if (message.isBlank()) base else "$base?body=${message.encodeQueryValue()}"
     }
 
     fun email(address: String, subject: String, body: String): String {

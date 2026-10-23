@@ -415,9 +415,28 @@ private fun QrScanTab(state: QrStudioUiState, viewModel: QrStudioViewModel) {
                 PackageManager.PERMISSION_GRANTED
         )
     }
+    var permissionRequested by remember { mutableStateOf(false) }
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
-    ) { granted -> cameraPermissionGranted = granted }
+    ) { granted ->
+        cameraPermissionGranted = granted
+        permissionRequested = true
+    }
+
+    // Coming back from the system Settings (or any pause) may change the
+    // permission state; refresh it so a granted permission takes effect.
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                cameraPermissionGranted =
+                    ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
+                    PackageManager.PERMISSION_GRANTED
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
@@ -482,6 +501,15 @@ private fun QrScanTab(state: QrStudioUiState, viewModel: QrStudioViewModel) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             } else {
+                // After a denial with "don't ask again", the system dialog
+                // never appears again — offer the Settings route instead
+                // of a dead Allow button.
+                val activity = context as? android.app.Activity
+                val permanentlyDenied = permissionRequested && activity != null &&
+                    !androidx.core.app.ActivityCompat.shouldShowRequestPermissionRationale(
+                        activity,
+                        Manifest.permission.CAMERA
+                    )
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(24.dp),
@@ -499,14 +527,31 @@ private fun QrScanTab(state: QrStudioUiState, viewModel: QrStudioViewModel) {
                         )
                         Spacer(modifier = Modifier.height(12.dp))
                         Text(
-                            text = "Camera permission is needed to scan codes live. Nothing is recorded or uploaded — scanning happens on your device.",
+                            text = if (permanentlyDenied) {
+                                "Camera permission is turned off for MorphDrop. Open Settings to allow it — scanning happens fully on your device."
+                            } else {
+                                "Camera permission is needed to scan codes live. Nothing is recorded or uploaded — scanning happens on your device."
+                            },
                             style = MaterialTheme.typography.bodyMedium
                         )
                         Spacer(modifier = Modifier.height(16.dp))
-                        PrimaryButton(
-                            text = "Allow Camera",
-                            onClick = { permissionLauncher.launch(Manifest.permission.CAMERA) }
-                        )
+                        if (permanentlyDenied) {
+                            PrimaryButton(
+                                text = "Open App Settings",
+                                onClick = {
+                                    val settingsIntent = Intent(
+                                        android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                        Uri.parse("package:${context.packageName}")
+                                    )
+                                    context.startActivity(settingsIntent)
+                                }
+                            )
+                        } else {
+                            PrimaryButton(
+                                text = "Allow Camera",
+                                onClick = { permissionLauncher.launch(Manifest.permission.CAMERA) }
+                            )
+                        }
                     }
                 }
             }
@@ -611,8 +656,12 @@ private fun QrScanTab(state: QrStudioUiState, viewModel: QrStudioViewModel) {
                         if (scanned.text.startsWith("http://") || scanned.text.startsWith("https://")) {
                             OutlinedButton(
                                 onClick = {
-                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(scanned.text))
-                                    context.startActivity(intent)
+                                    try {
+                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(scanned.text))
+                                        context.startActivity(intent)
+                                    } catch (e: Exception) {
+                                        viewModel.showScanError("No app on this device can open that link.")
+                                    }
                                 }
                             ) {
                                 Icon(
@@ -675,6 +724,7 @@ private fun CameraScanner(
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     var torchOn by remember { mutableStateOf(false) }
     var cameraControl by remember { mutableStateOf<androidx.camera.core.CameraControl?>(null) }
+    var cameraProvider by remember { mutableStateOf<androidx.camera.lifecycle.ProcessCameraProvider?>(null) }
 
     val scanner = remember {
         com.google.mlkit.vision.barcode.BarcodeScanning.getClient(
@@ -687,6 +737,11 @@ private fun CameraScanner(
 
     androidx.compose.runtime.DisposableEffect(Unit) {
         onDispose {
+            // Release the camera itself, not just the analyzer: without an
+            // unbind the camera (and torch) stay active after the user
+            // switches tabs or leaves the screen.
+            runCatching { cameraControl?.enableTorch(false) }
+            cameraProvider?.unbindAll()
             scanner.close()
             analysisExecutor.shutdown()
         }
@@ -705,6 +760,7 @@ private fun CameraScanner(
                 val providerFuture = androidx.camera.lifecycle.ProcessCameraProvider.getInstance(ctx)
                 providerFuture.addListener({
                     val provider = providerFuture.get()
+                    cameraProvider = provider
                     val preview = androidx.camera.core.Preview.Builder().build().also {
                         it.surfaceProvider = previewView.surfaceProvider
                     }

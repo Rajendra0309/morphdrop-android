@@ -83,9 +83,9 @@ data class QrStudioUiState(
             QrContentType.WIFI -> wifiSsid.isNotBlank()
             QrContentType.CONTACT ->
                 contactName.isNotBlank() || contactPhone.isNotBlank() || contactEmail.isNotBlank()
-            QrContentType.PHONE -> phone.isNotBlank()
+            QrContentType.PHONE -> phone.count { it.isDigit() } >= 5
             QrContentType.EMAIL -> emailAddress.contains("@")
-            QrContentType.SMS -> smsNumber.isNotBlank()
+            QrContentType.SMS -> smsNumber.count { it.isDigit() } >= 5
         }
 }
 
@@ -102,10 +102,19 @@ class QrStudioViewModel @Inject constructor(
     fun setTab(index: Int) = _state.update { it.copy(selectedTab = index) }
 
     fun setContentType(type: QrContentType) =
-        _state.update { it.copy(contentType = type, generatedBitmap = null, savedFileName = null) }
+        _state.update {
+            it.copy(contentType = type, generatedBitmap = null, generatedPayload = "", savedFileName = null)
+        }
 
+    /**
+     * Any field edit invalidates a previously generated code: leaving the
+     * old bitmap on screen would let Save store a QR that no longer
+     * matches the form.
+     */
     fun update(transform: QrStudioUiState.() -> QrStudioUiState) =
-        _state.update { it.transform().copy(savedFileName = null) }
+        _state.update {
+            it.transform().copy(savedFileName = null, generatedBitmap = null, generatedPayload = "")
+        }
 
     fun generate() {
         val current = _state.value
@@ -161,7 +170,9 @@ class QrStudioViewModel @Inject constructor(
     }
 
     fun setScanMode(mode: QrScanMode) =
-        _state.update { it.copy(scanMode = mode, scanError = null) }
+        _state.update { it.copy(scanMode = mode, scanError = null, scannedCode = null) }
+
+    fun showScanError(message: String) = _state.update { it.copy(scanError = message) }
 
     fun onCameraCodeScanned(code: ScannedCode) {
         if (_state.value.scannedCode?.text == code.text) return

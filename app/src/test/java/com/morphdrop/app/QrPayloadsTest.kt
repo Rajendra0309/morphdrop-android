@@ -51,4 +51,18 @@ class QrPayloadsTest {
     fun `phone payload keeps digits and plus only`() {
         assertEquals("tel:+919876543210", QrPayloads.phone("+91 98765-43210"))
     }
+
+    @Test
+    fun `sms payload uses a single question mark before the body`() {
+        assertEquals("sms:+919876543210", QrPayloads.sms("+91 98765 43210", ""))
+        val withBody = QrPayloads.sms("+91 98765 43210", "hello there")
+        assertTrue(withBody.startsWith("sms:+919876543210?body="))
+        assertFalse(withBody.contains("?&"))
+    }
+
+    @Test
+    fun `email payload includes subject only when present`() {
+        assertEquals("mailto:a@b.com", QrPayloads.email("a@b.com", "", ""))
+        assertTrue(QrPayloads.email("a@b.com", "Hi", "").startsWith("mailto:a@b.com?subject="))
+    }
 }
