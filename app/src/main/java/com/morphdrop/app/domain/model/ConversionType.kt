@@ -144,6 +144,16 @@ data class ConversionType(
                 isMultiFileAllowed = false
             ),
             ConversionType(
+                id = "csv_to_pdf",
+                name = "CSV to PDF",
+                description = "Convert a CSV file into a formatted PDF table",
+                inputType = FileType.CSV,
+                outputType = FileType.PDF,
+                icon = Icons.Outlined.PictureAsPdf,
+                category = CATEGORY_CONVERSIONS,
+                isMultiFileAllowed = false
+            ),
+            ConversionType(
                 id = "txt_to_pdf",
                 name = "Text to PDF",
                 description = "Convert TXT text files into formatted PDF",

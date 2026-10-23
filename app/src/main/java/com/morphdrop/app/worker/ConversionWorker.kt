@@ -165,7 +165,7 @@ class ConversionWorker @AssistedInject constructor(
             val inputExt = inputFileName.substringAfterLast('.', "").lowercase()
             val ext = when (conversionType) {
                 "pdf_to_images", "split_pdf" -> "" // Folder
-                "images_to_pdf", "excel_to_pdf", "txt_to_pdf", "md_to_pdf", "compress_pdf" -> "pdf"
+                "images_to_pdf", "excel_to_pdf", "csv_to_pdf", "txt_to_pdf", "md_to_pdf", "compress_pdf" -> "pdf"
                 "pdf_to_text" -> "txt"
                 "pdf_to_docx" -> "docx"
                 "xlsx_to_csv" -> "csv"
@@ -245,7 +245,7 @@ class ConversionWorker @AssistedInject constructor(
                     result
                 }
 
-                "excel_to_pdf" -> {
+                "excel_to_pdf", "csv_to_pdf" -> {
                     checkCancellation()
                     val uri = Uri.parse(requireNotNull(inputUriString))
                     val result = listOf(excelToPdfUseCase(
@@ -808,6 +808,7 @@ class ConversionWorker @AssistedInject constructor(
             "excel_to_pdf" -> "Excel to PDF"
             "xlsx_to_csv" -> "Excel to CSV"
             "csv_to_xlsx" -> "CSV to Excel"
+            "csv_to_pdf" -> "CSV to PDF"
             "text_to_pdf", "txt_to_pdf" -> "Text to PDF"
             "md_to_pdf", "markdown_to_pdf" -> "Markdown to PDF"
             "image_converter" -> "Image Converter"
