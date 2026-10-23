@@ -97,6 +97,26 @@ class PdfStructureTest {
     }
 
     @Test
+    fun `page without text keeps its place with a marker`() {
+        val pageOne = listOf(line("Text on the first page here", top = 100f, page = 0))
+        val pageThree = listOf(line("Text on the third page here", top = 100f, page = 2))
+        val blocks = buildDocxBlocks(listOf(pageOne, emptyList(), pageThree))
+        assertEquals(
+            listOf("Paragraph", "PageBreak", "Paragraph", "PageBreak", "Paragraph"),
+            blocks.map { it::class.simpleName }
+        )
+        val marker = blocks[2] as DocxBlock.Paragraph
+        assertTrue(marker.text.contains("Page 2"))
+        assertTrue(marker.text.contains("no readable text"))
+    }
+
+    @Test
+    fun `document with no text on any page produces no blocks`() {
+        val blocks = buildDocxBlocks(listOf(emptyList(), emptyList()))
+        assertTrue(blocks.isEmpty())
+    }
+
+    @Test
     fun `two column page reads left column then right column`() {
         fun col(text: String, top: Float, left: Float, right: Float) =
             line(text, top = top, left = left, right = right)

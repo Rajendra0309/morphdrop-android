@@ -33,6 +33,9 @@ class PdfToTextUseCase @Inject constructor(
     class PasswordProtectedException :
         Exception("This PDF is password-protected. Unlock it first, then try again.")
 
+    class CorruptFileException :
+        Exception("This file appears to be damaged or is not a valid PDF.")
+
     suspend operator fun invoke(
         pdfUri: Uri,
         outputFileName: String = "pdf_to_text_${System.currentTimeMillis()}.txt",
@@ -67,6 +70,8 @@ class PdfToTextUseCase @Inject constructor(
             inputStream.use { PDDocument.load(it) }
         } catch (e: com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException) {
             throw PasswordProtectedException()
+        } catch (e: java.io.IOException) {
+            throw CorruptFileException()
         }
 
         return document.use { doc ->
@@ -76,18 +81,28 @@ class PdfToTextUseCase @Inject constructor(
             val stripper = PdfLineStripper()
             stripper.startPage = 1
             stripper.endPage = doc.numberOfPages
-            stripper.writeText(doc, StringWriter())
+            try {
+                stripper.writeText(doc, StringWriter())
+            } catch (e: java.io.IOException) {
+                throw CorruptFileException()
+            }
             onProgress(85)
 
-            val pages = stripper.lines
-                .groupBy { it.pageIndex }
-                .toSortedMap()
-                .values
-                .map { pageLines -> readingOrder(pageLines).joinToString("\n") { it.text } }
-
-            pages
-                .filter { it.isNotBlank() }
-                .joinToString("\n\n")
+            // Every original page keeps its place: a page without a text
+            // layer gets a marker instead of silently vanishing.
+            val linesByPage = stripper.lines.groupBy { it.pageIndex }
+            var hasText = false
+            val pageTexts = (0 until doc.numberOfPages).map { pageIndex ->
+                val pageLines = linesByPage[pageIndex].orEmpty()
+                if (pageLines.isEmpty()) {
+                    "[Page ${pageIndex + 1}: no readable text — this page may be a scanned image. " +
+                        "Use Extract Text (OCR) to read it.]"
+                } else {
+                    hasText = true
+                    readingOrder(pageLines).joinToString("\n") { it.text }
+                }
+            }
+            if (!hasText) "" else pageTexts.joinToString("\n\n") + "\n"
         }
     }
 }

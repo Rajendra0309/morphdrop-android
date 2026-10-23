@@ -41,6 +41,9 @@ class PdfToDocxUseCase @Inject constructor(
     class PasswordProtectedException :
         Exception("This PDF is password-protected. Unlock it first, then try again.")
 
+    class CorruptFileException :
+        Exception("This file appears to be damaged or is not a valid PDF.")
+
     suspend operator fun invoke(
         pdfUri: Uri,
         outputFileName: String = "pdf_to_word_${System.currentTimeMillis()}.docx",
@@ -75,6 +78,8 @@ class PdfToDocxUseCase @Inject constructor(
             inputStream.use { PDDocument.load(it) }
         } catch (e: com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException) {
             throw PasswordProtectedException()
+        } catch (e: java.io.IOException) {
+            throw CorruptFileException()
         }
 
         return document.use { doc ->
@@ -83,14 +88,20 @@ class PdfToDocxUseCase @Inject constructor(
             val stripper = PdfLineStripper()
             stripper.startPage = 1
             stripper.endPage = doc.numberOfPages
-            stripper.writeText(doc, StringWriter())
+            try {
+                stripper.writeText(doc, StringWriter())
+            } catch (e: java.io.IOException) {
+                throw CorruptFileException()
+            }
             onProgress(80)
 
-            val pages = stripper.lines
-                .groupBy { it.pageIndex }
-                .toSortedMap()
-                .values
-                .map { readingOrder(it) }
+            // One entry per original page, empty ones included, so page
+            // boundaries survive even when a page has no text.
+            val linesByPage = stripper.lines.groupBy { it.pageIndex }
+            val pages = (0 until doc.numberOfPages).map { pageIndex ->
+                val pageLines = linesByPage[pageIndex].orEmpty()
+                if (pageLines.isEmpty()) emptyList() else readingOrder(pageLines)
+            }
             buildDocxBlocks(pages)
         }
     }
@@ -149,10 +160,22 @@ internal fun buildDocxBlocks(orderedPages: List<List<PdfTextLine>>): List<DocxBl
     }
 
     orderedPages.forEachIndexed { pageIndex, lines ->
-        if (pageIndex > 0 && lines.isNotEmpty()) {
+        if (pageIndex > 0 && (blocks.isNotEmpty() || paragraph.isNotEmpty())) {
             flushParagraph()
             blocks.add(DocxBlock.PageBreak)
             previousLine = null
+        }
+        if (lines.isEmpty()) {
+            // Keep the page's place instead of silently dropping it.
+            blocks.add(
+                DocxBlock.Paragraph(
+                    "[Page ${pageIndex + 1}: no readable text — this page may be a scanned image " +
+                        "or a picture, which Word conversion cannot include. " +
+                        "Use Extract Text (OCR) to read scanned pages.]"
+                )
+            )
+            previousLine = null
+            return@forEachIndexed
         }
         for (line in lines) {
             val headingLevel = when {
