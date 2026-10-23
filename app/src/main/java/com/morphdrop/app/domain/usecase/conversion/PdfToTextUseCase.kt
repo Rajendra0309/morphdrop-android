@@ -2,24 +2,26 @@ package com.morphdrop.app.domain.usecase.conversion
 
 import android.content.Context
 import android.net.Uri
+import com.morphdrop.app.data.pdf.PdfLineStripper
+import com.morphdrop.app.data.pdf.readingOrder
 import com.morphdrop.app.domain.repository.SettingsRepository
 import com.morphdrop.app.util.FileHelper
 import com.tom_roush.pdfbox.pdmodel.PDDocument
-import com.tom_roush.pdfbox.text.PDFTextStripper
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.yield
 import java.io.StringWriter
 import javax.inject.Inject
 
 /**
  * Extracts the embedded text layer of a PDF into a plain text file.
  *
- * This is the fast path for digital PDFs: no OCR is involved, so layout
- * order comes straight from the document. Scanned PDFs have no text layer;
- * those fail with [NoTextLayerException] so the UI can point the user at
- * the OCR tool instead of silently producing an empty file.
+ * This is the fast path for digital PDFs: no OCR is involved. Lines are
+ * extracted with their geometry and put in reading order, so two-column
+ * pages read down one column and then the other instead of interleaving.
+ * Scanned PDFs have no text layer; those fail with [NoTextLayerException]
+ * so the UI can point the user at the OCR tool instead of silently
+ * producing an empty file.
  */
 class PdfToTextUseCase @Inject constructor(
     @param:ApplicationContext private val context: Context,
@@ -59,7 +61,7 @@ class PdfToTextUseCase @Inject constructor(
         savedUri
     }
 
-    private suspend fun extractText(pdfUri: Uri, onProgress: (Int) -> Unit): String {
+    private fun extractText(pdfUri: Uri, onProgress: (Int) -> Unit): String {
         val inputStream = FileHelper.readFileFromUri(context, pdfUri)
         val document = try {
             inputStream.use { PDDocument.load(it) }
@@ -71,27 +73,21 @@ class PdfToTextUseCase @Inject constructor(
             if (doc.isEncrypted) {
                 throw PasswordProtectedException()
             }
-            val stripper = PDFTextStripper().apply {
-                sortByPosition = true
-                lineSeparator = "\n"
-                wordSeparator = " "
-            }
-            val pageCount = doc.numberOfPages.coerceAtLeast(1)
-            val builder = StringBuilder()
-            for (page in 1..doc.numberOfPages) {
-                yield() // Support cancellation on long documents
-                stripper.startPage = page
-                stripper.endPage = page
-                val writer = StringWriter()
-                stripper.writeText(doc, writer)
-                val pageText = writer.toString().trim()
-                if (pageText.isNotEmpty()) {
-                    if (builder.isNotEmpty()) builder.append("\n\n")
-                    builder.append(pageText)
-                }
-                onProgress(10 + ((page.toFloat() / pageCount) * 75).toInt())
-            }
-            builder.toString()
+            val stripper = PdfLineStripper()
+            stripper.startPage = 1
+            stripper.endPage = doc.numberOfPages
+            stripper.writeText(doc, StringWriter())
+            onProgress(85)
+
+            val pages = stripper.lines
+                .groupBy { it.pageIndex }
+                .toSortedMap()
+                .values
+                .map { pageLines -> readingOrder(pageLines).joinToString("\n") { it.text } }
+
+            pages
+                .filter { it.isNotBlank() }
+                .joinToString("\n\n")
         }
     }
 }

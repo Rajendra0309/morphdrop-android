@@ -4,17 +4,18 @@ import android.content.Context
 import android.net.Uri
 import com.morphdrop.app.data.docx.DocxBlock
 import com.morphdrop.app.data.docx.DocxWriter
+import com.morphdrop.app.data.pdf.PdfLineStripper
+import com.morphdrop.app.data.pdf.PdfTextLine
+import com.morphdrop.app.data.pdf.readingOrder
 import com.morphdrop.app.domain.repository.SettingsRepository
 import com.morphdrop.app.util.FileHelper
 import com.tom_roush.pdfbox.pdmodel.PDDocument
-import com.tom_roush.pdfbox.text.PDFTextStripper
-import com.tom_roush.pdfbox.text.TextPosition
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.yield
 import java.io.StringWriter
 import javax.inject.Inject
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
@@ -22,11 +23,13 @@ import kotlin.math.roundToInt
  *
  * The PDF text layer is extracted line by line together with font sizes,
  * then rebuilt as document structure: noticeably larger lines become
- * headings, and body lines are merged back into paragraphs using line
- * spacing. The result is a clean, editable document — not a pixel-perfect
- * clone of the PDF layout (multi-column pages, text boxes and tables do
- * not survive as layout, only as text). Scanned PDFs have no text layer
- * and fail with [NoTextLayerException] so the UI can suggest OCR instead.
+ * headings, and body lines are merged back into paragraphs using the
+ * document's own line spacing. Two-column pages are read column by column.
+ * The result is a clean, editable document — not a pixel-perfect clone of
+ * the PDF layout (text boxes and tables do not survive as layout, only as
+ * text, and embedded images are not carried over). Scanned PDFs have no
+ * text layer and fail with [NoTextLayerException] so the UI can suggest
+ * OCR instead.
  */
 class PdfToDocxUseCase @Inject constructor(
     @param:ApplicationContext private val context: Context,
@@ -66,61 +69,7 @@ class PdfToDocxUseCase @Inject constructor(
         savedUri
     }
 
-    private data class Line(
-        val text: String,
-        val fontSize: Float,
-        val bold: Boolean,
-        val top: Float,
-        val height: Float
-    )
-
-    /** Stripper that records one [Line] per visual line, with font metrics. */
-    private class LineStripper : PDFTextStripper() {
-        val lines = mutableListOf<Line>()
-        private val currentText = StringBuilder()
-        private var currentPositions = mutableListOf<TextPosition>()
-
-        init {
-            sortByPosition = true
-        }
-
-        override fun writeString(text: String, textPositions: MutableList<TextPosition>?) {
-            currentText.append(text)
-            if (textPositions != null) currentPositions.addAll(textPositions)
-        }
-
-        override fun writeWordSeparator() {
-            currentText.append(' ')
-        }
-
-        override fun writeLineSeparator() {
-            flushLine()
-        }
-
-        override fun writePageEnd() {
-            flushLine()
-            super.writePageEnd()
-        }
-
-        private fun flushLine() {
-            val text = currentText.toString().replace(Regex("\\s+"), " ").trim()
-            if (text.isNotEmpty() && currentPositions.isNotEmpty()) {
-                lines.add(
-                    Line(
-                        text = text,
-                        fontSize = currentPositions.maxOf { it.fontSizeInPt },
-                        bold = currentPositions.any { it.font?.name?.contains("bold", ignoreCase = true) == true },
-                        top = currentPositions.minOf { it.yDirAdj },
-                        height = currentPositions.maxOf { it.heightDir }
-                    )
-                )
-            }
-            currentText.clear()
-            currentPositions = mutableListOf()
-        }
-    }
-
-    private suspend fun extractBlocks(pdfUri: Uri, onProgress: (Int) -> Unit): List<DocxBlock> {
+    private fun extractBlocks(pdfUri: Uri, onProgress: (Int) -> Unit): List<DocxBlock> {
         val inputStream = FileHelper.readFileFromUri(context, pdfUri)
         val document = try {
             inputStream.use { PDDocument.load(it) }
@@ -131,84 +80,111 @@ class PdfToDocxUseCase @Inject constructor(
         return document.use { doc ->
             if (doc.isEncrypted) throw PasswordProtectedException()
 
-            val pageCount = doc.numberOfPages.coerceAtLeast(1)
-            val pages = mutableListOf<List<Line>>()
-            for (page in 1..doc.numberOfPages) {
-                yield() // Support cancellation on long documents
-                val stripper = LineStripper()
-                stripper.startPage = page
-                stripper.endPage = page
-                stripper.writeText(doc, StringWriter())
-                pages.add(stripper.lines.toList())
-                onProgress(10 + ((page.toFloat() / pageCount) * 70).toInt())
-            }
+            val stripper = PdfLineStripper()
+            stripper.startPage = 1
+            stripper.endPage = doc.numberOfPages
+            stripper.writeText(doc, StringWriter())
+            onProgress(80)
 
-            buildBlocks(pages)
+            val pages = stripper.lines
+                .groupBy { it.pageIndex }
+                .toSortedMap()
+                .values
+                .map { readingOrder(it) }
+            buildDocxBlocks(pages)
+        }
+    }
+}
+
+/**
+ * Rebuilds document structure from extracted lines. Larger lines become
+ * headings; body lines merge into paragraphs. Whether two lines belong to
+ * the same paragraph is decided from the document's median line spacing
+ * (leading), so 1.5-spaced documents merge their wrapped lines while real
+ * paragraph gaps — visibly larger than the normal leading — still split.
+ */
+internal fun buildDocxBlocks(orderedPages: List<List<PdfTextLine>>): List<DocxBlock> {
+    val allLines = orderedPages.flatten()
+    if (allLines.isEmpty()) return emptyList()
+
+    // Body size = the font size carrying the most characters overall.
+    val bodySize = allLines
+        .groupBy { (it.fontSize * 2).roundToInt() }
+        .maxByOrNull { entry -> entry.value.sumOf { it.text.length } }
+        ?.key?.div(2f)
+        ?: allLines.first().fontSize
+
+    val leadings = mutableListOf<Float>()
+    for (page in orderedPages) {
+        for (i in 1 until page.size) {
+            val diff = page[i].top - page[i - 1].top
+            if (diff > 1f) leadings.add(diff)
+        }
+    }
+    val medianLeading = if (leadings.isEmpty()) {
+        0f
+    } else {
+        // Lower median: a few genuine paragraph gaps must not inflate it.
+        leadings.sorted()[(leadings.size - 1) / 2]
+    }
+
+    fun startsNewParagraph(previous: PdfTextLine, line: PdfTextLine): Boolean {
+        if (abs(line.fontSize - previous.fontSize) > bodySize * 0.25f) return true
+        val leading = line.top - previous.top
+        if (leading <= 0f) return false
+        if (medianLeading > 0f) return leading > medianLeading * 1.45f
+        val gap = line.top - (previous.top + previous.height)
+        return gap > previous.height * 1.1f
+    }
+
+    val blocks = mutableListOf<DocxBlock>()
+    val paragraph = StringBuilder()
+    var previousLine: PdfTextLine? = null
+
+    fun flushParagraph() {
+        if (paragraph.isNotEmpty()) {
+            blocks.add(DocxBlock.Paragraph(paragraph.toString()))
+            paragraph.clear()
         }
     }
 
-    private fun buildBlocks(pages: List<List<Line>>): List<DocxBlock> {
-        val allLines = pages.flatten()
-        if (allLines.isEmpty()) return emptyList()
-
-        // Body size = the font size carrying the most characters overall.
-        val bodySize = allLines
-            .groupBy { (it.fontSize * 2).roundToInt() }
-            .maxByOrNull { entry -> entry.value.sumOf { it.text.length } }
-            ?.key?.div(2f)
-            ?: allLines.first().fontSize
-
-        val blocks = mutableListOf<DocxBlock>()
-        val paragraph = StringBuilder()
-        var previousLine: Line? = null
-
-        fun flushParagraph() {
-            if (paragraph.isNotEmpty()) {
-                blocks.add(DocxBlock.Paragraph(paragraph.toString()))
-                paragraph.clear()
-            }
+    orderedPages.forEachIndexed { pageIndex, lines ->
+        if (pageIndex > 0 && lines.isNotEmpty()) {
+            flushParagraph()
+            blocks.add(DocxBlock.PageBreak)
+            previousLine = null
         }
-
-        pages.forEachIndexed { pageIndex, lines ->
-            if (pageIndex > 0 && lines.isNotEmpty()) {
+        for (line in lines) {
+            val headingLevel = when {
+                line.fontSize >= bodySize * 1.4f -> 1
+                line.fontSize >= bodySize * 1.18f -> 2
+                line.bold && line.fontSize >= bodySize * 1.1f -> 2
+                else -> 0
+            }
+            if (headingLevel > 0) {
                 flushParagraph()
-                blocks.add(DocxBlock.PageBreak)
-                previousLine = null
-            }
-            for (line in lines) {
-                val headingLevel = when {
-                    line.fontSize >= bodySize * 1.4f -> 1
-                    line.fontSize >= bodySize * 1.18f -> 2
-                    line.bold && line.fontSize >= bodySize * 1.1f -> 2
-                    else -> 0
-                }
-                if (headingLevel > 0) {
-                    flushParagraph()
-                    blocks.add(DocxBlock.Heading(headingLevel, line.text))
-                    previousLine = line
-                    continue
-                }
-
-                val prev = previousLine
-                when {
-                    paragraph.isEmpty() -> paragraph.append(line.text)
-                    prev == null -> paragraph.append(line.text)
-                    // A clear vertical gap starts a new paragraph.
-                    line.top - (prev.top + prev.height) > prev.height * 1.1f -> {
-                        flushParagraph()
-                        paragraph.append(line.text)
-                    }
-                    // Soft-wrapped line ending in a hyphen: rejoin the word.
-                    paragraph.endsWith("-") -> {
-                        paragraph.deleteCharAt(paragraph.length - 1)
-                        paragraph.append(line.text)
-                    }
-                    else -> paragraph.append(' ').append(line.text)
-                }
+                blocks.add(DocxBlock.Heading(headingLevel, line.text))
                 previousLine = line
+                continue
             }
+
+            val prev = previousLine
+            when {
+                paragraph.isEmpty() || prev == null -> paragraph.append(line.text)
+                startsNewParagraph(prev, line) -> {
+                    flushParagraph()
+                    paragraph.append(line.text)
+                }
+                // Soft-wrapped line ending in a hyphen: rejoin the word.
+                paragraph.endsWith("-") -> {
+                    paragraph.deleteCharAt(paragraph.length - 1)
+                    paragraph.append(line.text)
+                }
+                else -> paragraph.append(' ').append(line.text)
+            }
+            previousLine = line
         }
-        flushParagraph()
-        return blocks
     }
+    flushParagraph()
+    return blocks
 }
