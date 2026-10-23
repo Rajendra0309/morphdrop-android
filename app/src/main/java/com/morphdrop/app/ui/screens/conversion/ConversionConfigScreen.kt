@@ -635,6 +635,29 @@ fun ConversionConfigScreenContent(
 
                 // The Compress tool leads with quality and target size.
                 if (state.conversionType?.id == "compress_images") {
+                    ConfigSection(title = "Quick Size Presets") {
+                        // Exam/application portals commonly cap uploads at
+                        // these sizes; a preset fills the target size below.
+                        val sizePresets = listOf(
+                            "Exam 100KB" to "Exam · 100 KB",
+                            "Exam 200KB" to "Exam · 200 KB",
+                            "Under 500KB" to "Under 500 KB",
+                            "Under 1MB" to "Under 1 MB"
+                        )
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            sizePresets.chunked(2).forEach { rowPresets ->
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    rowPresets.forEach { (id, label) ->
+                                        FilterChip(
+                                            selected = state.compressionPreset == id,
+                                            onClick = { onCompressionPresetSelected(id) },
+                                            label = { Text(label) }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
                     ConfigSection(title = "Compression Quality: ${state.quality}%") {
                         Slider(
                             value = state.quality.toFloat(),

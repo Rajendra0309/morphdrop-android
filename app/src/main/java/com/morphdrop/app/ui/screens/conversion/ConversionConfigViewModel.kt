@@ -829,6 +829,8 @@ class ConversionConfigViewModel @Inject constructor(
     fun onCompressionPresetSelected(preset: String) {
         _state.update {
             val s = when (preset) {
+                "Exam 100KB" -> it.copy(compressionPreset = preset, targetSizeKb = "100", targetWidth = "", targetHeight = "")
+                "Exam 200KB" -> it.copy(compressionPreset = preset, targetSizeKb = "200", targetWidth = "", targetHeight = "")
                 "Under 500KB" -> it.copy(compressionPreset = preset, targetSizeKb = "500", targetWidth = "", targetHeight = "")
                 "Under 1MB" -> it.copy(compressionPreset = preset, targetSizeKb = "1024", targetWidth = "", targetHeight = "")
                 "Profile Picture (256x256)" -> it.copy(compressionPreset = preset, targetWidth = "256", targetHeight = "256", targetSizeKb = "")
