@@ -603,7 +603,13 @@ private fun ToolPickerDialog(
                             }
                         }
                 ) {
-                    LazyColumn(state = listState, modifier = Modifier.fillMaxWidth()) {
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.fillMaxWidth(),
+                        // Bottom clearance so the "Scroll for more" pill
+                        // never covers the last row's content.
+                        contentPadding = PaddingValues(bottom = 48.dp)
+                    ) {
                     items(candidates, key = { it.id }) { tool ->
                         Row(
                             modifier = Modifier
