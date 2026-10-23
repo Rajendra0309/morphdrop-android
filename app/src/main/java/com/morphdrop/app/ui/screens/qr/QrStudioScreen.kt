@@ -503,8 +503,9 @@ private fun QrScanTab(state: QrStudioUiState, viewModel: QrStudioViewModel) {
             } else {
                 // After a denial with "don't ask again", the system dialog
                 // never appears again — offer the Settings route instead
-                // of a dead Allow button.
-                val activity = context as? android.app.Activity
+                // of a dead Allow button. LocalContext here is a theme
+                // wrapper, so the Activity has to be unwrapped first.
+                val activity = context.findActivity()
                 val permanentlyDenied = permissionRequested && activity != null &&
                     !androidx.core.app.ActivityCompat.shouldShowRequestPermissionRationale(
                         activity,
@@ -833,4 +834,14 @@ private fun processFrame(
         .addOnCompleteListener {
             imageProxy.close()
         }
+}
+
+/** Unwraps theme/context wrappers to find the hosting Activity, if any. */
+internal fun android.content.Context.findActivity(): android.app.Activity? {
+    var current: android.content.Context? = this
+    while (current is android.content.ContextWrapper) {
+        if (current is android.app.Activity) return current
+        current = current.baseContext
+    }
+    return null
 }
