@@ -681,7 +681,7 @@ private fun candidateToolsForUri(context: android.content.Context, uri: Uri): Li
     val mime = context.contentResolver.getType(uri)?.lowercase().orEmpty()
     val ids = when {
         ext in listOf("png", "jpg", "jpeg", "webp", "bmp") ->
-            listOf("images_to_pdf", "image_converter", "compress_images", "metadata_editor")
+            listOf("images_to_pdf", "image_converter", "image_resize", "compress_images", "metadata_editor")
         ext in listOf("heic", "heif") ->
             listOf("heic_to_image", "metadata_editor")
         ext == "pdf" -> listOf(

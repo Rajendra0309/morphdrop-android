@@ -172,7 +172,7 @@ class ConversionWorker @AssistedInject constructor(
                 "pdf_to_docx" -> "docx"
                 "xlsx_to_csv" -> "csv"
                 "csv_to_xlsx" -> "xlsx"
-                "image_converter", "compress_images", "heic_to_image" -> inputData.getString(KEY_TARGET_FORMAT) ?: "jpg"
+                "image_converter", "compress_images", "heic_to_image", "image_resize" -> inputData.getString(KEY_TARGET_FORMAT) ?: "jpg"
                 "metadata_editor" -> inputExt
                 else -> if (inputExt.isNotBlank()) inputExt else "pdf"
             }
@@ -353,7 +353,7 @@ class ConversionWorker @AssistedInject constructor(
                     result
                 }
 
-                "image_converter", "compress_images" -> {
+                "image_converter", "compress_images", "image_resize" -> {
                     val uris = inputUrisArray?.map { Uri.parse(it) }
                         ?: listOf(Uri.parse(requireNotNull(inputUriString)))
                     
@@ -878,6 +878,7 @@ class ConversionWorker @AssistedInject constructor(
             "csv_to_xlsx" -> "CSV to Excel"
             "csv_to_pdf" -> "CSV to PDF"
             "heic_to_image" -> "HEIC to Image"
+            "image_resize" -> "Resize Images"
             "text_to_pdf", "txt_to_pdf" -> "Text to PDF"
             "md_to_pdf", "markdown_to_pdf" -> "Markdown to PDF"
             "image_converter" -> "Image Converter"

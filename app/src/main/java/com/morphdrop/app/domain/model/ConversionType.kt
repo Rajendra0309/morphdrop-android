@@ -11,6 +11,7 @@ import androidx.compose.material.icons.outlined.Collections
 import androidx.compose.material.icons.outlined.QrCode2
 import androidx.compose.material.icons.outlined.Compress
 import androidx.compose.material.icons.outlined.PhotoLibrary
+import androidx.compose.material.icons.outlined.PhotoSizeSelectLarge
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.outlined.FormatListNumbered
@@ -315,6 +316,16 @@ data class ConversionType(
                 inputType = FileType.HEIC,
                 outputType = FileType.JPG,
                 icon = Icons.Outlined.PhotoLibrary,
+                category = CATEGORY_IMAGE_TOOLS,
+                isMultiFileAllowed = true
+            ),
+            ConversionType(
+                id = "image_resize",
+                name = "Resize Images",
+                description = "Resize images to exact pixels or a percentage",
+                inputType = FileType.JPG,
+                outputType = FileType.JPG,
+                icon = Icons.Outlined.PhotoSizeSelectLarge,
                 category = CATEGORY_IMAGE_TOOLS,
                 isMultiFileAllowed = true
             ),
