@@ -740,7 +740,8 @@ class ConversionWorker @AssistedInject constructor(
                     displayName = "Failed Conversion",
                     timestamp = System.currentTimeMillis(),
                     duration = duration,
-                    success = false
+                    success = false,
+                    errorMessage = e.localizedMessage ?: "Conversion failed"
                 )
             )
 

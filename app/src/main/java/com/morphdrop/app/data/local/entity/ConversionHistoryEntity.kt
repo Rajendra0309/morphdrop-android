@@ -19,5 +19,7 @@ data class ConversionHistoryEntity(
     // before this field existed — UI falls back to fuzzy-matching conversionType.
     val conversionTypeId: String? = null,
     /** Pinned favorites sort first in History. */
-    val isPinned: Boolean = false
+    val isPinned: Boolean = false,
+    /** Why a conversion failed, shown on the detail screen. Null on success. */
+    val errorMessage: String? = null
 )
