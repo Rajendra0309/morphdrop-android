@@ -35,7 +35,9 @@ class PhotoStudioUseCase @Inject constructor(
         val outputUri: Uri,
         val sizeBytes: Long,
         val width: Int,
-        val height: Int
+        val height: Int,
+        /** False when even the lowest JPEG quality could not reach the size limit. */
+        val metSizeLimit: Boolean
     )
 
     class InvalidImageException : Exception("Could not read the selected image")
@@ -63,13 +65,14 @@ class PhotoStudioUseCase @Inject constructor(
         try {
             sourceBitmap = decodeForTarget(inputUri, targetWidth, targetHeight)
             framedBitmap = frameToTarget(sourceBitmap, targetWidth, targetHeight, fillFrame, backgroundColor)
-            val bytes = encodeJpegWithinLimit(framedBitmap, targetSizeKb)
+            val (bytes, metLimit) = encodeJpegWithinLimit(framedBitmap, targetSizeKb)
             val outputUri = FileHelper.saveToFile(context, settingsRepository, sanitizedFileName, bytes)
             StudioResult(
                 outputUri = outputUri,
                 sizeBytes = bytes.size.toLong(),
                 width = targetWidth,
-                height = targetHeight
+                height = targetHeight,
+                metSizeLimit = metLimit
             )
         } finally {
             if (framedBitmap != null && framedBitmap != sourceBitmap) framedBitmap.recycle()
@@ -83,9 +86,12 @@ class PhotoStudioUseCase @Inject constructor(
      * 413px-wide passport photo wastes memory and time for no quality gain.
      */
     private fun decodeForTarget(uri: Uri, targetWidth: Int, targetHeight: Int): Bitmap {
+        // Bounds pass: decodeStream returns null by contract when
+        // inJustDecodeBounds is set, so only the stream's nullability and
+        // the decoded bounds say whether the image is readable.
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        openStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
-            ?: throw InvalidImageException()
+        val boundsStream = openStream(uri) ?: throw InvalidImageException()
+        boundsStream.use { BitmapFactory.decodeStream(it, null, bounds) }
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) throw InvalidImageException()
 
         var sampleSize = 1
@@ -106,6 +112,32 @@ class PhotoStudioUseCase @Inject constructor(
     }
 
     private fun frameToTarget(
+        source: Bitmap,
+        targetWidth: Int,
+        targetHeight: Int,
+        fillFrame: Boolean,
+        backgroundColor: Int
+    ): Bitmap {
+        // JPEG has no alpha channel: composite transparent images onto the
+        // chosen background first, otherwise transparent areas turn black.
+        val working = if (source.hasAlpha()) flattenOnto(source, backgroundColor) else source
+        try {
+            return frameDecoded(working, targetWidth, targetHeight, fillFrame, backgroundColor)
+        } finally {
+            if (working != source) working.recycle()
+        }
+    }
+
+    /** Draws [source] over a solid [backgroundColor] canvas of the same size. */
+    private fun flattenOnto(source: Bitmap, backgroundColor: Int): Bitmap {
+        val flattened = Bitmap.createBitmap(source.width, source.height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(flattened)
+        canvas.drawColor(backgroundColor)
+        canvas.drawBitmap(source, 0f, 0f, null)
+        return flattened
+    }
+
+    private fun frameDecoded(
         source: Bitmap,
         targetWidth: Int,
         targetHeight: Int,
@@ -155,13 +187,18 @@ class PhotoStudioUseCase @Inject constructor(
 
     /**
      * Encodes JPEG, stepping quality down from 95 until the byte size fits
-     * [targetSizeKb]. When no limit is set, encodes once at quality 95.
-     * If even the quality floor misses the limit, the smallest encode is
-     * returned as-is — dimensions are never sacrificed to hit the limit.
+     * [targetSizeKb], returning the bytes and whether the limit was met.
+     * When no limit is set, encodes once at quality 95. If even the quality
+     * floor misses the limit, the smallest encode is returned with
+     * met = false — dimensions are never sacrificed to hit the limit, and
+     * the caller can warn instead of silently claiming success.
      */
-    private fun encodeJpegWithinLimit(bitmap: Bitmap, targetSizeKb: Int?): ByteArray {
+    private fun encodeJpegWithinLimit(bitmap: Bitmap, targetSizeKb: Int?): Pair<ByteArray, Boolean> {
         if (targetSizeKb == null || targetSizeKb <= 0) {
-            return ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.JPEG, 95, it) }.toByteArray()
+            val bytes = ByteArrayOutputStream()
+                .also { bitmap.compress(Bitmap.CompressFormat.JPEG, 95, it) }
+                .toByteArray()
+            return bytes to true
         }
         val targetBytes = targetSizeKb * 1024L
         var quality = 95
@@ -171,10 +208,10 @@ class PhotoStudioUseCase @Inject constructor(
                 .also { bitmap.compress(Bitmap.CompressFormat.JPEG, quality, it) }
                 .toByteArray()
             if (smallest == null || bytes.size < smallest.size) smallest = bytes
-            if (bytes.size <= targetBytes) return bytes
+            if (bytes.size <= targetBytes) return bytes to true
             quality -= 5
         }
-        return smallest ?: ByteArray(0)
+        return (smallest ?: ByteArray(0)) to false
     }
 
     private fun Float.roundAtLeast(minimum: Int): Int =
@@ -199,22 +236,53 @@ class PhotoStudioUseCase @Inject constructor(
         }
     }
 
-    private fun rotateByExif(bitmap: Bitmap, uri: Uri): Bitmap {
-        val matrix = Matrix()
-        when (getOrientation(uri)) {
-            ExifInterface.ORIENTATION_ROTATE_90 -> matrix.postRotate(90f)
-            ExifInterface.ORIENTATION_ROTATE_180 -> matrix.postRotate(180f)
-            ExifInterface.ORIENTATION_ROTATE_270 -> matrix.postRotate(270f)
-            ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> matrix.postScale(-1f, 1f)
-            ExifInterface.ORIENTATION_FLIP_VERTICAL -> matrix.postScale(1f, -1f)
-            else -> return bitmap
+    private fun rotateByExif(bitmap: Bitmap, uri: Uri): Bitmap =
+        applyExifOrientation(bitmap, getOrientation(uri))
+}
+
+/**
+ * Applies an EXIF orientation (including the mirrored transpose cases) to
+ * [bitmap], recycling the input when a transformed copy is produced.
+ * Shared with the Photo Studio preview so what the user sees matches the
+ * saved image.
+ */
+internal fun applyExifOrientation(bitmap: Bitmap, orientation: Int): Bitmap {
+    val matrix = Matrix()
+    when (orientation) {
+        ExifInterface.ORIENTATION_ROTATE_90 -> matrix.postRotate(90f)
+        ExifInterface.ORIENTATION_ROTATE_180 -> matrix.postRotate(180f)
+        ExifInterface.ORIENTATION_ROTATE_270 -> matrix.postRotate(270f)
+        ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> matrix.postScale(-1f, 1f)
+        ExifInterface.ORIENTATION_FLIP_VERTICAL -> matrix.postScale(1f, -1f)
+        ExifInterface.ORIENTATION_TRANSPOSE -> {
+            matrix.postRotate(90f)
+            matrix.postScale(-1f, 1f)
         }
-        return try {
-            val rotated = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
-            if (rotated != bitmap) bitmap.recycle()
-            rotated
-        } catch (e: OutOfMemoryError) {
-            throw ImageTooLargeException()
+        ExifInterface.ORIENTATION_TRANSVERSE -> {
+            matrix.postRotate(270f)
+            matrix.postScale(-1f, 1f)
         }
+        else -> return bitmap
+    }
+    return try {
+        val rotated = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+        if (rotated != bitmap) bitmap.recycle()
+        rotated
+    } catch (e: OutOfMemoryError) {
+        throw PhotoStudioUseCase.ImageTooLargeException()
+    }
+}
+
+/** Reads the EXIF orientation of the image at [uri]; NORMAL when unreadable. */
+internal fun readExifOrientation(context: Context, uri: Uri): Int {
+    return try {
+        context.contentResolver.openInputStream(uri)?.use { stream ->
+            ExifInterface(stream).getAttributeInt(
+                ExifInterface.TAG_ORIENTATION,
+                ExifInterface.ORIENTATION_NORMAL
+            )
+        } ?: ExifInterface.ORIENTATION_NORMAL
+    } catch (e: Exception) {
+        ExifInterface.ORIENTATION_NORMAL
     }
 }

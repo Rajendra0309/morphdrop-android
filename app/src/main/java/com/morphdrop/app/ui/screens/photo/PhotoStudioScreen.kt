@@ -121,7 +121,10 @@ fun PhotoStudioScreen(
                     fileName = state.fileName
                 ),
                 scrollBehavior = processingScrollBehavior,
-                onCancel = onNavigateBack
+                onCancel = {
+                    viewModel.cancelProcessing()
+                    onNavigateBack()
+                }
             )
         }
         state.isSuccess && state.resultUri != null -> {
@@ -134,7 +137,8 @@ fun PhotoStudioScreen(
                         "Signature Created Successfully!"
                     },
                     subtitle = "1 file created • ${FileHelper.formatFileSize(state.resultSize)} • " +
-                        "${state.resultWidth} × ${state.resultHeight} px",
+                        "${state.resultWidth} × ${state.resultHeight} px" +
+                        (state.resultNote?.let { "\n$it" } ?: ""),
                     outputFiles = listOf(
                         OutputFileItem(
                             id = state.resultUri.toString(),

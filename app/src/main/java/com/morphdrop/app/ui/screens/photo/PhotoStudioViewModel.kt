@@ -72,6 +72,8 @@ data class PhotoStudioUiState(
     val resultSize: Long = 0L,
     val resultWidth: Int = 0,
     val resultHeight: Int = 0,
+    /** Warning shown on the result screen, e.g. when the KB limit was unreachable. */
+    val resultNote: String? = null,
     val errorMessage: String? = null
 ) {
     val presets: List<StudioPreset>
@@ -187,6 +189,8 @@ class PhotoStudioViewModel @Inject constructor(
     fun setCustomSizeKb(value: String) =
         _state.update { it.copy(customSizeKb = value.filter { ch -> ch.isDigit() }.take(5)) }
 
+    private var createJob: kotlinx.coroutines.Job? = null
+
     fun createImage() {
         val current = _state.value
         val uri = current.selectedUri ?: return
@@ -201,8 +205,8 @@ class PhotoStudioViewModel @Inject constructor(
         val outputName = "${baseName}_${targetWidth}x${targetHeight}.jpg"
         val startTime = System.currentTimeMillis()
 
-        _state.update { it.copy(isProcessing = true, errorMessage = null) }
-        viewModelScope.launch {
+        _state.update { it.copy(isProcessing = true, errorMessage = null, resultNote = null) }
+        createJob = viewModelScope.launch {
             try {
                 val result = photoStudioUseCase(
                     inputUri = uri,
@@ -238,7 +242,13 @@ class PhotoStudioViewModel @Inject constructor(
                         resultFileName = outputName,
                         resultSize = result.sizeBytes,
                         resultWidth = result.width,
-                        resultHeight = result.height
+                        resultHeight = result.height,
+                        resultNote = if (!result.metSizeLimit && targetSizeKb != null) {
+                            "Could not reach the ${targetSizeKb} KB limit — this is the smallest " +
+                                "size possible at these dimensions."
+                        } else {
+                            null
+                        }
                     )
                 }
             } catch (e: Exception) {
@@ -252,6 +262,13 @@ class PhotoStudioViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    /** Cancels an in-flight creation; the screen navigates back separately. */
+    fun cancelProcessing() {
+        createJob?.cancel()
+        createJob = null
+        _state.update { it.copy(isProcessing = false) }
     }
 
     fun resetResult() {
