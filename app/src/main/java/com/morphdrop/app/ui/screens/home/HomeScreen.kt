@@ -18,11 +18,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -546,7 +549,11 @@ private fun ToolPickerDialog(
             color = MaterialTheme.colorScheme.surfaceContainerLow,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Column(modifier = Modifier.padding(20.dp)) {
+            Column(
+                modifier = Modifier
+                    .heightIn(max = 620.dp)
+                    .padding(20.dp)
+            ) {
                 Text(
                     text = "Convert this file",
                     style = MaterialTheme.typography.titleLarge,
@@ -561,32 +568,37 @@ private fun ToolPickerDialog(
                     overflow = TextOverflow.Ellipsis
                 )
                 Spacer(modifier = Modifier.height(16.dp))
-                candidates.forEach { tool ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable(role = Role.Button, onClick = { onPick(tool) })
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = tool.icon,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = tool.name,
-                                style = MaterialTheme.typography.bodyLarge,
-                                fontWeight = FontWeight.SemiBold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                // The list scrolls inside a capped dialog: with 11+ tools
+                // for a PDF, a plain Column overflowed the screen and the
+                // last options were unreachable.
+                LazyColumn(modifier = Modifier.weight(1f, fill = false)) {
+                    items(candidates, key = { it.id }) { tool ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable(role = Role.Button, onClick = { onPick(tool) })
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = tool.icon,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(24.dp)
                             )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            TransformIndicator(conversionType = tool, compact = true)
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = tool.name,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                TransformIndicator(conversionType = tool, compact = true)
+                            }
                         }
                     }
                 }
@@ -608,7 +620,7 @@ private fun candidateToolsForUri(context: android.content.Context, uri: Uri): Li
         ext in listOf("png", "jpg", "jpeg", "webp", "bmp") ->
             listOf("images_to_pdf", "image_converter", "compress_images", "metadata_editor")
         ext == "pdf" -> listOf(
-            "pdf_to_images", "merge_pdf", "split_pdf", "compress_pdf",
+            "pdf_to_text", "pdf_to_docx", "pdf_to_images", "merge_pdf", "split_pdf", "compress_pdf",
             "protect_pdf", "unlock_pdf", "page_editor", "watermark_pdf",
             "page_numbers_pdf", "rotate_pdf", "metadata_editor"
         )
@@ -618,7 +630,7 @@ private fun candidateToolsForUri(context: android.content.Context, uri: Uri): Li
         // Fallback for unknown extensions: sniff the MIME type.
         mime.startsWith("image/") ->
             listOf("images_to_pdf", "image_converter", "compress_images", "metadata_editor")
-        mime == "application/pdf" -> listOf("pdf_to_images", "merge_pdf", "compress_pdf", "metadata_editor")
+        mime == "application/pdf" -> listOf("pdf_to_text", "pdf_to_docx", "pdf_to_images", "merge_pdf", "compress_pdf", "metadata_editor")
         mime.startsWith("text/") -> listOf("txt_to_pdf", "metadata_editor")
         else -> listOf("metadata_editor")
     }
