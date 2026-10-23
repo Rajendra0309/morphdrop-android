@@ -169,22 +169,36 @@ class SearchablePdfUseCase @Inject constructor(
         }
     }
 
-    /** Latin gets Helvetica; Devanagari tries to embed a device Noto font. */
+    /**
+     * Latin gets Helvetica. Devanagari embeds the bundled Noto Sans
+     * Devanagari (assets, SIL OFL) — deterministic on every device,
+     * unlike /system/fonts, whose names and variable-font formats vary
+     * by OEM. System fonts are a second chance; if nothing loads, fail
+     * loudly instead of silently writing '?' for every character.
+     */
     private fun loadTextFont(document: PDDocument, script: OcrScript): PDFont {
         if (script != OcrScript.DEVANAGARI) return PDType1Font.HELVETICA
-        val candidates = listOf(
+        val bundled = runCatching {
+            context.assets.open("fonts/NotoSansDevanagari-Regular.ttf").use { stream ->
+                PDType0Font.load(document, stream)
+            }
+        }.getOrNull()
+        if (bundled != null) return bundled
+        val systemCandidates = listOf(
             "/system/fonts/NotoSansDevanagari-Regular.ttf",
-            "/system/fonts/NotoSansDevanagari.ttf",
-            "/system/fonts/NotoSans-Regular.ttf"
+            "/system/fonts/NotoSansDevanagari.ttf"
         )
-        for (path in candidates) {
+        for (path in systemCandidates) {
             val file = File(path)
             if (file.exists()) {
                 val ttf = runCatching { PDType0Font.load(document, file) }.getOrNull()
                 if (ttf != null) return ttf
             }
         }
-        return PDType1Font.HELVETICA
+        throw IllegalStateException(
+            "Devanagari text needs a Unicode font, and none could be loaded on this device. " +
+                "The searchable PDF was not created."
+        )
     }
 
     /**
