@@ -9,6 +9,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -152,6 +153,35 @@ fun SignPdfScreen(
                             modifier = Modifier.fillMaxWidth()
                         )
                     }
+                    // Placement preview: the signature drawn on the page at
+                    // the chosen corner and size, exactly as it will stamp
+                    // (shown when this page is in the selected page scope).
+                    val sig = state.signatureBitmap
+                    if (sig != null && state.pagePreview != null && !state.isLoadingPreview) {
+                        val overlayAlignment = when (state.position) {
+                            SignPdfUseCase.POS_BOTTOM_LEFT -> Alignment.BottomStart
+                            SignPdfUseCase.POS_TOP_RIGHT -> Alignment.TopEnd
+                            SignPdfUseCase.POS_TOP_LEFT -> Alignment.TopStart
+                            SignPdfUseCase.POS_CENTER -> Alignment.Center
+                            else -> Alignment.BottomEnd
+                        }
+                        Image(
+                            bitmap = sig.asImageBitmap(),
+                            contentDescription = "Signature placement preview",
+                            modifier = Modifier
+                                .align(overlayAlignment)
+                                .fillMaxWidth(state.widthPercent / 100f)
+                                .aspectRatio(sig.width.toFloat() / sig.height.coerceAtLeast(1))
+                                .padding(10.dp)
+                        )
+                    }
+                }
+                if (state.signatureBitmap != null && state.pagePreview != null) {
+                    Text(
+                        text = "Preview: the signature shows where it will be stamped on this page.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -251,13 +281,17 @@ fun SignPdfScreen(
                 SignPdfUseCase.SCOPE_LAST to "Last Page",
                 SignPdfUseCase.SCOPE_ALL to "All Pages"
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                scopes.forEach { (id, label) ->
-                    FilterChip(
-                        selected = state.scope == id,
-                        onClick = { viewModel.onScopeChanged(id) },
-                        label = { Text(label) }
-                    )
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                scopes.chunked(2).forEach { rowItems ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        rowItems.forEach { (id, label) ->
+                            FilterChip(
+                                selected = state.scope == id,
+                                onClick = { viewModel.onScopeChanged(id) },
+                                label = { Text(label) }
+                            )
+                        }
+                    }
                 }
             }
 
