@@ -17,6 +17,7 @@ import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.outlined.FormatListNumbered
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.DocumentScanner
+import androidx.compose.material.icons.outlined.Draw
 import androidx.compose.material.icons.outlined.Layers
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.PictureAsPdf
@@ -195,6 +196,16 @@ data class ConversionType(
                 inputType = FileType.PDF,
                 outputType = FileType.PDF,
                 icon = Icons.Outlined.DocumentScanner,
+                category = CATEGORY_PDF_TOOLS,
+                isMultiFileAllowed = false
+            ),
+            ConversionType(
+                id = "sign_pdf",
+                name = "Sign PDF",
+                description = "Draw or pick a signature and stamp it onto pages",
+                inputType = FileType.PDF,
+                outputType = FileType.PDF,
+                icon = Icons.Outlined.Draw,
                 category = CATEGORY_PDF_TOOLS,
                 isMultiFileAllowed = false
             ),

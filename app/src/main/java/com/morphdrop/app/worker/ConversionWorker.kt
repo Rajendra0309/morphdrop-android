@@ -29,6 +29,7 @@ import com.morphdrop.app.domain.usecase.conversion.TextToPdfUseCase
 import com.morphdrop.app.domain.usecase.conversion.CsvToXlsxUseCase
 import com.morphdrop.app.domain.usecase.conversion.HeicToImageUseCase
 import com.morphdrop.app.domain.usecase.conversion.SearchablePdfUseCase
+import com.morphdrop.app.domain.usecase.conversion.SignPdfUseCase
 import com.morphdrop.app.domain.usecase.conversion.WatermarkPdfUseCase
 import com.morphdrop.app.domain.usecase.conversion.XlsxToCsvUseCase
 import com.morphdrop.app.domain.usecase.conversion.AddPageNumbersUseCase
@@ -57,6 +58,7 @@ class ConversionWorker @AssistedInject constructor(
     private val csvToXlsxUseCase: CsvToXlsxUseCase,
     private val heicToImageUseCase: HeicToImageUseCase,
     private val searchablePdfUseCase: SearchablePdfUseCase,
+    private val signPdfUseCase: SignPdfUseCase,
     private val textToPdfUseCase: TextToPdfUseCase,
     private val mdToPdfUseCase: MdToPdfUseCase,
     private val imageConverterUseCase: ImageConverterUseCase,
@@ -106,6 +108,11 @@ class ConversionWorker @AssistedInject constructor(
         const val KEY_TARGET_SIZE_KB = "target_size_kb"
         const val KEY_STRIP_METADATA = "strip_metadata"
         const val KEY_NAME_PATTERN = "output_name_pattern"
+        const val KEY_SIGNATURE_FILE = "signature_file"
+        const val KEY_SIGN_SCOPE = "sign_scope"
+        const val KEY_SIGN_PAGE_INDEX = "sign_page_index"
+        const val KEY_SIGN_POSITION = "sign_position"
+        const val KEY_SIGN_WIDTH_PERCENT = "sign_width_percent"
         const val KEY_CROP_RECT_LEFT = "crop_rect_left"
         const val KEY_CROP_RECT_TOP = "crop_rect_top"
         const val KEY_CROP_RECT_RIGHT = "crop_rect_right"
@@ -170,7 +177,7 @@ class ConversionWorker @AssistedInject constructor(
             val inputExt = inputFileName.substringAfterLast('.', "").lowercase()
             val ext = when (conversionType) {
                 "pdf_to_images", "split_pdf" -> "" // Folder
-                "images_to_pdf", "excel_to_pdf", "csv_to_pdf", "ocr_searchable_pdf", "txt_to_pdf", "md_to_pdf", "compress_pdf" -> "pdf"
+                "images_to_pdf", "excel_to_pdf", "csv_to_pdf", "ocr_searchable_pdf", "sign_pdf", "txt_to_pdf", "md_to_pdf", "compress_pdf" -> "pdf"
                 "pdf_to_text" -> "txt"
                 "pdf_to_docx" -> "docx"
                 "xlsx_to_csv" -> "csv"
@@ -471,6 +478,31 @@ class ConversionWorker @AssistedInject constructor(
                             setProgressAsync(workDataOf("progress" to mappedProgress))
                         }
                     ))
+                    result
+                }
+
+                "sign_pdf" -> {
+                    checkCancellation()
+                    val uri = Uri.parse(requireNotNull(inputUriString))
+                    val signaturePath = requireNotNull(inputData.getString(KEY_SIGNATURE_FILE))
+                    val result = listOf(signPdfUseCase(
+                        pdfUri = uri,
+                        signatureFilePath = signaturePath,
+                        scope = inputData.getString(KEY_SIGN_SCOPE) ?: SignPdfUseCase.SCOPE_THIS_PAGE,
+                        pageIndex = inputData.getInt(KEY_SIGN_PAGE_INDEX, 0),
+                        position = inputData.getString(KEY_SIGN_POSITION) ?: SignPdfUseCase.POS_BOTTOM_RIGHT,
+                        widthPercent = inputData.getInt(KEY_SIGN_WIDTH_PERCENT, 30),
+                        outputFileName = outputFileName,
+                        onProgress = { p ->
+                            checkCancellation()
+                            val mappedProgress = 20 + (p * 0.7).toInt()
+                            notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), mappedProgress, cancelPendingIntent)
+                            setProgressAsync(workDataOf("progress" to mappedProgress))
+                        }
+                    ))
+                    // The drawn/picked signature lives in the cache; the
+                    // stamped PDF is saved, so the working copy can go.
+                    runCatching { java.io.File(signaturePath).delete() }
                     result
                 }
 
@@ -914,6 +946,7 @@ class ConversionWorker @AssistedInject constructor(
             "csv_to_pdf" -> "CSV to PDF"
             "heic_to_image" -> "HEIC to Image"
             "ocr_searchable_pdf" -> "OCR to Searchable PDF"
+            "sign_pdf" -> "Sign PDF"
             "image_resize" -> "Resize Images"
             "text_to_pdf", "txt_to_pdf" -> "Text to PDF"
             "md_to_pdf", "markdown_to_pdf" -> "Markdown to PDF"

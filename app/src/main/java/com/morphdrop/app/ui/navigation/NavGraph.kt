@@ -19,6 +19,7 @@ import com.morphdrop.app.ui.screens.ocr.BatchOcrScreen
 import com.morphdrop.app.ui.screens.ocr.OcrScreen
 import com.morphdrop.app.ui.screens.photo.PhotoStudioScreen
 import com.morphdrop.app.ui.screens.qr.QrStudioScreen
+import com.morphdrop.app.ui.screens.signpdf.SignPdfScreen
 import com.morphdrop.app.ui.screens.processing.ProcessingScreen
 import com.morphdrop.app.ui.screens.result.ResultScreen
 import com.morphdrop.app.ui.screens.settings.SettingsScreen
@@ -115,6 +116,7 @@ fun NavGraph(
                         "ocr_text_extractor" -> navController.navigate(Screen.Ocr.route)
                         "photo_studio" -> navController.navigate(Screen.PhotoStudio.route)
                         "qr_studio" -> navController.navigate(Screen.QrStudio.route)
+                        "sign_pdf" -> navController.navigate(Screen.SignPdf.route)
                         "batch_ocr" -> navController.navigate(Screen.BatchOcr.route)
                         "batch_pdf" -> navController.navigate(Screen.BatchPdf.route)
                         "markdown_editor" -> navController.navigate(Screen.MarkdownEditor.createRoute(isNew = true))
@@ -133,6 +135,7 @@ fun NavGraph(
                         "ocr_text_extractor" -> navController.navigate(Screen.Ocr.route)
                         "photo_studio" -> navController.navigate(Screen.PhotoStudio.route)
                         "qr_studio" -> navController.navigate(Screen.QrStudio.route)
+                        "sign_pdf" -> navController.navigate(Screen.SignPdf.route)
                         "batch_ocr" -> navController.navigate(Screen.BatchOcr.route)
                         "batch_pdf" -> navController.navigate(Screen.BatchPdf.route)
                         "markdown_editor" -> navController.navigate(Screen.MarkdownEditor.createRoute(isNew = true))
@@ -258,6 +261,15 @@ fun NavGraph(
         composable(Screen.QrStudio.route) {
             QrStudioScreen(
                 onNavigateBack = navigateUpOrFinish
+            )
+        }
+
+        composable(Screen.SignPdf.route) {
+            SignPdfScreen(
+                onNavigateBack = navigateUpOrFinish,
+                onNavigateToProcessing = { tId, workId ->
+                    navController.navigate(Screen.Processing.createRoute(tId, workId))
+                }
             )
         }
 
