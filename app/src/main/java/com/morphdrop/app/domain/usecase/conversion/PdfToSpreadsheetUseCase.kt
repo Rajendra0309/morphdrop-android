@@ -2,7 +2,7 @@ package com.morphdrop.app.domain.usecase.conversion
 
 import android.content.Context
 import android.net.Uri
-import com.morphdrop.app.data.pdf.PdfLineStripper
+import com.morphdrop.app.data.pdf.PdfRunStripper
 import com.morphdrop.app.data.pdf.PdfTableBuilder
 import com.morphdrop.app.data.spreadsheet.SpreadsheetTables
 import com.morphdrop.app.data.spreadsheet.XlsxWriter
@@ -41,9 +41,9 @@ class PdfToSpreadsheetUseCase @Inject constructor(
         onProgress(15)
         val table = FileHelper.readFileFromUri(context, pdfUri).use { input ->
             PDDocument.load(input).use { document ->
-                val stripper = PdfLineStripper()
+                val stripper = PdfRunStripper()
                 stripper.getText(document)
-                val pages = stripper.lines
+                val pages = stripper.runs
                     .groupBy { it.pageIndex }
                     .toSortedMap()
                     .values
