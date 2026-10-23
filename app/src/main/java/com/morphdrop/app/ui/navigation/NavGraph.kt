@@ -182,7 +182,10 @@ fun NavGraph(
             arguments = listOf(navArgument("historyId") { type = NavType.LongType })
         ) {
             HistoryDetailScreen(
-                onNavigateBack = navigateUpOrFinish
+                onNavigateBack = navigateUpOrFinish,
+                onConvertAgain = { typeId, uriArg ->
+                    navController.navigate(Screen.ConversionConfig.createRoute(typeId, uri = uriArg))
+                }
             )
         }
 

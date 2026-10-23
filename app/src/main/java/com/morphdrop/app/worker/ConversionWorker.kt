@@ -784,7 +784,9 @@ class ConversionWorker @AssistedInject constructor(
                     displayName = finalOutputName,
                     timestamp = System.currentTimeMillis(),
                     duration = duration,
-                    success = true
+                    success = true,
+                    conversionTypeId = conversionType,
+                    inputUris = (inputUrisArray?.toList() ?: listOfNotNull(inputUriString)).joinToString(",")
                 )
             )
             com.morphdrop.app.ui.widget.WidgetUpdateHelper.updateAllWidgets(appContext)
@@ -860,7 +862,9 @@ class ConversionWorker @AssistedInject constructor(
                     timestamp = System.currentTimeMillis(),
                     duration = duration,
                     success = false,
-                    errorMessage = e.localizedMessage ?: "Conversion failed"
+                    errorMessage = e.localizedMessage ?: "Conversion failed",
+                    conversionTypeId = conversionType,
+                    inputUris = (inputUrisArray?.toList() ?: listOfNotNull(inputUriString)).joinToString(",")
                 )
             )
 

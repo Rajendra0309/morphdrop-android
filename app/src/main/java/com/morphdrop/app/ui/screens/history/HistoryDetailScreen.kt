@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Transform
@@ -72,6 +73,7 @@ import com.morphdrop.app.ui.util.TimeUtils
 @Composable
 fun HistoryDetailScreen(
     onNavigateBack: () -> Unit,
+    onConvertAgain: (toolId: String, uriArg: String) -> Unit = { _, _ -> },
     viewModel: HistoryDetailViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -88,7 +90,8 @@ fun HistoryDetailScreen(
         onNavigateBack = onNavigateBack,
         onOpenFile = { viewModel.openFile(context) },
         onShareFile = { viewModel.shareFile(context) },
-        onDelete = { viewModel.deleteItem() }
+        onDelete = { viewModel.deleteItem() },
+        onConvertAgain = onConvertAgain
     )
 }
 
@@ -99,7 +102,8 @@ fun HistoryDetailScreenContent(
     onNavigateBack: () -> Unit,
     onOpenFile: () -> Unit,
     onShareFile: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onConvertAgain: (toolId: String, uriArg: String) -> Unit = { _, _ -> }
 ) {
     var showDeleteDialog by remember { mutableStateOf(false) }
 
@@ -335,6 +339,20 @@ fun HistoryDetailScreenContent(
                             Icon(imageVector = Icons.Default.Share, contentDescription = null)
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(if (isMultiple) "Share Files" else "Share File", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+
+                    if (state.reRunToolId != null && state.reRunUriArg != null) {
+                        OutlinedButton(
+                            onClick = { onConvertAgain(state.reRunToolId, state.reRunUriArg) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(52.dp),
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            Icon(imageVector = Icons.Default.Refresh, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Convert Again", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                         }
                     }
 

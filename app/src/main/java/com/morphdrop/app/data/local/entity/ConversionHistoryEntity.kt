@@ -21,5 +21,10 @@ data class ConversionHistoryEntity(
     /** Pinned favorites sort first in History. */
     val isPinned: Boolean = false,
     /** Why a conversion failed, shown on the detail screen. Null on success. */
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    /**
+     * The original input URIs (comma separated), stored so a conversion can
+     * be run again from History. Empty for rows saved before this existed.
+     */
+    val inputUris: String = ""
 )
