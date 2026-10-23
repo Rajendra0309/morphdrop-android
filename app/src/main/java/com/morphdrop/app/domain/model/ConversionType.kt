@@ -18,6 +18,7 @@ import androidx.compose.material.icons.outlined.Layers
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.PictureAsPdf
 import androidx.compose.material.icons.outlined.Slideshow
+import androidx.compose.material.icons.outlined.GridOn
 import androidx.compose.material.icons.outlined.TableChart
 import androidx.compose.material.icons.outlined.TableRows
 import androidx.compose.material.icons.outlined.TextSnippet
@@ -129,6 +130,16 @@ data class ConversionType(
                 inputType = FileType.XLSX,
                 outputType = FileType.CSV,
                 icon = Icons.Outlined.TableRows,
+                category = CATEGORY_CONVERSIONS,
+                isMultiFileAllowed = false
+            ),
+            ConversionType(
+                id = "csv_to_xlsx",
+                name = "CSV to Excel",
+                description = "Convert a CSV file into an Excel spreadsheet",
+                inputType = FileType.CSV,
+                outputType = FileType.XLSX,
+                icon = Icons.Outlined.GridOn,
                 category = CATEGORY_CONVERSIONS,
                 isMultiFileAllowed = false
             ),

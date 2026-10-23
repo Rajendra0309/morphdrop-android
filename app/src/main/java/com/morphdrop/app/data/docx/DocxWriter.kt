@@ -134,7 +134,7 @@ object DocxWriter {
     }
 
     /** Escapes XML markup and drops characters that XML 1.0 forbids outright. */
-    private fun escapeXml(text: String): String {
+    internal fun escapeXml(text: String): String {
         val result = StringBuilder(text.length)
         for (ch in text) {
             when (ch) {
