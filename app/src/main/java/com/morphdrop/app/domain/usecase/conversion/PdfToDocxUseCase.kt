@@ -142,6 +142,9 @@ internal fun buildDocxBlocks(orderedPages: List<List<PdfTextLine>>): List<DocxBl
     fun startsNewParagraph(previous: PdfTextLine, line: PdfTextLine): Boolean {
         if (abs(line.fontSize - previous.fontSize) > bodySize * 0.25f) return true
         val leading = line.top - previous.top
+        // A jump back up the page means the reader moved to a new column
+        // (or block): never merge across it.
+        if (leading < -1f) return true
         if (leading <= 0f) return false
         if (medianLeading > 0f) return leading > medianLeading * 1.45f
         val gap = line.top - (previous.top + previous.height)

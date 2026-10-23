@@ -3,6 +3,7 @@ package com.morphdrop.app.data.pdf
 import com.tom_roush.pdfbox.pdmodel.PDPage
 import com.tom_roush.pdfbox.text.PDFTextStripper
 import com.tom_roush.pdfbox.text.TextPosition
+import kotlin.math.max
 
 /** One visual line of text extracted from a PDF page, in reading units (points). */
 data class PdfTextLine(
@@ -15,6 +16,18 @@ data class PdfTextLine(
     val height: Float,
     val pageIndex: Int,
     val pageWidth: Float
+)
+
+/** A run of characters on one baseline, before gap-based line splitting. */
+internal data class PdfLineSegment(
+    val text: String,
+    val fontSize: Float,
+    val bold: Boolean,
+    val left: Float,
+    val right: Float,
+    val top: Float,
+    val height: Float,
+    val spaceBefore: Boolean
 )
 
 /**
@@ -30,15 +43,8 @@ class PdfLineStripper : PDFTextStripper() {
     private var pageIndex = -1
     private var pageWidth = 0f
 
-    private val words = mutableListOf<String>()
-    private val sizes = mutableListOf<Float>()
-    private val bolds = mutableListOf<Boolean>()
+    private val segments = mutableListOf<PdfLineSegment>()
     private var pendingSpace = false
-    private var lineTop = 0f
-    private var lineBottom = 0f
-    private var lineLeft = 0f
-    private var lineRight = 0f
-    private var hasGeometry = false
 
     init {
         sortByPosition = true
@@ -53,32 +59,24 @@ class PdfLineStripper : PDFTextStripper() {
 
     override fun writeString(text: String, textPositions: MutableList<TextPosition>) {
         if (textPositions.isEmpty()) return
-        val size = textPositions.maxOf { it.fontSizeInPt }
-        val bold = textPositions.any { it.font?.name?.contains("Bold", ignoreCase = true) == true }
-        if (!hasGeometry) {
-            lineTop = textPositions.minOf { it.yDirAdj }
-            lineBottom = textPositions.maxOf { it.yDirAdj + it.heightDir }
-            lineLeft = textPositions.minOf { it.xDirAdj }
-            lineRight = textPositions.maxOf { it.xDirAdj + it.widthDirAdj }
-            hasGeometry = true
+        // A typeset row can arrive as one chunk spanning two columns that
+        // share a baseline. When characters map 1:1 to positions, split the
+        // chunk wherever a wide horizontal gap appears.
+        if (textPositions.size == text.length && text.length > 1) {
+            var start = 0
+            for (i in 1 until textPositions.size) {
+                val previous = textPositions[i - 1]
+                val current = textPositions[i]
+                val gap = current.xDirAdj - (previous.xDirAdj + previous.widthDirAdj)
+                if (gap > segmentGapThreshold(previous.fontSizeInPt, current.fontSizeInPt)) {
+                    addSegment(text.substring(start, i), textPositions.subList(start, i))
+                    start = i
+                }
+            }
+            addSegment(text.substring(start), textPositions.subList(start, textPositions.size))
         } else {
-            lineTop = minOf(lineTop, textPositions.minOf { it.yDirAdj })
-            lineBottom = maxOf(lineBottom, textPositions.maxOf { it.yDirAdj + it.heightDir })
-            lineLeft = minOf(lineLeft, textPositions.minOf { it.xDirAdj })
-            lineRight = maxOf(lineRight, textPositions.maxOf { it.xDirAdj + it.widthDirAdj })
+            addSegment(text, textPositions)
         }
-        val trimmed = text.trim()
-        if (trimmed.isEmpty()) {
-            pendingSpace = true
-            return
-        }
-        if (pendingSpace && words.isNotEmpty()) {
-            words[words.lastIndex] = words.last() + " "
-        }
-        words.add(trimmed)
-        sizes.add(size)
-        bolds.add(bold)
-        pendingSpace = false
     }
 
     override fun writeWordSeparator() {
@@ -97,40 +95,107 @@ class PdfLineStripper : PDFTextStripper() {
     /** Number of pages the stripper has visited so far. */
     val visitedPages: Int get() = pageIndex + 1
 
-    private fun flushLine() {
-        if (words.isEmpty()) {
-            hasGeometry = false
+    private fun addSegment(text: String, positions: List<TextPosition>) {
+        val trimmed = text.trim()
+        if (trimmed.isEmpty()) {
+            pendingSpace = true
             return
         }
-        val text = words.joinToString(" ").replace(Regex("\\s+"), " ").trim()
-        var charCount = 0
-        var weightedSize = 0f
-        words.forEachIndexed { index, word ->
-            charCount += word.length
-            weightedSize += sizes[index] * word.length
-        }
-        val boldChars = words.indices
-            .filter { bolds[it] }
-            .sumOf { words[it].length }
-        lines.add(
-            PdfTextLine(
-                text = text,
-                fontSize = if (charCount > 0) weightedSize / charCount else 0f,
-                bold = charCount > 0 && boldChars * 2 >= charCount,
-                left = lineLeft,
-                right = lineRight,
-                top = lineTop,
-                height = lineBottom - lineTop,
-                pageIndex = pageIndex,
-                pageWidth = pageWidth
+        val top = positions.minOf { it.yDirAdj }
+        segments.add(
+            PdfLineSegment(
+                text = trimmed,
+                fontSize = positions.maxOf { it.fontSizeInPt },
+                bold = positions.any { it.font?.name?.contains("Bold", ignoreCase = true) == true },
+                left = positions.minOf { it.xDirAdj },
+                right = positions.maxOf { it.xDirAdj + it.widthDirAdj },
+                top = top,
+                height = positions.maxOf { it.yDirAdj + it.heightDir } - top,
+                spaceBefore = pendingSpace && segments.isNotEmpty()
             )
         )
-        words.clear()
-        sizes.clear()
-        bolds.clear()
         pendingSpace = false
-        hasGeometry = false
     }
+
+    private fun flushLine() {
+        if (segments.isEmpty()) return
+        lines.addAll(groupSegmentsIntoLines(segments, pageIndex, pageWidth))
+        segments.clear()
+        pendingSpace = false
+    }
+}
+
+/** Horizontal gap wide enough to separate two runs of text (e.g. columns). */
+internal fun segmentGapThreshold(sizeA: Float, sizeB: Float): Float =
+    max(14f, 1.2f * max(sizeA, sizeB))
+
+/**
+ * Splits one physical baseline row into logical lines. Segments separated
+ * by a wide horizontal gap (a column gutter, or a jump to a far-apart text
+ * block) become separate lines; closely spaced segments merge back into
+ * one line, honouring the word separators between them.
+ */
+internal fun groupSegmentsIntoLines(
+    segments: List<PdfLineSegment>,
+    pageIndex: Int,
+    pageWidth: Float
+): List<PdfTextLine> {
+    if (segments.isEmpty()) return emptyList()
+    val sorted = segments.sortedBy { it.left }
+    val result = mutableListOf<PdfTextLine>()
+    var group = mutableListOf<PdfLineSegment>()
+    var groupRight = Float.NEGATIVE_INFINITY
+
+    fun emitGroup() {
+        if (group.isEmpty()) return
+        result.add(mergeSegments(group, pageIndex, pageWidth))
+        group = mutableListOf()
+        groupRight = Float.NEGATIVE_INFINITY
+    }
+
+    for (segment in sorted) {
+        val groupSize = group.maxOfOrNull { it.fontSize } ?: segment.fontSize
+        if (group.isNotEmpty() &&
+            segment.left - groupRight > segmentGapThreshold(groupSize, segment.fontSize)
+        ) {
+            emitGroup()
+        }
+        group.add(segment)
+        groupRight = max(groupRight, segment.right)
+    }
+    emitGroup()
+    return result
+}
+
+private fun mergeSegments(
+    group: List<PdfLineSegment>,
+    pageIndex: Int,
+    pageWidth: Float
+): PdfTextLine {
+    val text = StringBuilder()
+    var charCount = 0
+    var weightedSize = 0f
+    var boldChars = 0
+    for (segment in group) {
+        if (text.isNotEmpty() && segment.spaceBefore) text.append(' ')
+        text.append(segment.text)
+        charCount += segment.text.length
+        weightedSize += segment.fontSize * segment.text.length
+        if (segment.bold) boldChars += segment.text.length
+    }
+    val top = group.minOf { it.top }
+    val bottom = group.maxOf { it.top + it.height }
+    return PdfTextLine(
+        text = text.toString().replace(Regex("\\s+"), " ").trim(),
+        fontSize = if (charCount > 0) weightedSize / charCount else 0f,
+        bold = charCount > 0 && boldChars * 2 >= charCount,
+        left = group.minOf { it.left },
+        right = group.maxOf { it.right },
+        top = top,
+        height = bottom - top,
+        pageIndex = pageIndex,
+        pageWidth = pageWidth
+    )
 }
 
 /**

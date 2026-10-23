@@ -1,7 +1,9 @@
 package com.morphdrop.app
 
 import com.morphdrop.app.data.docx.DocxBlock
+import com.morphdrop.app.data.pdf.PdfLineSegment
 import com.morphdrop.app.data.pdf.PdfTextLine
+import com.morphdrop.app.data.pdf.groupSegmentsIntoLines
 import com.morphdrop.app.data.pdf.readingOrder
 import com.morphdrop.app.domain.usecase.conversion.buildDocxBlocks
 import org.junit.Assert.assertEquals
@@ -159,5 +161,63 @@ class PdfStructureTest {
             ),
             ordered.map { it.text }
         )
+    }
+
+    private fun segment(
+        text: String,
+        left: Float,
+        right: Float,
+        spaceBefore: Boolean = false
+    ) = PdfLineSegment(
+        text = text,
+        fontSize = 11f,
+        bold = false,
+        left = left,
+        right = right,
+        top = 100f,
+        height = 11f,
+        spaceBefore = spaceBefore
+    )
+
+    @Test
+    fun `segments split by a column gutter become separate lines`() {
+        // One physical row as PDFBox delivers it for a two-column page:
+        // left column text ends at x=280, right column starts at x=330.
+        val segments = listOf(
+            segment("LEFT COLUMN line one", left = 72f, right = 280f),
+            segment("RIGHT COLUMN line one", left = 330f, right = 540f)
+        )
+        val lines = groupSegmentsIntoLines(segments, pageIndex = 0, pageWidth = 612f)
+        assertEquals(2, lines.size)
+        assertEquals("LEFT COLUMN line one", lines[0].text)
+        assertEquals("RIGHT COLUMN line one", lines[1].text)
+    }
+
+    @Test
+    fun `closely spaced segments merge into one line`() {
+        val segments = listOf(
+            segment("Hello", left = 72f, right = 110f),
+            segment("world", left = 114f, right = 160f, spaceBefore = true)
+        )
+        val lines = groupSegmentsIntoLines(segments, pageIndex = 0, pageWidth = 612f)
+        assertEquals(1, lines.size)
+        assertEquals("Hello world", lines.single().text)
+    }
+
+    @Test
+    fun `column jump forces a paragraph break in word output`() {
+        // Reading order output for a two-column page: the right column's
+        // first line sits higher than the left column's last line.
+        val lines = listOf(
+            line("Left column first row text", top = 100f, left = 72f, right = 280f),
+            line("Left column second row text", top = 116f, left = 72f, right = 280f),
+            line("Right column first row text", top = 100f, left = 330f, right = 540f),
+            line("Right column second row text", top = 116f, left = 330f, right = 540f)
+        )
+        val blocks = buildDocxBlocks(listOf(lines))
+        val paragraphs = blocks.filterIsInstance<DocxBlock.Paragraph>()
+        assertEquals(2, paragraphs.size)
+        assertTrue(paragraphs[0].text.contains("Left column"))
+        assertTrue(paragraphs[1].text.contains("Right column"))
     }
 }
