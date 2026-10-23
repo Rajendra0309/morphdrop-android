@@ -693,8 +693,8 @@ fun ConversionConfigScreenContent(
                     }
                     Text(
                         text = "Output format: ${state.outputFormat.uppercase()}. " +
-                            "Portals usually ask for JPG — if yours does, set the format " +
-                            "in the Output Format section below.",
+                            "Portals usually ask for JPG — the format can be changed " +
+                            "in the Output Format section.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

@@ -207,6 +207,12 @@ class ConversionConfigViewModel @Inject constructor(
                     if (type.id == "heic_to_image" && next.outputFormat !in listOf("jpg", "png")) {
                         next = next.copy(outputFormat = "jpg")
                     }
+                    // Compress declares JPG output: unless the user saved a
+                    // Compress preset of their own, do not inherit whatever
+                    // format another image tool used last.
+                    if (type.id == "compress_images" && preset == null) {
+                        next = next.copy(outputFormat = "jpg")
+                    }
                     next.copy(isConvertEnabled = isStateValid(next))
                 }
             }
@@ -1218,6 +1224,7 @@ class ConversionConfigViewModel @Inject constructor(
             "image_converter" -> listOf("png", "jpg", "webp", "bmp")
             "image_resize" -> listOf("png", "jpg", "webp", "bmp")
             "heic_to_image" -> listOf("jpg", "png")
+            "compress_images" -> listOf("png", "jpg", "webp", "bmp")
             else -> listOf(type.outputType.extension)
         }
     }
