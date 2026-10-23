@@ -226,6 +226,7 @@ class PhotoStudioViewModel @Inject constructor(
                 try {
                     historyRepository.insertHistory(
                         ConversionHistoryEntity(
+                            conversionTypeId = "photo_studio",
                             conversionType = "photo_studio",
                             inputFileName = current.fileName,
                             outputFileNames = outputName,

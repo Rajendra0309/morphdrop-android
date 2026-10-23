@@ -56,9 +56,15 @@ fun ConversionCard(
             )
             .semantics {
                 contentDescription =
-                    "${conversionType.name}: ${conversionType.inputType.displayName} " +
-                        "to ${conversionType.outputType.displayName}" +
-                        if (onLongClick != null) ". Long-press for quick conversion." else ""
+                    if (conversionType.id == "photo_studio" || conversionType.id == "qr_studio") {
+                        // Studios are not "X to Y" conversions.
+                        "${conversionType.name}: ${conversionType.description}" +
+                            if (onLongClick != null) ". Long-press for quick conversion." else ""
+                    } else {
+                        "${conversionType.name}: ${conversionType.inputType.displayName} " +
+                            "to ${conversionType.outputType.displayName}" +
+                            if (onLongClick != null) ". Long-press for quick conversion." else ""
+                    }
             },
         shape = RoundedCornerShape(16.dp)
     ) {

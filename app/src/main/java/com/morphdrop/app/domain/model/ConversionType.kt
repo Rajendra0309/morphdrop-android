@@ -5,6 +5,7 @@ import androidx.compose.material.icons.automirrored.outlined.Article
 import androidx.compose.material.icons.automirrored.outlined.CallSplit
 import androidx.compose.material.icons.automirrored.outlined.MergeType
 import androidx.compose.material.icons.automirrored.outlined.RotateRight
+import androidx.compose.material.icons.outlined.Article
 import androidx.compose.material.icons.outlined.Badge
 import androidx.compose.material.icons.outlined.Collections
 import androidx.compose.material.icons.outlined.QrCode2
@@ -96,7 +97,7 @@ data class ConversionType(
                 description = "Convert a text-based PDF into an editable Word document",
                 inputType = FileType.PDF,
                 outputType = FileType.DOCX,
-                icon = Icons.Outlined.Description,
+                icon = Icons.Outlined.Article,
                 category = CATEGORY_CONVERSIONS,
                 isMultiFileAllowed = false
             ),

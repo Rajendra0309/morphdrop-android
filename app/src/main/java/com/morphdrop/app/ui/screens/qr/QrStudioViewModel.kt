@@ -151,6 +151,7 @@ class QrStudioViewModel @Inject constructor(
                 try {
                     historyRepository.insertHistory(
                         ConversionHistoryEntity(
+                            conversionTypeId = "qr_studio",
                             conversionType = "qr_studio",
                             inputFileName = "QR Code (${current.contentType.label})",
                             outputFileNames = fileName,

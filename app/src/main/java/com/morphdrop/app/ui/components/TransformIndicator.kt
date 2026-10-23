@@ -60,6 +60,26 @@ fun TransformIndicator(
     modifier: Modifier = Modifier,
     compact: Boolean = false,
 ) {
+    // Studio tools are not format conversions: a "PNG → PNG" pill would be
+    // meaningless, so they carry a single descriptive badge instead.
+    val studioBadge = when (conversionType.id) {
+        "photo_studio" -> "EXACT-SIZE JPG"
+        "qr_studio" -> "CREATE · SCAN"
+        else -> null
+    }
+    if (studioBadge != null) {
+        Row(
+            modifier = modifier.semantics { contentDescription = studioBadge },
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            FormatChip(
+                format = studioBadge,
+                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+            )
+        }
+        return
+    }
     Row(
         modifier = modifier.semantics {
             contentDescription =
