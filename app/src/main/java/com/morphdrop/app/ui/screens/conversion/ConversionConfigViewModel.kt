@@ -58,6 +58,7 @@ data class ConversionConfigState(
     val pageRangeStart: String = "",
     val pageRangeEnd: String = "",
     val outputFileName: String = "",
+    val outputNamePattern: String = "",
     val isConvertEnabled: Boolean = false,
     val showQualitySlider: Boolean = false,
     val showPageRange: Boolean = false,
@@ -686,6 +687,10 @@ class ConversionConfigViewModel @Inject constructor(
         }
     }
 
+    fun onOutputNamePatternChanged(value: String) {
+        _state.update { it.copy(outputNamePattern = value) }
+    }
+
     // Workbench Grid Actions
     fun onWorkbenchItemClicked(item: WorkbenchImageItem) {
         _state.update { 
@@ -1018,6 +1023,13 @@ class ConversionConfigViewModel @Inject constructor(
                 .putString(com.morphdrop.app.worker.ConversionWorker.KEY_TARGET_FORMAT, currentState.outputFormat)
                 .putInt(com.morphdrop.app.worker.ConversionWorker.KEY_QUALITY, currentState.quality)
                 .putBoolean(com.morphdrop.app.worker.ConversionWorker.KEY_STRIP_METADATA, currentState.stripMetadata)
+
+            if (currentState.outputNamePattern.isNotBlank()) {
+                dataBuilder.putString(
+                    com.morphdrop.app.worker.ConversionWorker.KEY_NAME_PATTERN,
+                    currentState.outputNamePattern.trim()
+                )
+            }
 
             val resizeScaleFloat = when (currentState.resizeOption) {
                 "50%" -> 0.5f

@@ -236,6 +236,7 @@ fun ConversionConfigScreen(
         onPageRangeStartChanged = viewModel::onPageRangeStartChanged,
         onPageRangeEndChanged = viewModel::onPageRangeEndChanged,
         onOutputFileNameChanged = viewModel::onOutputFileNameChanged,
+        onOutputNamePatternChanged = viewModel::onOutputNamePatternChanged,
         onTargetWidthChanged = viewModel::onTargetWidthChanged,
         onTargetHeightChanged = viewModel::onTargetHeightChanged,
         onPaddingColorChanged = viewModel::onPaddingColorChanged,
@@ -408,6 +409,7 @@ fun ConversionConfigScreenContent(
     onPageRangeStartChanged: (String) -> Unit,
     onPageRangeEndChanged: (String) -> Unit,
     onOutputFileNameChanged: (String) -> Unit,
+    onOutputNamePatternChanged: (String) -> Unit,
     onTargetWidthChanged: (String) -> Unit,
     onTargetHeightChanged: (String) -> Unit,
     onPaddingColorChanged: (Int) -> Unit,
@@ -597,6 +599,18 @@ fun ConversionConfigScreenContent(
                                 )
                             }
                         }
+                    }
+                }
+
+                // Batch rename pattern (multi-file image conversions)
+                if ((isImageConversion && state.conversionType?.id != "images_to_pdf") ||
+                    state.conversionType?.id == "heic_to_image"
+                ) {
+                    ConfigSection(title = "Batch Rename (optional)") {
+                        NamePatternField(
+                            value = state.outputNamePattern,
+                            onValueChange = onOutputNamePatternChanged
+                        )
                     }
                 }
 
@@ -1027,6 +1041,28 @@ private fun FileDropZone(
 }
 
 @Composable
+private fun NamePatternField(value: String, onValueChange: (String) -> Unit) {
+    Column {
+        OutlinedTextField(
+            value = value,
+            onValueChange = onValueChange,
+            label = { Text("Name pattern") },
+            placeholder = { Text("e.g. Holiday_{n}") },
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            singleLine = true
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = "Used when converting several files at once. " +
+                "{name} = original name, {n} = number, {date} = date.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
 private fun ConfigSection(title: String, content: @Composable () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
@@ -1364,6 +1400,7 @@ fun ConversionConfigScreenLightPreview() {
             onPageRangeStartChanged = {},
             onPageRangeEndChanged = {},
             onOutputFileNameChanged = {},
+            onOutputNamePatternChanged = {},
             onTargetWidthChanged = {},
             onTargetHeightChanged = {},
             onPaddingColorChanged = {},
@@ -1424,6 +1461,7 @@ fun ConversionConfigScreenDarkPreview() {
             onPageRangeStartChanged = {},
             onPageRangeEndChanged = {},
             onOutputFileNameChanged = {},
+            onOutputNamePatternChanged = {},
             onTargetWidthChanged = {},
             onTargetHeightChanged = {},
             onPaddingColorChanged = {},
@@ -1496,6 +1534,7 @@ fun ConversionConfigScreen_MetadataEditor_LightPreview() {
             onPageRangeStartChanged = {},
             onPageRangeEndChanged = {},
             onOutputFileNameChanged = {},
+            onOutputNamePatternChanged = {},
             onTargetWidthChanged = {},
             onTargetHeightChanged = {},
             onPaddingColorChanged = {},
@@ -1568,6 +1607,7 @@ fun ConversionConfigScreen_MetadataEditor_DarkPreview() {
             onPageRangeStartChanged = {},
             onPageRangeEndChanged = {},
             onOutputFileNameChanged = {},
+            onOutputNamePatternChanged = {},
             onTargetWidthChanged = {},
             onTargetHeightChanged = {},
             onPaddingColorChanged = {},

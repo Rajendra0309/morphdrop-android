@@ -103,6 +103,7 @@ class ConversionWorker @AssistedInject constructor(
         const val KEY_PADDING_COLOR = "padding_color"
         const val KEY_TARGET_SIZE_KB = "target_size_kb"
         const val KEY_STRIP_METADATA = "strip_metadata"
+        const val KEY_NAME_PATTERN = "output_name_pattern"
         const val KEY_CROP_RECT_LEFT = "crop_rect_left"
         const val KEY_CROP_RECT_TOP = "crop_rect_top"
         const val KEY_CROP_RECT_RIGHT = "crop_rect_right"
@@ -388,6 +389,8 @@ class ConversionWorker @AssistedInject constructor(
                         "MorphDrop/Batch_[$timestamp]"
                     } else null
 
+                    val namePattern = inputData.getString(KEY_NAME_PATTERN)?.takeIf { it.isNotBlank() }
+
                     val convertedUris = mutableListOf<Uri>()
 
                     for ((idx, u) in uris.withIndex()) {
@@ -415,7 +418,11 @@ class ConversionWorker @AssistedInject constructor(
 
                         val originalName = FileHelper.getFileName(appContext, u).substringBeforeLast('.')
                         val genName = if (isBatchImageConversion) {
-                            "$originalName.$targetFormat"
+                            if (namePattern != null) {
+                                applyOutputNamePattern(namePattern, originalName, idx + 1) + ".$targetFormat"
+                            } else {
+                                "$originalName.$targetFormat"
+                            }
                         } else {
                             outputFileName
                         }
@@ -467,6 +474,8 @@ class ConversionWorker @AssistedInject constructor(
                         "MorphDrop/Batch_[$timestamp]"
                     } else null
 
+                    val namePattern = inputData.getString(KEY_NAME_PATTERN)?.takeIf { it.isNotBlank() }
+
                     val convertedUris = mutableListOf<Uri>()
                     for ((idx, u) in uris.withIndex()) {
                         checkCancellation()
@@ -491,7 +500,11 @@ class ConversionWorker @AssistedInject constructor(
 
                         val originalName = FileHelper.getFileName(appContext, u).substringBeforeLast('.')
                         val genName = if (isBatchImageConversion) {
-                            "$originalName.$targetFormat"
+                            if (namePattern != null) {
+                                applyOutputNamePattern(namePattern, originalName, idx + 1) + ".$targetFormat"
+                            } else {
+                                "$originalName.$targetFormat"
+                            }
                         } else {
                             outputFileName
                         }
@@ -943,4 +956,28 @@ class ConversionWorker @AssistedInject constructor(
         }
         return inlinePayload
     }
+}
+
+/**
+ * Renders a batch output-name pattern for one file. Tokens: {name} is the
+ * original file name without extension, {n} the 1-based position, {nn}
+ * the zero-padded position, {date} today as yyyyMMdd. Characters that
+ * are illegal in file names are replaced, and a pattern that renders
+ * blank falls back to the original name.
+ */
+internal fun applyOutputNamePattern(
+    pattern: String,
+    originalBaseName: String,
+    index: Int,
+    date: Date = Date()
+): String {
+    val dateText = SimpleDateFormat("yyyyMMdd", Locale.US).format(date)
+    val rendered = pattern
+        .replace("{name}", originalBaseName)
+        .replace("{nn}", index.toString().padStart(2, '0'))
+        .replace("{n}", index.toString())
+        .replace("{date}", dateText)
+        .replace(Regex("""[\\/:*?"<>|]"""), "_")
+        .trim()
+    return rendered.ifBlank { originalBaseName }
 }
