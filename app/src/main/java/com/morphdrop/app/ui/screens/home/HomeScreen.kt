@@ -3,7 +3,6 @@ package com.morphdrop.app.ui.screens.home
 import android.content.Intent
 import android.content.res.Configuration
 import android.net.Uri
-import com.morphdrop.app.ui.screens.history.resolveConversionType
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -39,7 +38,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.SearchOff
 import androidx.compose.material.icons.filled.UploadFile
@@ -51,15 +49,11 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -74,11 +68,11 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -91,14 +85,12 @@ import androidx.compose.ui.window.Dialog
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.morphdrop.app.MainViewModel
-import com.morphdrop.app.data.local.entity.ConversionHistoryEntity
 import com.morphdrop.app.domain.model.ConversionType
 import com.morphdrop.app.domain.model.LastOpenedPdf
 import com.morphdrop.app.ui.components.ConversionCard
 import com.morphdrop.app.ui.components.dashedBorder
 import com.morphdrop.app.ui.components.EmptyState
 import com.morphdrop.app.ui.components.MorphDropSearchBar
-import com.morphdrop.app.ui.components.MorphDropTopAppBar
 import com.morphdrop.app.ui.components.MorphScaffold
 import com.morphdrop.app.ui.components.SectionHeader
 import com.morphdrop.app.ui.components.TransformIndicator
@@ -106,7 +98,6 @@ import com.morphdrop.app.ui.navigation.Screen
 import com.morphdrop.app.ui.theme.MorphDropTheme
 import com.morphdrop.app.ui.util.TimeUtils
 import com.morphdrop.app.util.FileHelper
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @Composable
@@ -124,7 +115,6 @@ fun HomeScreen(
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
     val filteredTypes by viewModel.filteredConversionTypes.collectAsStateWithLifecycle()
     val favoriteTypes by viewModel.favoriteConversionTypes.collectAsStateWithLifecycle()
-    val recentConversions by viewModel.recentConversions.collectAsStateWithLifecycle()
     val lastOpenedPdf by mainViewModel.lastOpenedPdf.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val homeScope = rememberCoroutineScope()
@@ -133,7 +123,6 @@ fun HomeScreen(
         searchQuery = searchQuery,
         filteredTypes = filteredTypes,
         favoriteTypes = favoriteTypes,
-        recentConversions = recentConversions,
         lastOpenedPdf = lastOpenedPdf,
         onOpenLastPdf = {
             homeScope.launch {
@@ -163,7 +152,6 @@ fun HomeScreenContent(
     searchQuery: String,
     filteredTypes: List<ConversionType>,
     favoriteTypes: List<ConversionType>,
-    recentConversions: List<ConversionHistoryEntity>,
     lastOpenedPdf: LastOpenedPdf? = null,
     onOpenLastPdf: () -> Unit = {},
     onDismissLastPdf: () -> Unit = {},
@@ -179,36 +167,23 @@ fun HomeScreenContent(
     gridColumns: Int = 2,
     hasNavigationRail: Boolean = false
 ) {
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
     val gridState = rememberLazyGridState()
     val haptic = LocalHapticFeedback.current
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val focusRequester = remember { FocusRequester() }
-    val keyboardController = LocalSoftwareKeyboardController.current
 
-    // Scroll-driven search button beside the navbar: appears once the search
-    // bar has scrolled out of view; tapping scrolls back up and focuses search.
-    val isScrolledDown by remember {
-        derivedStateOf { gridState.firstVisibleItemIndex > 0 }
-    }
-    LaunchedEffect(isScrolledDown) {
-        setSearchFabVisibility(isScrolledDown)
-    }
+    // No search FAB on Home: the search bar lives at the top of the grid
+    // itself, so a floating magnifier beside the navbar only duplicated it.
     LaunchedEffect(Unit) {
-        setOnSearchFabClick {
-            coroutineScope.launch {
-                gridState.animateScrollToItem(0)
-                delay(100)
-                focusRequester.requestFocus()
-                keyboardController?.show()
-            }
-        }
+        setSearchFabVisibility(false)
+        setOnSearchFabClick(null)
     }
-    // Re-sync when the screen is revealed again (back stack / tab switch).
     DisposableEffect(Unit) {
-        setSearchFabVisibility(isScrolledDown)
-        onDispose { }
+        onDispose {
+            setSearchFabVisibility(false)
+            setOnSearchFabClick(null)
+        }
     }
 
     // Drop-zone file picker: pick any file, then choose the tool for it.
@@ -259,21 +234,15 @@ fun HomeScreenContent(
     }
 
     MorphScaffold(
-        modifier = Modifier
-            .nestedScroll(scrollBehavior.nestedScrollConnection)
-            .imePadding(),
-        topBar = {
-            MorphDropTopAppBar(
-                title = "MorphDrop",
-                scrollBehavior = scrollBehavior,
-                showTagline = true,
-                isBrand = true
-            )
-        },
+        modifier = Modifier.imePadding(),
         reserveFloatingNavSpace = !hasNavigationRail
     ) { innerPadding ->
-        // Option 1 layout: search and category filter chips are pinned
-        // under the app bar; the grid below them changes with the filter.
+        // Decluttered layout: no app bar on Home. The brand header, search
+        // bar and category chips are the grid's first items, so scrolling
+        // down slides them away and the tools take the whole screen under
+        // the status bar; scrolling back to the top brings them back. The
+        // old pinned header plus LargeTopAppBar left a permanent ~200dp
+        // of chrome (and a dead gap under the tagline) above the tools.
         var selectedFilter by remember { mutableStateOf(HomeFilter.ALL) }
         val favoriteIds = favoriteTypes.map { it.id }.toSet()
         fun matchesFilter(type: ConversionType): Boolean = when (selectedFilter) {
@@ -283,92 +252,142 @@ fun HomeScreenContent(
             HomeFilter.PDF_TOOLS -> type.category == ConversionType.CATEGORY_PDF_TOOLS
             HomeFilter.IMAGE_TOOLS -> type.category == ConversionType.CATEGORY_IMAGE_TOOLS
         }
-        val visibleTypes = filteredTypes.filter { matchesFilter(it) }
         val searching = searchQuery.isNotBlank()
+        // Search always covers every tool: a query typed while a category
+        // chip is selected must still find tools from other categories.
+        val visibleTypes = if (searching) {
+            filteredTypes
+        } else {
+            filteredTypes.filter { matchesFilter(it) }
+        }
 
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(top = innerPadding.calculateTopPadding())
+        // A filter or query change starts from the top: keeping the old
+        // scroll offset opened the new view halfway down its grid.
+        LaunchedEffect(selectedFilter, searchQuery) {
+            gridState.scrollToItem(0)
+        }
+
+        LazyVerticalGrid(
+            state = gridState,
+            columns = GridCells.Fixed(gridColumns),
+            contentPadding = PaddingValues(
+                start = 16.dp,
+                end = 16.dp,
+                top = innerPadding.calculateTopPadding() + 8.dp,
+                bottom = innerPadding.calculateBottomPadding() + 48.dp
+            ),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.fillMaxSize()
         ) {
-            MorphDropSearchBar(
-                query = searchQuery,
-                onQueryChange = onSearchQueryChange,
-                active = false,
-                onActiveChange = { },
-                focusRequester = focusRequester,
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 4.dp)
-            )
-
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                item {
-                    FilterChip(
-                        selected = selectedFilter == HomeFilter.ALL,
-                        onClick = { selectedFilter = HomeFilter.ALL },
-                        label = { Text("All ${ConversionType.defaultList.size}") },
-                        modifier = Modifier.semantics {
-                            contentDescription = "Show all ${ConversionType.defaultList.size} tools"
-                        }
-                    )
-                }
-                item {
-                    FilterChip(
-                        selected = selectedFilter == HomeFilter.FAVORITES,
-                        onClick = { selectedFilter = HomeFilter.FAVORITES },
-                        label = { Text("Favorites") },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Default.Favorite,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        },
-                        modifier = Modifier.semantics {
-                            contentDescription = "Show favorite tools, ${favoriteTypes.size} pinned"
-                        }
-                    )
-                }
-                val categoryFilters = listOf(
-                    HomeFilter.CONVERSIONS to ConversionType.CATEGORY_CONVERSIONS,
-                    HomeFilter.PDF_TOOLS to ConversionType.CATEGORY_PDF_TOOLS,
-                    HomeFilter.IMAGE_TOOLS to ConversionType.CATEGORY_IMAGE_TOOLS
-                )
-                categoryFilters.forEach { (filter, categoryName) ->
-                    val count = ConversionType.defaultList.count { it.category == categoryName }
-                    item {
-                        FilterChip(
-                            selected = selectedFilter == filter,
-                            onClick = { selectedFilter = filter },
-                            label = { Text("$categoryName $count") },
-                            modifier = Modifier.semantics {
-                                contentDescription = "Filter by $categoryName, $count tools"
-                            }
+            if (!searching && selectedFilter == HomeFilter.ALL) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Column(modifier = Modifier.padding(bottom = 2.dp)) {
+                        Text(
+                            text = "MorphDrop",
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.Black,
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                        Text(
+                            text = "Drop. Transform. Done.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.primary
                         )
                     }
                 }
             }
 
-            LazyVerticalGrid(
-                state = gridState,
-                columns = GridCells.Fixed(gridColumns),
-                contentPadding = PaddingValues(
-                    start = 16.dp,
-                    end = 16.dp,
-                    top = 8.dp,
-                    bottom = innerPadding.calculateBottomPadding() + 48.dp
-                ),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier.fillMaxSize()
-            ) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                MorphDropSearchBar(
+                    query = searchQuery,
+                    onQueryChange = onSearchQueryChange,
+                    active = false,
+                    onActiveChange = { },
+                    focusRequester = focusRequester,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 4.dp)
+                )
+            }
+
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        contentPadding = PaddingValues(vertical = 4.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        item {
+                            FilterChip(
+                                selected = selectedFilter == HomeFilter.ALL,
+                                onClick = { selectedFilter = HomeFilter.ALL },
+                                label = { Text("All ${ConversionType.defaultList.size}") },
+                                modifier = Modifier.semantics {
+                                    contentDescription = "Show all ${ConversionType.defaultList.size} tools"
+                                }
+                            )
+                        }
+                        item {
+                            FilterChip(
+                                selected = selectedFilter == HomeFilter.FAVORITES,
+                                onClick = { selectedFilter = HomeFilter.FAVORITES },
+                                label = { Text("Favorites") },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.Favorite,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                },
+                                modifier = Modifier.semantics {
+                                    contentDescription = "Show favorite tools, ${favoriteTypes.size} pinned"
+                                }
+                            )
+                        }
+                        val categoryFilters = listOf(
+                            HomeFilter.CONVERSIONS to ConversionType.CATEGORY_CONVERSIONS,
+                            HomeFilter.PDF_TOOLS to ConversionType.CATEGORY_PDF_TOOLS,
+                            HomeFilter.IMAGE_TOOLS to ConversionType.CATEGORY_IMAGE_TOOLS
+                        )
+                        categoryFilters.forEach { (filter, categoryName) ->
+                            val count = ConversionType.defaultList.count { it.category == categoryName }
+                            item {
+                                FilterChip(
+                                    selected = selectedFilter == filter,
+                                    onClick = { selectedFilter = filter },
+                                    label = { Text("$categoryName $count") },
+                                    modifier = Modifier.semantics {
+                                        contentDescription = "Filter by $categoryName, $count tools"
+                                    }
+                                )
+                            }
+                        }
+                    }
+                    // Fade at the right edge: a hint the chip row scrolls,
+                    // instead of a chip clipped mid-word ("PDF Too...").
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                            .width(28.dp)
+                            .height(40.dp)
+                            .background(
+                                Brush.horizontalGradient(
+                                    listOf(
+                                        Color.Transparent,
+                                        MaterialTheme.colorScheme.background
+                                    )
+                                )
+                            )
+                    )
+                }
+            }
                 if (searching) {
                     item(span = { GridItemSpan(maxLineSpan) }) {
                         Text(
-                            text = "${visibleTypes.size} result${if (visibleTypes.size == 1) "" else "s"} for \"$searchQuery\"",
+                            text = "${visibleTypes.size} result${if (visibleTypes.size == 1) "" else "s"} for \"$searchQuery\"" +
+                                if (selectedFilter != HomeFilter.ALL) " · searched in all tools" else "",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(bottom = 4.dp)
@@ -451,8 +470,11 @@ fun HomeScreenContent(
                         )
                     }
                 } else {
-                    // All: continue reading, intents, drop zone, rails, then
-                    // the full tool grid grouped by category.
+                    // All: continue reading, drop zone, favorites rail, then
+                    // the full tool grid grouped by category. The intent
+                    // strip and the Recent rail were removed for a cleaner
+                    // home — recents live in History, one tap away in the
+                    // bottom nav.
                     if (lastOpenedPdf != null) {
                         item(span = { GridItemSpan(maxLineSpan) }) {
                             ContinueReadingCard(
@@ -464,41 +486,7 @@ fun HomeScreenContent(
                     }
 
                     item(span = { GridItemSpan(maxLineSpan) }) {
-                        IntentStrip(onIntentClick = onNavigateToConfig)
-                    }
-
-                    item(span = { GridItemSpan(maxLineSpan) }) {
                         DropZoneCard(onPickFile = { dropZonePicker.launch(arrayOf("*/*")) })
-                    }
-
-                    if (recentConversions.isNotEmpty()) {
-                        item(span = { GridItemSpan(maxLineSpan) }) {
-                            SectionHeader(
-                                title = "Recent",
-                                icon = Icons.Default.History,
-                                modifier = Modifier.padding(top = 8.dp)
-                            )
-                        }
-                        item(span = { GridItemSpan(maxLineSpan) }) {
-                            LazyRow(
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                contentPadding = PaddingValues(vertical = 4.dp)
-                            ) {
-                                items(recentConversions, key = { it.id }) { entity ->
-                                    RecentConversionChip(
-                                        entity = entity,
-                                        onClick = {
-                                            val tool = resolveConversionType(entity.conversionTypeId, entity.conversionType)
-                                            if (tool != null) onNavigateToConfig(tool.id)
-                                            else onNavigate(Screen.History.route)
-                                        }
-                                    )
-                                }
-                                item {
-                                    RecentSeeAllChip(onClick = { onNavigate(Screen.History.route) })
-                                }
-                            }
-                        }
                     }
 
                     if (favoriteTypes.isNotEmpty()) {
@@ -571,7 +559,6 @@ fun HomeScreenContent(
                         }
                     }
                 }
-            }
         }
     }
 }
@@ -631,32 +618,6 @@ private fun DropZoneCard(onPickFile: () -> Unit) {
     }
 }
 
-/** Trailing rail item that jumps to the full History list. */
-@Composable
-private fun RecentSeeAllChip(onClick: () -> Unit) {
-    val scheme = MaterialTheme.colorScheme
-    Card(
-        onClick = onClick,
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = scheme.surfaceContainerLow),
-        modifier = Modifier.width(110.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(14.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = "See all",
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = scheme.primary
-            )
-        }
-    }
-}
-
 /** Trailing rail card shown when more favorites exist than the rail holds. */
 @Composable
 private fun FavoritesSeeAllCard(count: Int, onClick: () -> Unit) {
@@ -678,55 +639,6 @@ private fun FavoritesSeeAllCard(count: Int, onClick: () -> Unit) {
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.SemiBold,
                 color = scheme.primary
-            )
-        }
-    }
-}
-
-/** Recent conversion chip: morph pill (when resolvable) + filename + age. */
-@Composable
-private fun RecentConversionChip(
-    entity: ConversionHistoryEntity,
-    onClick: () -> Unit
-) {
-    val scheme = MaterialTheme.colorScheme
-    val tool = remember(entity.conversionTypeId, entity.conversionType) {
-        resolveConversionType(entity.conversionTypeId, entity.conversionType)
-    }
-    Card(
-        onClick = onClick,
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = scheme.surfaceContainerLow),
-        modifier = Modifier.width(210.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            if (tool != null) {
-                TransformIndicator(conversionType = tool, compact = true)
-            } else {
-                Text(
-                    text = entity.conversionType,
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = scheme.primary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            Text(
-                text = entity.inputFileName.ifBlank { "Converted file" },
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = scheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = TimeUtils.formatRelativeTime(entity.timestamp),
-                style = MaterialTheme.typography.labelSmall,
-                color = scheme.onSurfaceVariant
             )
         }
     }
@@ -910,58 +822,6 @@ private fun routeForToolWithUri(toolId: String, uri: Uri): String {
 
 
 /**
- * Intent strip — answers "what do you want to do?" with one-tap shortcuts to
- * the most-used tools, instead of making the user hunt through the grid.
- */
-@Composable
-private fun IntentStrip(
-    onIntentClick: (conversionTypeId: String) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val intents = remember {
-        listOf(
-            "compress_pdf" to "Compress a PDF",
-            "merge_pdf" to "Merge PDFs",
-            "ocr_text_extractor" to "Extract text",
-            "images_to_pdf" to "Images to PDF",
-            "image_converter" to "Convert images",
-            "protect_pdf" to "Protect a PDF"
-        ).mapNotNull { (id, label) ->
-            ConversionType.defaultList.firstOrNull { it.id == id }?.let { it to label }
-        }
-    }
-
-    Column(modifier = modifier.padding(top = 4.dp)) {
-        Text(
-            text = "What do you want to do?",
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.padding(bottom = 8.dp)
-        )
-        LazyRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            contentPadding = PaddingValues(vertical = 2.dp)
-        ) {
-            items(intents, key = { it.first.id }) { (type, label) ->
-                SuggestionChip(
-                    onClick = { onIntentClick(type.id) },
-                    label = { Text(label) },
-                    icon = {
-                        Icon(
-                            imageVector = type.icon,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    },
-                    shape = RoundedCornerShape(14.dp)
-                )
-            }
-        }
-    }
-}
-
-/**
  * "Pick up where you left off" card: reopens the last-viewed PDF at the
  * exact page the user left off on.
  */
@@ -1080,7 +940,6 @@ fun HomeScreenSmallPreview() {
             searchQuery = "",
             filteredTypes = ConversionType.defaultList,
             favoriteTypes = ConversionType.defaultList.take(2),
-            recentConversions = emptyList(),
             onSearchQueryChange = {},
             onToggleFavorite = {},
             onNavigateToConfig = {},
@@ -1097,7 +956,6 @@ fun HomeScreenLightPreview() {
             searchQuery = "",
             filteredTypes = ConversionType.defaultList,
             favoriteTypes = ConversionType.defaultList.take(2),
-            recentConversions = emptyList(),
             onSearchQueryChange = {},
             onToggleFavorite = {},
             onNavigateToConfig = {},
@@ -1114,7 +972,6 @@ fun HomeScreenFoldablePreview() {
             searchQuery = "",
             filteredTypes = ConversionType.defaultList,
             favoriteTypes = ConversionType.defaultList.take(2),
-            recentConversions = emptyList(),
             onSearchQueryChange = {},
             onToggleFavorite = {},
             onNavigateToConfig = {},
@@ -1131,7 +988,6 @@ fun HomeScreenDarkPreview() {
             searchQuery = "",
             filteredTypes = ConversionType.defaultList,
             favoriteTypes = ConversionType.defaultList.take(2),
-            recentConversions = emptyList(),
             onSearchQueryChange = {},
             onToggleFavorite = {},
             onNavigateToConfig = {},
