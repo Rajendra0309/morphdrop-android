@@ -7,6 +7,7 @@ import android.graphics.Color
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.ParcelFileDescriptor
+import com.morphdrop.app.data.pdf.ScriptSpans
 import com.morphdrop.app.data.pdf.TablePdfWriter
 import com.morphdrop.app.domain.model.OcrScript
 import com.morphdrop.app.domain.repository.SettingsRepository
@@ -90,11 +91,17 @@ class SearchablePdfUseCase @Inject constructor(
         val document = PDDocument()
         try {
             // Latin text uses the standard Helvetica (WinAnsi). Devanagari
-            // needs a real Unicode font: try the device's own Noto fonts and
-            // embed one; if the device has none, fall back to Helvetica and
-            // the layer degrades to '?' for those characters.
-            val font: PDFont = loadTextFont(document, script)
-            val winAnsi = font is PDType1Font
+            // additionally embeds the bundled Noto font, and each element
+            // is split into script spans: Devanagari spans use the Noto
+            // font, everything else Helvetica — the bundled font has no
+            // Latin glyphs, so a mixed-script page ("MorphDrop" heading
+            // over Hindi lines) must never be written with it alone.
+            val latinFont: PDFont = PDType1Font.HELVETICA
+            val devanagariFont: PDFont? = if (script == OcrScript.DEVANAGARI) {
+                loadTextFont(document, script)
+            } else {
+                null
+            }
             for (pageIndex in 0 until pageCount) {
                 coroutineContext.ensureActive()
                 val page = renderer.openPage(pageIndex)
@@ -130,27 +137,34 @@ class SearchablePdfUseCase @Inject constructor(
                         stream.setRenderingMode(RenderingMode.NEITHER)
                         for (block in layout.textBlocks) {
                             for (line in block.lines) {
+                                var previousRight: Int? = null
                                 for (element in line.elements) {
                                     val box = element.boundingBox ?: continue
-                                    val raw = element.text.trim()
-                                    val word = if (winAnsi) TablePdfWriter.sanitize(raw) else raw
+                                    val word = element.text.trim()
                                     if (word.isEmpty()) continue
+                                    // Words the OCR split into elements that
+                                    // sit a word-space apart need an explicit
+                                    // space in the layer, or extraction joins
+                                    // them into one long word.
+                                    val leadingSpace = previousRight?.let { right ->
+                                        ScriptSpans.isWordGap(right, box.left, box.height())
+                                    } ?: false
+                                    previousRight = box.right
                                     val fontSize = (box.height() * scaleY * 0.92f).coerceIn(4f, 72f)
-                                    val targetWidth = box.width() * scaleX
-                                    val naturalWidth = runCatching {
-                                        font.getStringWidth(word) / 1000f * fontSize
-                                    }.getOrDefault(targetWidth)
-                                    stream.beginText()
-                                    stream.setFont(font, fontSize)
-                                    if (naturalWidth > 1f) {
-                                        stream.setHorizontalScaling(targetWidth / naturalWidth * 100f)
-                                    }
                                     // Bitmap boxes are top-left origin; PDF text
                                     // is positioned by its baseline from the bottom.
                                     val baseline = pageHeightPt - box.bottom * scaleY + fontSize * 0.22f
-                                    stream.newLineAtOffset(box.left * scaleX, baseline)
-                                    stream.showText(word)
-                                    stream.endText()
+                                    writeElement(
+                                        stream = stream,
+                                        word = word,
+                                        leadingSpace = leadingSpace,
+                                        latinFont = latinFont,
+                                        devanagariFont = devanagariFont,
+                                        fontSize = fontSize,
+                                        startX = box.left * scaleX,
+                                        baseline = baseline,
+                                        targetWidth = box.width() * scaleX
+                                    )
                                 }
                             }
                         }
@@ -167,6 +181,78 @@ class SearchablePdfUseCase @Inject constructor(
         } finally {
             document.close()
         }
+    }
+
+    /**
+     * Writes one recognized word as one or more script spans sharing the
+     * element's box: the spans are scaled together so together they fill
+     * the box width, and each span advances the next one's x position.
+     * Characters a span's font cannot draw are dropped rather than
+     * throwing "No glyph" and failing the whole page.
+     */
+    private fun writeElement(
+        stream: PDPageContentStream,
+        word: String,
+        leadingSpace: Boolean,
+        latinFont: PDFont,
+        devanagariFont: PDFont?,
+        fontSize: Float,
+        startX: Float,
+        baseline: Float,
+        targetWidth: Float
+    ) {
+        val spans = ArrayList<Pair<PDFont, String>>()
+        if (leadingSpace) {
+            spans += latinFont to " "
+        }
+        for (span in ScriptSpans.split(word)) {
+            if (span.devanagari && devanagariFont != null) {
+                spans += devanagariFont to span.text
+            } else {
+                spans += latinFont to TablePdfWriter.sanitize(span.text)
+            }
+        }
+        val drawable = spans.mapNotNull { (font, text) ->
+            val filtered = filterToGlyphs(font, text)
+            if (filtered.isEmpty()) null else font to filtered
+        }
+        if (drawable.isEmpty()) return
+        val naturalWidths = drawable.map { (font, text) ->
+            runCatching { font.getStringWidth(text) / 1000f * fontSize }.getOrDefault(0f)
+        }
+        val totalNatural = naturalWidths.sum()
+        val scaling = if (totalNatural > 1f) targetWidth / totalNatural * 100f else 100f
+        var x = startX
+        drawable.forEachIndexed { index, (font, text) ->
+            stream.beginText()
+            stream.setFont(font, fontSize)
+            stream.setHorizontalScaling(scaling)
+            stream.newLineAtOffset(x, baseline)
+            stream.showText(text)
+            stream.endText()
+            x += naturalWidths[index] * scaling / 100f
+        }
+    }
+
+    /**
+     * Keeps only the characters [font] can actually encode. PDFBox throws
+     * "No glyph for U+XXXX" from inside showText when a character is
+     * missing, so encodability is probed per character up front; this
+     * port exposes hasGlyph only per font subtype, while encode() is the
+     * common path that showText itself uses.
+     */
+    private fun filterToGlyphs(font: PDFont, text: String): String {
+        val kept = StringBuilder()
+        var index = 0
+        while (index < text.length) {
+            val codePoint = Character.codePointAt(text, index)
+            val charText = String(Character.toChars(codePoint))
+            if (runCatching { font.encode(charText) }.isSuccess) {
+                kept.append(charText)
+            }
+            index += Character.charCount(codePoint)
+        }
+        return kept.toString()
     }
 
     /**
