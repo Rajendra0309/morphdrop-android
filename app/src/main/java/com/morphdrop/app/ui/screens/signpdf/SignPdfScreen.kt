@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -174,14 +175,28 @@ fun SignPdfScreen(
                             SignPdfUseCase.POS_CENTER -> Alignment.Center
                             else -> Alignment.BottomEnd
                         }
+                        // The margin must OFFSET the stamp, not pad inside
+                        // it: padding inside a width-sized image shrinks the
+                        // visible signature by twice the margin (30% became
+                        // ~18%) and erased it entirely at 12% and below.
+                        val offsetX = when (state.position) {
+                            SignPdfUseCase.POS_BOTTOM_LEFT, SignPdfUseCase.POS_TOP_LEFT -> stampMargin
+                            SignPdfUseCase.POS_BOTTOM_RIGHT, SignPdfUseCase.POS_TOP_RIGHT -> -stampMargin
+                            else -> 0.dp
+                        }
+                        val offsetY = when (state.position) {
+                            SignPdfUseCase.POS_TOP_LEFT, SignPdfUseCase.POS_TOP_RIGHT -> stampMargin
+                            SignPdfUseCase.POS_BOTTOM_LEFT, SignPdfUseCase.POS_BOTTOM_RIGHT -> -stampMargin
+                            else -> 0.dp
+                        }
                         Image(
                             bitmap = sig.asImageBitmap(),
                             contentDescription = "Signature placement preview",
                             modifier = Modifier
                                 .align(overlayAlignment)
+                                .offset(x = offsetX, y = offsetY)
                                 .fillMaxWidth(state.widthPercent / 100f)
                                 .aspectRatio(sig.width.toFloat() / sig.height.coerceAtLeast(1))
-                                .padding(stampMargin)
                         )
                     }
                 }
