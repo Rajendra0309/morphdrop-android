@@ -85,16 +85,43 @@ class PdfTableBuilderTest {
 
     @Test
     fun `a full width title does not collapse the columns`() {
+        // The title is a single-run row: it is not a table row, so it
+        // neither appears in the output nor votes on the columns.
         val page = listOf(
             run("Quarterly Sales Report", 40f, 400f, 20f),
             run("Item", 40f, 72f, 40f), run("Cost", 200f, 232f, 40f),
             run("Pen", 40f, 66f, 60f), run("1.5", 206f, 232f, 60f)
         )
         val table = PdfTableBuilder.build(listOf(page))
-        assertEquals(3, table.size)
-        assertEquals(2, table[1].size)
-        assertEquals(listOf("Item", "Cost"), table[1])
-        assertEquals(listOf("Pen", "1.5"), table[2])
+        assertEquals(2, table.size)
+        assertEquals(listOf("Item", "Cost"), table[0])
+        assertEquals(listOf("Pen", "1.5"), table[1])
+    }
+
+    @Test
+    fun `titled multi page table keeps columns and one header`() {
+        // Mirrors the on-device failure: a centred title 194pt wide over
+        // a 441pt-wide table (44% — under the old 60% width exclusion, so
+        // it bridged the Name and Amount bands), the header repeated on
+        // page 2, and the old code mistook the title for the header so
+        // the repeat was kept as a second header row.
+        fun header(page: Int, top: Float) = listOf(
+            run("ID", 72f, 84f, top, page), run("Name", 110f, 146f, top, page),
+            run("Amount", 262f, 306f, top, page), run("City", 350f, 378f, top, page)
+        )
+        fun dataRow(id: String, page: Int, top: Float) = listOf(
+            run(id, 72f, 78f, top, page), run("Person $id", 110f, 168f, top, page),
+            run("$id.50", 282f, 306f, top, page), run("City$id", 350f, 388f, top, page)
+        )
+        val page1 = listOf(run("Quarterly Sales Report", 123f, 317f, 20f, page = 0)) +
+            header(0, 40f) + dataRow("1", 0, 60f) + dataRow("2", 0, 80f)
+        val page2 = header(1, 40f) + dataRow("3", 1, 60f)
+        val table = PdfTableBuilder.build(listOf(page1, page2))
+        assertEquals(4, table.size)
+        assertEquals(listOf("ID", "Name", "Amount", "City"), table[0])
+        assertEquals(listOf("1", "Person 1", "1.50", "City1"), table[1])
+        assertEquals(listOf("2", "Person 2", "2.50", "City2"), table[2])
+        assertEquals(listOf("3", "Person 3", "3.50", "City3"), table[3])
     }
 
     @Test
