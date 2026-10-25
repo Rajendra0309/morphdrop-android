@@ -4,6 +4,11 @@ import android.content.Intent
 import android.content.res.Configuration
 import android.net.Uri
 import android.widget.Toast
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -31,7 +36,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -53,6 +58,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -60,6 +66,9 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -73,6 +82,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -167,17 +177,58 @@ fun HomeScreenContent(
     gridColumns: Int = 2,
     hasNavigationRail: Boolean = false
 ) {
-    val gridState = rememberLazyGridState()
+    // Saved across navigation: when the user opens a tool and comes back,
+    // Home is recomposed from the back-stack entry's saved state, and a
+    // plain remember grid state would restart at the top every time.
+    val gridState = rememberSaveable(saver = LazyGridState.Saver) {
+        LazyGridState()
+    }
     val haptic = LocalHapticFeedback.current
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val focusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
 
-    // No search FAB on Home: the search bar lives at the top of the grid
-    // itself, so a floating magnifier beside the navbar only duplicated it.
+    // Quick-return header: visible at the top, hidden while scrolling
+    // down, and shown again on any upward scroll — not only when the
+    // grid reaches the very top.
+    var headerVisible by remember { mutableStateOf(true) }
+    LaunchedEffect(gridState) {
+        var previousIndex = 0
+        var previousOffset = 0
+        snapshotFlow {
+            gridState.firstVisibleItemIndex to gridState.firstVisibleItemScrollOffset
+        }.collect { (index, offset) ->
+            headerVisible = when {
+                index == 0 && offset == 0 -> true
+                index > previousIndex ||
+                    (index == previousIndex && offset > previousOffset) -> false
+                else -> true
+            }
+            previousIndex = index
+            previousOffset = offset
+        }
+    }
+
+    // Search button beside the bottom nav, only while the search bar has
+    // scrolled out of view: tapping it jumps to the top and focuses
+    // search. MainActivity clears it when leaving the searchable screens.
+    val isScrolledDown by remember {
+        derivedStateOf {
+            gridState.firstVisibleItemIndex > 0 || gridState.firstVisibleItemScrollOffset > 0
+        }
+    }
+    LaunchedEffect(isScrolledDown) {
+        setSearchFabVisibility(isScrolledDown)
+    }
     LaunchedEffect(Unit) {
-        setSearchFabVisibility(false)
-        setOnSearchFabClick(null)
+        setOnSearchFabClick {
+            coroutineScope.launch {
+                gridState.scrollToItem(0)
+                focusRequester.requestFocus()
+                keyboardController?.show()
+            }
+        }
     }
     DisposableEffect(Unit) {
         onDispose {
@@ -237,13 +288,20 @@ fun HomeScreenContent(
         modifier = Modifier.imePadding(),
         reserveFloatingNavSpace = !hasNavigationRail
     ) { innerPadding ->
-        // Decluttered layout: no app bar on Home. The brand header, search
-        // bar and category chips are the grid's first items, so scrolling
-        // down slides them away and the tools take the whole screen under
-        // the status bar; scrolling back to the top brings them back. The
-        // old pinned header plus LargeTopAppBar left a permanent ~200dp
-        // of chrome (and a dead gap under the tagline) above the tools.
-        var selectedFilter by remember { mutableStateOf(HomeFilter.ALL) }
+        // Header lives OUTSIDE the grid, above it. That is the search
+        // focus fix: in the previous layout the brand item was removed
+        // from the grid the moment a query started, shifting the search
+        // item to a new index, which destroyed the focused field after
+        // the first character on the All view. Here the search bar's
+        // composition never changes while typing, and the brand header
+        // is the same on every tab.
+        val filterSaver = Saver<HomeFilter, String>(
+            save = { it.name },
+            restore = { HomeFilter.valueOf(it) }
+        )
+        var selectedFilter by rememberSaveable(stateSaver = filterSaver) {
+            mutableStateOf(HomeFilter.ALL)
+        }
         val favoriteIds = favoriteTypes.map { it.id }.toSet()
         fun matchesFilter(type: ConversionType): Boolean = when (selectedFilter) {
             HomeFilter.ALL -> true
@@ -261,130 +319,149 @@ fun HomeScreenContent(
             filteredTypes.filter { matchesFilter(it) }
         }
 
-        // A filter or query change starts from the top: keeping the old
-        // scroll offset opened the new view halfway down its grid.
+        // A filter or query change starts from the top — but only when
+        // it actually changed. On first composition (e.g. coming back
+        // from a tool) the saved scroll position must be left alone,
+        // or returning would always jump to the top.
+        var previousFilter by remember { mutableStateOf<HomeFilter?>(null) }
+        var previousQuery by remember { mutableStateOf<String?>(null) }
         LaunchedEffect(selectedFilter, searchQuery) {
-            gridState.scrollToItem(0)
+            val changed = (previousFilter != null && previousFilter != selectedFilter) ||
+                (previousQuery != null && previousQuery != searchQuery)
+            previousFilter = selectedFilter
+            previousQuery = searchQuery
+            if (changed &&
+                (gridState.firstVisibleItemIndex > 0 || gridState.firstVisibleItemScrollOffset > 0)
+            ) {
+                gridState.scrollToItem(0)
+            }
         }
 
-        LazyVerticalGrid(
-            state = gridState,
-            columns = GridCells.Fixed(gridColumns),
-            contentPadding = PaddingValues(
-                start = 16.dp,
-                end = 16.dp,
-                top = innerPadding.calculateTopPadding() + 8.dp,
-                bottom = innerPadding.calculateBottomPadding() + 48.dp
-            ),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier.fillMaxSize()
-        ) {
-            if (!searching && selectedFilter == HomeFilter.ALL) {
-                item(span = { GridItemSpan(maxLineSpan) }) {
-                    Column(modifier = Modifier.padding(bottom = 2.dp)) {
-                        Text(
-                            text = "MorphDrop",
-                            style = MaterialTheme.typography.headlineMedium,
-                            fontWeight = FontWeight.Black,
-                            color = MaterialTheme.colorScheme.onBackground
-                        )
-                        Text(
-                            text = "Drop. Transform. Done.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                }
-            }
-
-            item(span = { GridItemSpan(maxLineSpan) }) {
-                MorphDropSearchBar(
-                    query = searchQuery,
-                    onQueryChange = onSearchQueryChange,
-                    active = false,
-                    onActiveChange = { },
-                    focusRequester = focusRequester,
+        Column(modifier = Modifier.fillMaxSize()) {
+            AnimatedVisibility(
+                visible = headerVisible,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
+            ) {
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(bottom = 4.dp)
-                )
-            }
-
-            item(span = { GridItemSpan(maxLineSpan) }) {
-                Box(modifier = Modifier.fillMaxWidth()) {
-                    LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        contentPadding = PaddingValues(vertical = 4.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        item {
-                            FilterChip(
-                                selected = selectedFilter == HomeFilter.ALL,
-                                onClick = { selectedFilter = HomeFilter.ALL },
-                                label = { Text("All ${ConversionType.defaultList.size}") },
-                                modifier = Modifier.semantics {
-                                    contentDescription = "Show all ${ConversionType.defaultList.size} tools"
-                                }
-                            )
-                        }
-                        item {
-                            FilterChip(
-                                selected = selectedFilter == HomeFilter.FAVORITES,
-                                onClick = { selectedFilter = HomeFilter.FAVORITES },
-                                label = { Text("Favorites") },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = Icons.Default.Favorite,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                },
-                                modifier = Modifier.semantics {
-                                    contentDescription = "Show favorite tools, ${favoriteTypes.size} pinned"
-                                }
-                            )
-                        }
-                        val categoryFilters = listOf(
-                            HomeFilter.CONVERSIONS to ConversionType.CATEGORY_CONVERSIONS,
-                            HomeFilter.PDF_TOOLS to ConversionType.CATEGORY_PDF_TOOLS,
-                            HomeFilter.IMAGE_TOOLS to ConversionType.CATEGORY_IMAGE_TOOLS
+                        .padding(
+                            top = innerPadding.calculateTopPadding(),
+                            start = 16.dp,
+                            end = 16.dp
                         )
-                        categoryFilters.forEach { (filter, categoryName) ->
-                            val count = ConversionType.defaultList.count { it.category == categoryName }
+                ) {
+                    Text(
+                        text = "MorphDrop",
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Black,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                    Text(
+                        text = "Drop. Transform. Done.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    MorphDropSearchBar(
+                        query = searchQuery,
+                        onQueryChange = onSearchQueryChange,
+                        active = false,
+                        onActiveChange = { },
+                        focusRequester = focusRequester,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp, bottom = 4.dp)
+                    )
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            contentPadding = PaddingValues(end = 32.dp, top = 4.dp, bottom = 4.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
                             item {
                                 FilterChip(
-                                    selected = selectedFilter == filter,
-                                    onClick = { selectedFilter = filter },
-                                    label = { Text("$categoryName $count") },
+                                    selected = selectedFilter == HomeFilter.ALL,
+                                    onClick = { selectedFilter = HomeFilter.ALL },
+                                    label = { Text("All ${ConversionType.defaultList.size}") },
                                     modifier = Modifier.semantics {
-                                        contentDescription = "Filter by $categoryName, $count tools"
+                                        contentDescription = "Show all ${ConversionType.defaultList.size} tools"
                                     }
                                 )
                             }
+                            item {
+                                FilterChip(
+                                    selected = selectedFilter == HomeFilter.FAVORITES,
+                                    onClick = { selectedFilter = HomeFilter.FAVORITES },
+                                    label = { Text("Favorites") },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.Favorite,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    },
+                                    modifier = Modifier.semantics {
+                                        contentDescription = "Show favorite tools, ${favoriteTypes.size} pinned"
+                                    }
+                                )
+                            }
+                            val categoryFilters = listOf(
+                                HomeFilter.CONVERSIONS to ConversionType.CATEGORY_CONVERSIONS,
+                                HomeFilter.PDF_TOOLS to ConversionType.CATEGORY_PDF_TOOLS,
+                                HomeFilter.IMAGE_TOOLS to ConversionType.CATEGORY_IMAGE_TOOLS
+                            )
+                            categoryFilters.forEach { (filter, categoryName) ->
+                                val count = ConversionType.defaultList.count { it.category == categoryName }
+                                item {
+                                    FilterChip(
+                                        selected = selectedFilter == filter,
+                                        onClick = { selectedFilter = filter },
+                                        label = { Text("$categoryName $count") },
+                                        modifier = Modifier.semantics {
+                                            contentDescription = "Filter by $categoryName, $count tools"
+                                        }
+                                    )
+                                }
+                            }
                         }
-                    }
-                    // Fade at the right edge: a hint the chip row scrolls,
-                    // instead of a chip clipped mid-word ("PDF Too...").
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.CenterEnd)
-                            .width(28.dp)
-                            .height(40.dp)
-                            .background(
-                                Brush.horizontalGradient(
-                                    listOf(
-                                        Color.Transparent,
-                                        MaterialTheme.colorScheme.background
+                        // Fade at the right edge: a hint the chip row
+                        // scrolls. The 32dp end padding keeps the last
+                        // chip out from under it, so it is never clipped.
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.CenterEnd)
+                                .width(28.dp)
+                                .height(40.dp)
+                                .background(
+                                    Brush.horizontalGradient(
+                                        listOf(
+                                            Color.Transparent,
+                                            MaterialTheme.colorScheme.background
+                                        )
                                     )
                                 )
-                            )
-                    )
+                        )
+                    }
                 }
             }
+
+            LazyVerticalGrid(
+                state = gridState,
+                columns = GridCells.Fixed(gridColumns),
+                contentPadding = PaddingValues(
+                    start = 16.dp,
+                    end = 16.dp,
+                    top = 8.dp,
+                    bottom = innerPadding.calculateBottomPadding() + 48.dp
+                ),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.weight(1f)
+            ) {
                 if (searching) {
-                    item(span = { GridItemSpan(maxLineSpan) }) {
+                    item(key = "search-count", span = { GridItemSpan(maxLineSpan) }) {
                         Text(
                             text = "${visibleTypes.size} result${if (visibleTypes.size == 1) "" else "s"} for \"$searchQuery\"" +
                                 if (selectedFilter != HomeFilter.ALL) " · searched in all tools" else "",
@@ -448,7 +525,7 @@ fun HomeScreenContent(
                         HomeFilter.PDF_TOOLS -> ConversionType.CATEGORY_PDF_TOOLS
                         else -> ConversionType.CATEGORY_IMAGE_TOOLS
                     }
-                    item(span = { GridItemSpan(maxLineSpan) }) {
+                    item(key = "filter-header", span = { GridItemSpan(maxLineSpan) }) {
                         Text(
                             text = "$categoryName · ${visibleTypes.size} tools",
                             style = MaterialTheme.typography.titleMedium,
@@ -476,7 +553,7 @@ fun HomeScreenContent(
                     // home — recents live in History, one tap away in the
                     // bottom nav.
                     if (lastOpenedPdf != null) {
-                        item(span = { GridItemSpan(maxLineSpan) }) {
+                        item(key = "continue-reading", span = { GridItemSpan(maxLineSpan) }) {
                             ContinueReadingCard(
                                 lastPdf = lastOpenedPdf,
                                 onOpen = onOpenLastPdf,
@@ -485,19 +562,19 @@ fun HomeScreenContent(
                         }
                     }
 
-                    item(span = { GridItemSpan(maxLineSpan) }) {
+                    item(key = "drop-zone", span = { GridItemSpan(maxLineSpan) }) {
                         DropZoneCard(onPickFile = { dropZonePicker.launch(arrayOf("*/*")) })
                     }
 
                     if (favoriteTypes.isNotEmpty()) {
-                        item(span = { GridItemSpan(maxLineSpan) }) {
+                        item(key = "favorites-header", span = { GridItemSpan(maxLineSpan) }) {
                             SectionHeader(
                                 title = "Favorites",
                                 icon = Icons.Default.Favorite,
                                 modifier = Modifier.padding(top = 8.dp)
                             )
                         }
-                        item(span = { GridItemSpan(maxLineSpan) }) {
+                        item(key = "favorites-rail", span = { GridItemSpan(maxLineSpan) }) {
                             LazyRow(
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                                 contentPadding = PaddingValues(vertical = 4.dp)
@@ -535,7 +612,7 @@ fun HomeScreenContent(
                     categories.forEach { categoryName ->
                         val itemsInCategory = visibleTypes.filter { it.category == categoryName }
                         if (itemsInCategory.isNotEmpty()) {
-                            item(span = { GridItemSpan(maxLineSpan) }) {
+                            item(key = "category-$categoryName", span = { GridItemSpan(maxLineSpan) }) {
                                 Text(
                                     text = categoryName,
                                     style = MaterialTheme.typography.titleMedium,
@@ -559,6 +636,7 @@ fun HomeScreenContent(
                         }
                     }
                 }
+            }
         }
     }
 }
