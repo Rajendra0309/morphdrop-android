@@ -1,17 +1,20 @@
-# MorphDrop v1.5.0 - Ember Design Overhaul, Markdown Engine and Performance
+# MorphDrop v1.6.0 - Studio Tools, Searchable PDFs and a Cleaner Home
 
 ## New Features
-- **Ember Design System:** Refreshed modern visual identity with warm neutral tones, theme-aware contrast, dynamic wallpaper colors (Android 12+), and responsive layouts for foldables and tablets.
-- **Advanced Markdown to PDF Engine:** Complete rendering overhaul supporting GitHub Flavored Markdown tables, inline and block math formulas, syntax-highlighted code blocks, blockquotes, and interactive task checklists.
-- **Quick Conversion Presets & Continue Reading:** Instant conversions with saved tool presets via long-press, paired with a home screen continue-reading card to jump straight back into your last opened document.
+- **13 New Tools (34 in Total):** PDF to Text, PDF to Word, PDF to Excel, PDF to CSV, Excel to CSV, CSV to Excel, CSV to PDF, OCR to Searchable PDF, Sign PDF, Photo & Signature Studio, QR Code Studio, HEIC to Image, and Resize Images.
+- **Searchable PDFs, Including Devanagari:** Turn scans into PDFs with a real, selectable text layer in English and Hindi/Marathi, readable by any PDF reader.
+- **Sign PDFs on Device:** Draw a signature or pick one from photos and stamp it on one page or every page, with a live preview before applying.
+- **Photo & Signature Studio:** Exam-ready photo and signature sizing with exact KB targets (e.g. 100 KB) for application forms.
+- **QR Code Studio:** Create QR codes and scan them from the camera or an image, fully offline.
 
 ## Improvements
-- **70% Smaller App Size:** Streamlined 64-bit architecture filtering and R8 bytecode optimization slashed release APK download size from 73MB down to ~21MB.
-- **History Multi-Select & Pinning:** Organize your conversion history with bulk deletion, instant undo restoration, and pin-to-top prioritization for essential documents.
-- **Adaptive Screen Padding:** Responsive, comfortable bottom spacing and edge-to-edge layout across Home, History, and Settings screens.
+- **Cleaner Home:** A decluttered Home with a quick-return header, search that keeps focus while typing, and your scroll position and filter kept when you come back from a tool.
+- **History Convert Again:** Re-run any past conversion from History with the same file and settings, including saved Compress presets.
+- **Consistent Tool Screens:** Every PDF tool now shares the same file picker, sticky action button, and spacing as the rest of the app.
+- **Batch Output Naming:** Name converted files in bulk with patterns like {name}, {n}, {nn}, and {date}.
 
 ## Bug Fixes
-- **UI & Undo Glitches:** Resolved duplicate pin indicators and fixed redundant snackbar alerts when undoing history deletions.
-- **Settings Alignment:** Fixed wallpaper color toggle positioning and dynamic theme state restoration.
-- **Conversion Robustness:** Closed background stream and memory leaks across PDF converters, with enhanced cooperative task cancellation.
-- **Reliable Persistence:** Hardened Room database migration handling and secure package update verification.
+- **Home Search Focus:** Fixed search losing focus after the first character on the All view, and the navbar search shortcut now focuses the field and opens the keyboard.
+- **PDF to Excel/CSV Tables:** Fixed columns shifting on right-aligned numbers and tight table layouts, so values land under the correct headers.
+- **Signature Preview:** Fixed the Sign PDF preview shrinking at small sizes; it now shows at true size.
+- **Searchable PDF Text:** Fixed mixed English and Devanagari pages writing replacement characters and merging words.
