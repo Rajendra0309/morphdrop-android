@@ -25,6 +25,9 @@ sealed class Screen(val route: String) {
     data object Settings : Screen("settings")
     data object Welcome : Screen("welcome")
     data object Ocr : Screen("ocr")
+    data object PhotoStudio : Screen("photo_studio")
+    data object QrStudio : Screen("qr_studio")
+    data object SignPdf : Screen("sign_pdf")
     data object BatchOcr : Screen("batch_ocr")
     data object MarkdownViewer : Screen("markdown_viewer?uri={uri}") {
         fun createRoute(uri: String) = "markdown_viewer?uri=${Uri.encode(uri)}"

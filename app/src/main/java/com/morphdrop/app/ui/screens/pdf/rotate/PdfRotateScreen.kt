@@ -9,6 +9,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,7 +24,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -66,6 +66,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -79,8 +80,9 @@ import com.morphdrop.app.PdfViewerActivity
 import com.morphdrop.app.domain.model.FileType
 import com.morphdrop.app.domain.model.RotateScope
 import com.morphdrop.app.ui.components.FormatChip
+import com.morphdrop.app.ui.components.dashedBorder
 import com.morphdrop.app.ui.components.MorphDropTopAppBar
-import com.morphdrop.app.ui.components.PrimaryButton
+import com.morphdrop.app.ui.components.MorphButton
 import com.morphdrop.app.ui.screens.processing.ProcessingScreenContent
 import com.morphdrop.app.ui.screens.processing.ProcessingUiState
 import com.morphdrop.app.ui.screens.result.OutputFileItem
@@ -234,7 +236,6 @@ fun PdfRotateContent(
                 scrollBehavior = scrollBehavior,
                 showBackArrow = true,
                 onBackClick = onNavigateBack,
-                modifier = Modifier.statusBarsPadding()
             )
         }
     ) { innerPadding ->
@@ -243,11 +244,15 @@ fun PdfRotateContent(
                 .fillMaxSize()
                 .padding(innerPadding)
                 .imePadding()
-                .padding(horizontal = 16.dp)
-                .verticalScroll(scrollState),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Spacer(modifier = Modifier.height(4.dp))
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .verticalScroll(scrollState)
+                    .padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(24.dp)
+            ) {
+            Spacer(modifier = Modifier.height(8.dp))
 
             // Error banner if any
             AnimatedVisibility(visible = state.errorMessage != null) {
@@ -324,26 +329,37 @@ fun PdfRotateContent(
                                 CircularProgressIndicator(modifier = Modifier.size(36.dp))
                             }
                         } else {
+                            // Empty state matches the generic config
+                            // screens: a dashed drop zone, not a solid
+                            // placeholder panel.
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                                    .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f)),
+                                    .padding(16.dp)
+                                    .dashedBorder(2.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.6f), 16.dp)
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .clickable(role = Role.Button, onClick = onPickPdfClick),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     Icon(
-                                        imageVector = Icons.Outlined.PictureAsPdf,
+                                        imageVector = Icons.Default.UploadFile,
                                         contentDescription = null,
-                                        modifier = Modifier.size(56.dp),
+                                        modifier = Modifier.size(44.dp),
                                         tint = MaterialTheme.colorScheme.primary
                                     )
-                                    Spacer(modifier = Modifier.height(10.dp))
+                                    Spacer(modifier = Modifier.height(8.dp))
                                     Text(
-                                        text = "PDF Document",
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Bold,
+                                        text = "Tap to choose a file",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.SemiBold,
                                         color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = "Accepted: PDF",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                             }
@@ -464,14 +480,24 @@ fun PdfRotateContent(
             }
 
             // Action Button
-            PrimaryButton(
-                text = if (state.isProcessing) "Rotating PDF..." else "Rotate PDF",
-                onClick = onRotatePdf,
-                enabled = !state.isProcessing && state.selectedUri != null,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 24.dp)
-            )
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+            // Sticky bottom CTA, like the generic config screens: always
+            // reachable, same button component and padding.
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 3.dp
+            ) {
+                MorphButton(
+                    text = if (state.isProcessing) "Rotating PDF..." else "Rotate PDF",
+                    onClick = onRotatePdf,
+                    enabled = !state.isProcessing && state.selectedUri != null,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                )
+            }
         }
     }
 }

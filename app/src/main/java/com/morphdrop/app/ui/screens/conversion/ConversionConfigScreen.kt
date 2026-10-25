@@ -129,15 +129,18 @@ fun ConversionConfigScreen(
 
     val mimeFilter = when (state.conversionType?.id) {
         "excel_to_pdf" -> arrayOf("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.ms-excel", "text/csv")
+        "xlsx_to_csv" -> arrayOf("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        "csv_to_xlsx", "csv_to_pdf" -> arrayOf("text/csv", "text/comma-separated-values", "text/plain")
+        "heic_to_image" -> arrayOf("image/*")
         "text_to_pdf" -> arrayOf("text/plain")
         "md_to_pdf" -> arrayOf("text/markdown", "text/x-markdown", "text/plain")
-        "pdf_to_images", "split_pdf", "compress_pdf", "protect_pdf", "unlock_pdf", "organize_pdf", "merge_pdf" -> arrayOf("application/pdf")
-        "images_to_pdf", "compress_images", "image_converter" -> arrayOf("image/*")
+        "pdf_to_images", "pdf_to_text", "pdf_to_docx", "pdf_to_csv", "pdf_to_excel", "ocr_searchable_pdf", "split_pdf", "compress_pdf", "protect_pdf", "unlock_pdf", "organize_pdf", "merge_pdf" -> arrayOf("application/pdf")
+        "images_to_pdf", "compress_images", "image_converter", "image_resize" -> arrayOf("image/*")
         else -> arrayOf("*/*")
     }
 
     val isImageConversion = when (state.conversionType?.id) {
-        "images_to_pdf", "compress_images", "image_converter" -> true
+        "images_to_pdf", "compress_images", "image_converter", "image_resize" -> true
         else -> false
     }
 
@@ -233,9 +236,11 @@ fun ConversionConfigScreen(
         onPageRangeStartChanged = viewModel::onPageRangeStartChanged,
         onPageRangeEndChanged = viewModel::onPageRangeEndChanged,
         onOutputFileNameChanged = viewModel::onOutputFileNameChanged,
+        onOutputNamePatternChanged = viewModel::onOutputNamePatternChanged,
         onTargetWidthChanged = viewModel::onTargetWidthChanged,
         onTargetHeightChanged = viewModel::onTargetHeightChanged,
         onPaddingColorChanged = viewModel::onPaddingColorChanged,
+        onOcrScriptChanged = viewModel::onOcrScriptChanged,
         onTargetSizeKbChanged = viewModel::onTargetSizeKbChanged,
         onCompressionPresetSelected = viewModel::onCompressionPresetSelected,
         onPdfCompressionPresetSelected = viewModel::onPdfCompressionPresetSelected,
@@ -405,9 +410,11 @@ fun ConversionConfigScreenContent(
     onPageRangeStartChanged: (String) -> Unit,
     onPageRangeEndChanged: (String) -> Unit,
     onOutputFileNameChanged: (String) -> Unit,
+    onOutputNamePatternChanged: (String) -> Unit,
     onTargetWidthChanged: (String) -> Unit,
     onTargetHeightChanged: (String) -> Unit,
     onPaddingColorChanged: (Int) -> Unit,
+    onOcrScriptChanged: (String) -> Unit = {},
     onTargetSizeKbChanged: (String) -> Unit,
     onCompressionPresetSelected: (String) -> Unit,
     onPdfCompressionPresetSelected: (String) -> Unit,
@@ -597,6 +604,112 @@ fun ConversionConfigScreenContent(
                     }
                 }
 
+                // Batch rename pattern (multi-file image conversions)
+                if ((isImageConversion && state.conversionType?.id != "images_to_pdf") ||
+                    state.conversionType?.id == "heic_to_image"
+                ) {
+                    ConfigSection(title = "Batch Rename (optional)") {
+                        NamePatternField(
+                            value = state.outputNamePattern,
+                            onValueChange = onOutputNamePatternChanged
+                        )
+                    }
+                }
+
+                // OCR to Searchable PDF: recognition language.
+                if (state.conversionType?.id == "ocr_searchable_pdf") {
+                    ConfigSection(title = "Text Language") {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FilterChip(
+                                selected = state.ocrScript == "LATIN",
+                                onClick = { onOcrScriptChanged("LATIN") },
+                                label = { Text("Latin (English)") }
+                            )
+                            FilterChip(
+                                selected = state.ocrScript == "DEVANAGARI",
+                                onClick = { onOcrScriptChanged("DEVANAGARI") },
+                                label = { Text("Devanagari (Hindi)") }
+                            )
+                        }
+                        Text(
+                            text = "Pick the script the scan is written in. The text layer " +
+                                "uses a matching font when the device provides one.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                // The dedicated Resize tool leads with its resize controls
+                // instead of hiding them under Advanced Settings.
+                if (state.conversionType?.id == "image_resize") {
+                    ConfigSection(title = "Resize Options") {
+                        ResizeOptionsContent(
+                            state = state,
+                            onResizeOptionSelected = onResizeOptionSelected,
+                            onTargetWidthChanged = onTargetWidthChanged,
+                            onTargetHeightChanged = onTargetHeightChanged
+                        )
+                        Text(
+                            text = "Exact size keeps the whole image and fills the rest " +
+                                "with the padding colour; percentages scale proportionally.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                // The Compress tool leads with quality and target size.
+                if (state.conversionType?.id == "compress_images") {
+                    ConfigSection(title = "Quick Size Presets") {
+                        // Exam/application portals commonly cap uploads at
+                        // these sizes; a preset fills the target size below.
+                        val sizePresets = listOf(
+                            "Exam 100KB" to "Exam · 100 KB",
+                            "Exam 200KB" to "Exam · 200 KB",
+                            "Under 500KB" to "Under 500 KB",
+                            "Under 1MB" to "Under 1 MB"
+                        )
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            sizePresets.chunked(2).forEach { rowPresets ->
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    rowPresets.forEach { (id, label) ->
+                                        FilterChip(
+                                            selected = state.compressionPreset == id,
+                                            onClick = { onCompressionPresetSelected(id) },
+                                            label = { Text(label) }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    ConfigSection(title = "Compression Quality: ${state.quality}%") {
+                        Slider(
+                            value = state.quality.toFloat(),
+                            onValueChange = { onQualityChanged(it.toInt()) },
+                            valueRange = 0f..100f
+                        )
+                    }
+                    Text(
+                        text = "Output format: ${state.outputFormat.uppercase()}. " +
+                            "Portals usually ask for JPG — the format can be changed " +
+                            "in the Output Format section.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    ConfigSection(title = "Target Size (optional)") {
+                        OutlinedTextField(
+                            value = state.targetSizeKb,
+                            onValueChange = onTargetSizeKbChanged,
+                            label = { Text("Max size (KB)") },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            singleLine = true
+                        )
+                    }
+                }
+
                 // Advanced Settings ExpandableCard for Image Tools
                 if (isImageConversion) {
                     OutlinedButton(
@@ -609,48 +722,26 @@ fun ConversionConfigScreenContent(
 
                     AnimatedVisibility(visible = showAdvancedSettings) {
                         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                            // Quality Slider
-                            ConfigSection(title = "Compression Quality: ${state.quality}%") {
-                                Slider(
-                                    value = state.quality.toFloat(),
-                                    onValueChange = { onQualityChanged(it.toInt()) },
-                                    valueRange = 0f..100f
-                                )
+                            // Quality Slider (Compress shows it in the main config)
+                            if (state.conversionType?.id != "compress_images") {
+                                ConfigSection(title = "Compression Quality: ${state.quality}%") {
+                                    Slider(
+                                        value = state.quality.toFloat(),
+                                        onValueChange = { onQualityChanged(it.toInt()) },
+                                        valueRange = 0f..100f
+                                    )
+                                }
                             }
 
-                            // Resize Options
-                            ConfigSection(title = "Resize Options") {
-                                val resizeOptions = listOf("Original", "50%", "25%", "Custom")
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    resizeOptions.forEach { option ->
-                                        FilterChip(
-                                            selected = state.resizeOption == option,
-                                            onClick = { onResizeOptionSelected(option) },
-                                            label = { Text(option) }
-                                        )
-                                    }
-                                }
-
-                                if (state.resizeOption == "Custom") {
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                        OutlinedTextField(
-                                            value = state.targetWidth,
-                                            onValueChange = onTargetWidthChanged,
-                                            label = { Text("Width (px)") },
-                                            modifier = Modifier.weight(1f),
-                                            shape = RoundedCornerShape(12.dp),
-                                            singleLine = true
-                                        )
-                                        OutlinedTextField(
-                                            value = state.targetHeight,
-                                            onValueChange = onTargetHeightChanged,
-                                            label = { Text("Height (px)") },
-                                            modifier = Modifier.weight(1f),
-                                            shape = RoundedCornerShape(12.dp),
-                                            singleLine = true
-                                        )
-                                    }
+                            // Resize Options (the Resize tool shows them in the main config)
+                            if (state.conversionType?.id != "image_resize") {
+                                ConfigSection(title = "Resize Options") {
+                                    ResizeOptionsContent(
+                                        state = state,
+                                        onResizeOptionSelected = onResizeOptionSelected,
+                                        onTargetWidthChanged = onTargetWidthChanged,
+                                        onTargetHeightChanged = onTargetHeightChanged
+                                    )
                                 }
                             }
 
@@ -815,17 +906,30 @@ fun ConversionConfigScreenContent(
                 color = MaterialTheme.colorScheme.surface,
                 tonalElevation = 3.dp
             ) {
+                // The visible label names the format that will actually be
+                // produced when the tool offers a choice (e.g. "Convert to
+                // WEBP"); single-format tools keep the plain label, and the
+                // accessibility description always names the target.
+                val convertTarget = state.conversionType?.let {
+                    if (state.availableOutputFormats.size > 1) {
+                        state.outputFormat.uppercase()
+                    } else {
+                        it.outputType.displayName
+                    }
+                }
                 MorphButton(
-                    text = "Convert",
+                    text = if (state.availableOutputFormats.size > 1 && convertTarget != null) {
+                        "Convert to $convertTarget"
+                    } else {
+                        "Convert"
+                    },
                     onClick = onConvert,
                     enabled = state.isConvertEnabled,
                     variant = MorphButtonVariant.Primary,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 12.dp),
-                    contentDescription = state.conversionType?.let {
-                        "Convert to ${it.outputType.displayName}"
-                    }
+                    contentDescription = convertTarget?.let { "Convert to $it" }
                 )
             }
         }
@@ -1020,6 +1124,69 @@ private fun FileDropZone(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ResizeOptionsContent(
+    state: ConversionConfigState,
+    onResizeOptionSelected: (String) -> Unit,
+    onTargetWidthChanged: (String) -> Unit,
+    onTargetHeightChanged: (String) -> Unit
+) {
+    val resizeOptions = listOf("Original", "50%", "25%", "Custom")
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        resizeOptions.forEach { option ->
+            FilterChip(
+                selected = state.resizeOption == option,
+                onClick = { onResizeOptionSelected(option) },
+                label = { Text(option) }
+            )
+        }
+    }
+
+    if (state.resizeOption == "Custom") {
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            OutlinedTextField(
+                value = state.targetWidth,
+                onValueChange = onTargetWidthChanged,
+                label = { Text("Width (px)") },
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(12.dp),
+                singleLine = true
+            )
+            OutlinedTextField(
+                value = state.targetHeight,
+                onValueChange = onTargetHeightChanged,
+                label = { Text("Height (px)") },
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(12.dp),
+                singleLine = true
+            )
+        }
+    }
+}
+
+@Composable
+private fun NamePatternField(value: String, onValueChange: (String) -> Unit) {
+    Column {
+        OutlinedTextField(
+            value = value,
+            onValueChange = onValueChange,
+            label = { Text("Name pattern") },
+            placeholder = { Text("e.g. Holiday_{n}") },
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            singleLine = true
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = "Used when converting several files at once. " +
+                "{name} = original name, {n} = number, {date} = date.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
@@ -1361,6 +1528,7 @@ fun ConversionConfigScreenLightPreview() {
             onPageRangeStartChanged = {},
             onPageRangeEndChanged = {},
             onOutputFileNameChanged = {},
+            onOutputNamePatternChanged = {},
             onTargetWidthChanged = {},
             onTargetHeightChanged = {},
             onPaddingColorChanged = {},
@@ -1421,6 +1589,7 @@ fun ConversionConfigScreenDarkPreview() {
             onPageRangeStartChanged = {},
             onPageRangeEndChanged = {},
             onOutputFileNameChanged = {},
+            onOutputNamePatternChanged = {},
             onTargetWidthChanged = {},
             onTargetHeightChanged = {},
             onPaddingColorChanged = {},
@@ -1493,6 +1662,7 @@ fun ConversionConfigScreen_MetadataEditor_LightPreview() {
             onPageRangeStartChanged = {},
             onPageRangeEndChanged = {},
             onOutputFileNameChanged = {},
+            onOutputNamePatternChanged = {},
             onTargetWidthChanged = {},
             onTargetHeightChanged = {},
             onPaddingColorChanged = {},
@@ -1565,6 +1735,7 @@ fun ConversionConfigScreen_MetadataEditor_DarkPreview() {
             onPageRangeStartChanged = {},
             onPageRangeEndChanged = {},
             onOutputFileNameChanged = {},
+            onOutputNamePatternChanged = {},
             onTargetWidthChanged = {},
             onTargetHeightChanged = {},
             onPaddingColorChanged = {},

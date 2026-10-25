@@ -62,6 +62,20 @@ object DatabaseModule {
         }
     }
 
+    /** Migration 6 -> 7: conversion_history gains the failure reason column. */
+    private val MIGRATION_6_7 = object : Migration(6, 7) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE conversion_history ADD COLUMN errorMessage TEXT")
+        }
+    }
+
+    /** Migration 7 -> 8: conversion_history gains the original input URIs, for re-running a conversion. */
+    private val MIGRATION_7_8 = object : Migration(7, 8) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE conversion_history ADD COLUMN inputUris TEXT NOT NULL DEFAULT ''")
+        }
+    }
+
     @Provides
     @Singleton
     fun provideMorphDropDatabase(
@@ -71,7 +85,7 @@ object DatabaseModule {
             context,
             MorphDropDatabase::class.java,
             "morphdrop.db"
-        ).addMigrations(MIGRATION_4_5, MIGRATION_5_6)
+        ).addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
             .fallbackToDestructiveMigrationFrom(true, 1, 2, 3)
             .build()
     }

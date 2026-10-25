@@ -5,17 +5,28 @@ import androidx.compose.material.icons.automirrored.outlined.Article
 import androidx.compose.material.icons.automirrored.outlined.CallSplit
 import androidx.compose.material.icons.automirrored.outlined.MergeType
 import androidx.compose.material.icons.automirrored.outlined.RotateRight
+import androidx.compose.material.icons.outlined.Article
+import androidx.compose.material.icons.outlined.Badge
 import androidx.compose.material.icons.outlined.Collections
+import androidx.compose.material.icons.outlined.QrCode2
 import androidx.compose.material.icons.outlined.Compress
+import androidx.compose.material.icons.outlined.PhotoLibrary
+import androidx.compose.material.icons.outlined.PhotoSizeSelectLarge
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.outlined.FormatListNumbered
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.DocumentScanner
+import androidx.compose.material.icons.outlined.Draw
 import androidx.compose.material.icons.outlined.Layers
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.PictureAsPdf
 import androidx.compose.material.icons.outlined.Slideshow
+import androidx.compose.material.icons.outlined.GridOn
+import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.TableChart
+import androidx.compose.material.icons.outlined.TableRows
+import androidx.compose.material.icons.outlined.TextSnippet
 import androidx.compose.material.icons.outlined.Transform
 import androidx.compose.ui.graphics.vector.ImageVector
 
@@ -78,6 +89,26 @@ data class ConversionType(
                 isMultiFileAllowed = false
             ),
             ConversionType(
+                id = "pdf_to_text",
+                name = "PDF to Text",
+                description = "Extract the text of a PDF into a plain text file",
+                inputType = FileType.PDF,
+                outputType = FileType.TXT,
+                icon = Icons.Outlined.TextSnippet,
+                category = CATEGORY_CONVERSIONS,
+                isMultiFileAllowed = false
+            ),
+            ConversionType(
+                id = "pdf_to_docx",
+                name = "PDF to Word",
+                description = "Convert a text-based PDF into an editable Word document",
+                inputType = FileType.PDF,
+                outputType = FileType.DOCX,
+                icon = Icons.Outlined.Article,
+                category = CATEGORY_CONVERSIONS,
+                isMultiFileAllowed = false
+            ),
+            ConversionType(
                 id = "images_to_pdf",
                 name = "Images to PDF",
                 description = "Combine PNG, JPG, or WEBP into a PDF",
@@ -94,6 +125,36 @@ data class ConversionType(
                 inputType = FileType.XLSX,
                 outputType = FileType.PDF,
                 icon = Icons.Outlined.TableChart,
+                category = CATEGORY_CONVERSIONS,
+                isMultiFileAllowed = false
+            ),
+            ConversionType(
+                id = "xlsx_to_csv",
+                name = "Excel to CSV",
+                description = "Convert the first sheet of an XLSX file to CSV",
+                inputType = FileType.XLSX,
+                outputType = FileType.CSV,
+                icon = Icons.Outlined.TableRows,
+                category = CATEGORY_CONVERSIONS,
+                isMultiFileAllowed = false
+            ),
+            ConversionType(
+                id = "csv_to_xlsx",
+                name = "CSV to Excel",
+                description = "Convert a CSV file into an Excel spreadsheet",
+                inputType = FileType.CSV,
+                outputType = FileType.XLSX,
+                icon = Icons.Outlined.GridOn,
+                category = CATEGORY_CONVERSIONS,
+                isMultiFileAllowed = false
+            ),
+            ConversionType(
+                id = "csv_to_pdf",
+                name = "CSV to PDF",
+                description = "Convert a CSV file into a formatted PDF table",
+                inputType = FileType.CSV,
+                outputType = FileType.PDF,
+                icon = Icons.Outlined.PictureAsPdf,
                 category = CATEGORY_CONVERSIONS,
                 isMultiFileAllowed = false
             ),
@@ -129,6 +190,46 @@ data class ConversionType(
             ),
 
             // PDF Tools
+            ConversionType(
+                id = "ocr_searchable_pdf",
+                name = "OCR to Searchable PDF",
+                description = "Add a searchable text layer to a scanned PDF",
+                inputType = FileType.PDF,
+                outputType = FileType.PDF,
+                icon = Icons.Outlined.DocumentScanner,
+                category = CATEGORY_PDF_TOOLS,
+                isMultiFileAllowed = false
+            ),
+            ConversionType(
+                id = "pdf_to_excel",
+                name = "PDF to Excel",
+                description = "Extract a table from a text-based PDF into a spreadsheet",
+                inputType = FileType.PDF,
+                outputType = FileType.XLSX,
+                icon = Icons.Outlined.TableChart,
+                category = CATEGORY_CONVERSIONS,
+                isMultiFileAllowed = false
+            ),
+            ConversionType(
+                id = "pdf_to_csv",
+                name = "PDF to CSV",
+                description = "Extract a table from a text-based PDF into CSV",
+                inputType = FileType.PDF,
+                outputType = FileType.CSV,
+                icon = Icons.Outlined.GridView,
+                category = CATEGORY_CONVERSIONS,
+                isMultiFileAllowed = false
+            ),
+            ConversionType(
+                id = "sign_pdf",
+                name = "Sign PDF",
+                description = "Draw or pick a signature and stamp it onto pages",
+                inputType = FileType.PDF,
+                outputType = FileType.PDF,
+                icon = Icons.Outlined.Draw,
+                category = CATEGORY_PDF_TOOLS,
+                isMultiFileAllowed = false
+            ),
             ConversionType(
                 id = "batch_pdf",
                 name = "Batch PDF Operations",
@@ -250,6 +351,46 @@ data class ConversionType(
                 icon = Icons.Outlined.Compress,
                 category = CATEGORY_IMAGE_TOOLS,
                 isMultiFileAllowed = true
+            ),
+            ConversionType(
+                id = "heic_to_image",
+                name = "HEIC to Image",
+                description = "Convert HEIC/HEIF photos to JPG or PNG",
+                inputType = FileType.HEIC,
+                outputType = FileType.JPG,
+                icon = Icons.Outlined.PhotoLibrary,
+                category = CATEGORY_IMAGE_TOOLS,
+                isMultiFileAllowed = true
+            ),
+            ConversionType(
+                id = "image_resize",
+                name = "Resize Images",
+                description = "Resize images to exact pixels or a percentage",
+                inputType = FileType.JPG,
+                outputType = FileType.JPG,
+                icon = Icons.Outlined.PhotoSizeSelectLarge,
+                category = CATEGORY_IMAGE_TOOLS,
+                isMultiFileAllowed = true
+            ),
+            ConversionType(
+                id = "photo_studio",
+                name = "Photo & Signature Studio",
+                description = "Exact-size exam photos and signatures with KB limits",
+                inputType = FileType.JPG,
+                outputType = FileType.JPG,
+                icon = Icons.Outlined.Badge,
+                category = CATEGORY_IMAGE_TOOLS,
+                isMultiFileAllowed = false
+            ),
+            ConversionType(
+                id = "qr_studio",
+                name = "QR Code Studio",
+                description = "Create QR codes and scan QR codes and barcodes",
+                inputType = FileType.PNG,
+                outputType = FileType.PNG,
+                icon = Icons.Outlined.QrCode2,
+                category = CATEGORY_IMAGE_TOOLS,
+                isMultiFileAllowed = false
             )
         )
     }

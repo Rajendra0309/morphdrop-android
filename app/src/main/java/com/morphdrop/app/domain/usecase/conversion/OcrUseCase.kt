@@ -186,6 +186,37 @@ class OcrUseCase @Inject constructor(
         }
     }
 
+    /**
+     * Recognizes a bitmap and returns the full ML Kit result — blocks, lines
+     * and elements with their bounding boxes — for callers that need the
+     * text LAYOUT, not just the plain text (e.g. building a searchable PDF
+     * text layer). A page with no readable text is a success with an empty
+     * result, not an error.
+     */
+    suspend fun recognizeLayout(
+        bitmap: Bitmap,
+        script: OcrScript
+    ): Result<com.google.mlkit.vision.text.Text> = withContext(Dispatchers.Default) {
+        val recognizer = getRecognizerForScript(script)
+        try {
+            val result = recognizer.process(InputImage.fromBitmap(bitmap, 0)).await()
+            Result.success(result)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: OutOfMemoryError) {
+            Result.failure(OcrException.MemoryException())
+        } catch (e: Exception) {
+            Log.e("OcrUseCase", "Layout recognition failed", e)
+            if (isModelUnavailableError(e)) {
+                Result.failure(OcrException.ModelDownloadException(e.message))
+            } else {
+                Result.failure(OcrException.ExtractionFailedException(e.message))
+            }
+        } finally {
+            recognizer.close()
+        }
+    }
+
     suspend fun extractFromImageUri(uri: Uri, script: OcrScript): Result<String> = withContext(Dispatchers.IO) {
         val recognizer = getRecognizerForScript(script)
         try {

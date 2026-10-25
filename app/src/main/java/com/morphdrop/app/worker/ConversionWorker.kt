@@ -20,11 +20,19 @@ import com.morphdrop.app.domain.usecase.conversion.MergePdfItem
 import com.morphdrop.app.domain.usecase.conversion.PdfPageEditorUseCase
 import com.morphdrop.app.domain.usecase.conversion.PdfPasswordUseCase
 import com.morphdrop.app.domain.usecase.conversion.PdfToImagesUseCase
+import com.morphdrop.app.domain.usecase.conversion.PdfToDocxUseCase
+import com.morphdrop.app.domain.usecase.conversion.PdfToTextUseCase
 import com.morphdrop.app.domain.usecase.conversion.ReorderPdfPagesUseCase
 import com.morphdrop.app.domain.usecase.conversion.RotatePdfPagesUseCase
 import com.morphdrop.app.domain.usecase.conversion.SplitPdfUseCase
 import com.morphdrop.app.domain.usecase.conversion.TextToPdfUseCase
+import com.morphdrop.app.domain.usecase.conversion.CsvToXlsxUseCase
+import com.morphdrop.app.domain.usecase.conversion.HeicToImageUseCase
+import com.morphdrop.app.domain.usecase.conversion.SearchablePdfUseCase
+import com.morphdrop.app.domain.usecase.conversion.PdfToSpreadsheetUseCase
+import com.morphdrop.app.domain.usecase.conversion.SignPdfUseCase
 import com.morphdrop.app.domain.usecase.conversion.WatermarkPdfUseCase
+import com.morphdrop.app.domain.usecase.conversion.XlsxToCsvUseCase
 import com.morphdrop.app.domain.usecase.conversion.AddPageNumbersUseCase
 import com.morphdrop.app.domain.model.WatermarkConfig
 import com.morphdrop.app.domain.model.PageNumberConfig
@@ -43,8 +51,16 @@ class ConversionWorker @AssistedInject constructor(
     @Assisted private val appContext: Context,
     @Assisted private val workerParams: WorkerParameters,
     private val pdfToImagesUseCase: PdfToImagesUseCase,
+    private val pdfToTextUseCase: PdfToTextUseCase,
+    private val pdfToDocxUseCase: PdfToDocxUseCase,
     private val imagesToPdfUseCase: ImagesToPdfUseCase,
     private val excelToPdfUseCase: ExcelToPdfUseCase,
+    private val xlsxToCsvUseCase: XlsxToCsvUseCase,
+    private val csvToXlsxUseCase: CsvToXlsxUseCase,
+    private val heicToImageUseCase: HeicToImageUseCase,
+    private val searchablePdfUseCase: SearchablePdfUseCase,
+    private val signPdfUseCase: SignPdfUseCase,
+    private val pdfToSpreadsheetUseCase: PdfToSpreadsheetUseCase,
     private val textToPdfUseCase: TextToPdfUseCase,
     private val mdToPdfUseCase: MdToPdfUseCase,
     private val imageConverterUseCase: ImageConverterUseCase,
@@ -93,6 +109,13 @@ class ConversionWorker @AssistedInject constructor(
         const val KEY_PADDING_COLOR = "padding_color"
         const val KEY_TARGET_SIZE_KB = "target_size_kb"
         const val KEY_STRIP_METADATA = "strip_metadata"
+        const val KEY_NAME_PATTERN = "output_name_pattern"
+        const val KEY_SIGNATURE_FILE = "signature_file"
+        const val KEY_OCR_SCRIPT = "ocr_script"
+        const val KEY_SIGN_SCOPE = "sign_scope"
+        const val KEY_SIGN_PAGE_INDEX = "sign_page_index"
+        const val KEY_SIGN_POSITION = "sign_position"
+        const val KEY_SIGN_WIDTH_PERCENT = "sign_width_percent"
         const val KEY_CROP_RECT_LEFT = "crop_rect_left"
         const val KEY_CROP_RECT_TOP = "crop_rect_top"
         const val KEY_CROP_RECT_RIGHT = "crop_rect_right"
@@ -157,8 +180,14 @@ class ConversionWorker @AssistedInject constructor(
             val inputExt = inputFileName.substringAfterLast('.', "").lowercase()
             val ext = when (conversionType) {
                 "pdf_to_images", "split_pdf" -> "" // Folder
-                "images_to_pdf", "excel_to_pdf", "txt_to_pdf", "md_to_pdf", "compress_pdf" -> "pdf"
-                "image_converter", "compress_images" -> inputData.getString(KEY_TARGET_FORMAT) ?: "jpg"
+                "images_to_pdf", "excel_to_pdf", "csv_to_pdf", "ocr_searchable_pdf", "sign_pdf", "txt_to_pdf", "md_to_pdf", "compress_pdf" -> "pdf"
+                "pdf_to_text" -> "txt"
+                "pdf_to_docx" -> "docx"
+                "pdf_to_csv" -> "csv"
+                "pdf_to_excel" -> "xlsx"
+                "xlsx_to_csv" -> "csv"
+                "csv_to_xlsx" -> "xlsx"
+                "image_converter", "compress_images", "heic_to_image", "image_resize" -> inputData.getString(KEY_TARGET_FORMAT) ?: "jpg"
                 "metadata_editor" -> inputExt
                 else -> if (inputExt.isNotBlank()) inputExt else "pdf"
             }
@@ -233,11 +262,43 @@ class ConversionWorker @AssistedInject constructor(
                     result
                 }
 
-                "excel_to_pdf" -> {
+                "excel_to_pdf", "csv_to_pdf" -> {
                     checkCancellation()
                     val uri = Uri.parse(requireNotNull(inputUriString))
                     val result = listOf(excelToPdfUseCase(
                         xlsxUri = uri, 
+                        outputFileName = outputFileName,
+                        onProgress = { p ->
+                            checkCancellation()
+                            val mappedProgress = 20 + (p * 0.7).toInt()
+                            notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), mappedProgress, cancelPendingIntent)
+                            setProgressAsync(workDataOf("progress" to mappedProgress))
+                        }
+                    ))
+                    result
+                }
+
+                "xlsx_to_csv" -> {
+                    checkCancellation()
+                    val uri = Uri.parse(requireNotNull(inputUriString))
+                    val result = listOf(xlsxToCsvUseCase(
+                        xlsxUri = uri,
+                        outputFileName = outputFileName,
+                        onProgress = { p ->
+                            checkCancellation()
+                            val mappedProgress = 20 + (p * 0.7).toInt()
+                            notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), mappedProgress, cancelPendingIntent)
+                            setProgressAsync(workDataOf("progress" to mappedProgress))
+                        }
+                    ))
+                    result
+                }
+
+                "csv_to_xlsx" -> {
+                    checkCancellation()
+                    val uri = Uri.parse(requireNotNull(inputUriString))
+                    val result = listOf(csvToXlsxUseCase(
+                        csvUri = uri,
                         outputFileName = outputFileName,
                         onProgress = { p ->
                             checkCancellation()
@@ -275,7 +336,39 @@ class ConversionWorker @AssistedInject constructor(
                     result
                 }
 
-                "image_converter", "compress_images" -> {
+                "pdf_to_text" -> {
+                    checkCancellation()
+                    val uri = Uri.parse(requireNotNull(inputUriString))
+                    val result = listOf(pdfToTextUseCase(
+                        pdfUri = uri,
+                        outputFileName = outputFileName,
+                        onProgress = { p ->
+                            checkCancellation()
+                            val mappedProgress = 20 + (p * 0.7).toInt()
+                            notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), mappedProgress, cancelPendingIntent)
+                            setProgressAsync(workDataOf("progress" to mappedProgress))
+                        }
+                    ))
+                    result
+                }
+
+                "pdf_to_docx" -> {
+                    checkCancellation()
+                    val uri = Uri.parse(requireNotNull(inputUriString))
+                    val result = listOf(pdfToDocxUseCase(
+                        pdfUri = uri,
+                        outputFileName = outputFileName,
+                        onProgress = { p ->
+                            checkCancellation()
+                            val mappedProgress = 20 + (p * 0.7).toInt()
+                            notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), mappedProgress, cancelPendingIntent)
+                            setProgressAsync(workDataOf("progress" to mappedProgress))
+                        }
+                    ))
+                    result
+                }
+
+                "image_converter", "compress_images", "image_resize" -> {
                     val uris = inputUrisArray?.map { Uri.parse(it) }
                         ?: listOf(Uri.parse(requireNotNull(inputUriString)))
                     
@@ -310,6 +403,8 @@ class ConversionWorker @AssistedInject constructor(
                         "MorphDrop/Batch_[$timestamp]"
                     } else null
 
+                    val namePattern = inputData.getString(KEY_NAME_PATTERN)?.takeIf { it.isNotBlank() }
+
                     val convertedUris = mutableListOf<Uri>()
 
                     for ((idx, u) in uris.withIndex()) {
@@ -337,7 +432,11 @@ class ConversionWorker @AssistedInject constructor(
 
                         val originalName = FileHelper.getFileName(appContext, u).substringBeforeLast('.')
                         val genName = if (isBatchImageConversion) {
-                            "$originalName.$targetFormat"
+                            if (namePattern != null) {
+                                applyOutputNamePattern(namePattern, originalName, idx + 1) + ".$targetFormat"
+                            } else {
+                                "$originalName.$targetFormat"
+                            }
                         } else {
                             outputFileName
                         }
@@ -360,6 +459,144 @@ class ConversionWorker @AssistedInject constructor(
                             outputFileName = genName
                         )
 
+                        convertedUris.add(convertedUri)
+                        outputsToCleanup.add(convertedUri)
+                        convertedCount++
+                    }
+
+                    checkCancellation()
+                    notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 100, cancelPendingIntent)
+                    setProgress(workDataOf("progress" to 100))
+                    convertedUris
+                }
+
+                "ocr_searchable_pdf" -> {
+                    checkCancellation()
+                    val uri = Uri.parse(requireNotNull(inputUriString))
+                    val script = inputData.getString(KEY_OCR_SCRIPT)
+                        ?.let { runCatching { com.morphdrop.app.domain.model.OcrScript.valueOf(it) }.getOrNull() }
+                        ?: com.morphdrop.app.domain.model.OcrScript.LATIN
+                    val result = listOf(searchablePdfUseCase(
+                        pdfUri = uri,
+                        outputFileName = outputFileName,
+                        script = script,
+                        onProgress = { p ->
+                            checkCancellation()
+                            val mappedProgress = 10 + (p * 0.85).toInt()
+                            notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), mappedProgress, cancelPendingIntent)
+                            setProgressAsync(workDataOf("progress" to mappedProgress))
+                        }
+                    ))
+                    result
+                }
+
+                "pdf_to_csv", "pdf_to_excel" -> {
+                    checkCancellation()
+                    val uri = Uri.parse(requireNotNull(inputUriString))
+                    val format = if (conversionType == "pdf_to_csv") {
+                        PdfToSpreadsheetUseCase.Format.CSV
+                    } else {
+                        PdfToSpreadsheetUseCase.Format.XLSX
+                    }
+                    val result = listOf(pdfToSpreadsheetUseCase(
+                        pdfUri = uri,
+                        format = format,
+                        outputFileName = outputFileName,
+                        onProgress = { p ->
+                            checkCancellation()
+                            notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), p, cancelPendingIntent)
+                            setProgressAsync(workDataOf("progress" to p))
+                        }
+                    ))
+                    result
+                }
+
+                "sign_pdf" -> {
+                    checkCancellation()
+                    val uri = Uri.parse(requireNotNull(inputUriString))
+                    val signaturePath = requireNotNull(inputData.getString(KEY_SIGNATURE_FILE))
+                    val result = listOf(signPdfUseCase(
+                        pdfUri = uri,
+                        signatureFilePath = signaturePath,
+                        scope = inputData.getString(KEY_SIGN_SCOPE) ?: SignPdfUseCase.SCOPE_THIS_PAGE,
+                        pageIndex = inputData.getInt(KEY_SIGN_PAGE_INDEX, 0),
+                        position = inputData.getString(KEY_SIGN_POSITION) ?: SignPdfUseCase.POS_BOTTOM_RIGHT,
+                        widthPercent = inputData.getInt(KEY_SIGN_WIDTH_PERCENT, 30),
+                        outputFileName = outputFileName,
+                        onProgress = { p ->
+                            checkCancellation()
+                            val mappedProgress = 20 + (p * 0.7).toInt()
+                            notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), mappedProgress, cancelPendingIntent)
+                            setProgressAsync(workDataOf("progress" to mappedProgress))
+                        }
+                    ))
+                    // The drawn/picked signature lives in the cache; the
+                    // stamped PDF is saved, so the working copy can go.
+                    runCatching { java.io.File(signaturePath).delete() }
+                    result
+                }
+
+                "heic_to_image" -> {
+                    val uris = inputUrisArray?.map { Uri.parse(it) }
+                        ?: listOf(Uri.parse(requireNotNull(inputUriString)))
+
+                    totalImageCount = uris.size
+                    isBatchImageConversion = totalImageCount > 1
+
+                    val targetFormat = (inputData.getString(KEY_TARGET_FORMAT) ?: "jpg")
+                        .lowercase().takeIf { it == "jpg" || it == "jpeg" || it == "png" } ?: "jpg"
+                    val quality = inputData.getInt(KEY_QUALITY, 90)
+
+                    // Same batch convention as the image converter: single
+                    // files land in MorphDrop/, batches in a dated subfolder.
+                    val batchSubFolder = if (isBatchImageConversion) {
+                        val timestamp = SimpleDateFormat("yyyy-MM-dd_HH-mm", Locale.US).format(Date())
+                        "MorphDrop/Batch_[$timestamp]"
+                    } else null
+
+                    val namePattern = inputData.getString(KEY_NAME_PATTERN)?.takeIf { it.isNotBlank() }
+
+                    val convertedUris = mutableListOf<Uri>()
+                    for ((idx, u) in uris.withIndex()) {
+                        checkCancellation()
+                        val currentStatusText = if (isBatchImageConversion) {
+                            "Converting ${idx + 1} of $totalImageCount..."
+                        } else {
+                            "Converting HEIC Photo..."
+                        }
+                        val progressPercent = ((idx.toFloat() / totalImageCount) * 90).toInt().coerceAtLeast(10)
+                        notificationHelper.showProgressNotification(
+                            notificationId,
+                            currentStatusText,
+                            progressPercent,
+                            cancelPendingIntent
+                        )
+                        setProgress(workDataOf(
+                            "progress" to progressPercent,
+                            "stage_text" to currentStatusText,
+                            "converted_count" to convertedCount,
+                            "total_count" to totalImageCount
+                        ))
+
+                        val originalName = FileHelper.getFileName(appContext, u).substringBeforeLast('.')
+                        val genName = if (isBatchImageConversion) {
+                            if (namePattern != null) {
+                                applyOutputNamePattern(namePattern, originalName, idx + 1) + ".$targetFormat"
+                            } else {
+                                "$originalName.$targetFormat"
+                            }
+                        } else {
+                            outputFileName
+                        }
+                        generatedFileNames.add(genName)
+
+                        val convertedUri = heicToImageUseCase(
+                            inputUri = u,
+                            outputFormat = targetFormat,
+                            quality = quality,
+                            outputFolderName = batchSubFolder,
+                            outputFileName = genName
+                        )
                         convertedUris.add(convertedUri)
                         outputsToCleanup.add(convertedUri)
                         convertedCount++
@@ -627,7 +864,9 @@ class ConversionWorker @AssistedInject constructor(
                     displayName = finalOutputName,
                     timestamp = System.currentTimeMillis(),
                     duration = duration,
-                    success = true
+                    success = true,
+                    conversionTypeId = conversionType,
+                    inputUris = (inputUrisArray?.toList() ?: listOfNotNull(inputUriString)).joinToString(",")
                 )
             )
             com.morphdrop.app.ui.widget.WidgetUpdateHelper.updateAllWidgets(appContext)
@@ -702,7 +941,10 @@ class ConversionWorker @AssistedInject constructor(
                     displayName = "Failed Conversion",
                     timestamp = System.currentTimeMillis(),
                     duration = duration,
-                    success = false
+                    success = false,
+                    errorMessage = e.localizedMessage ?: "Conversion failed",
+                    conversionTypeId = conversionType,
+                    inputUris = (inputUrisArray?.toList() ?: listOfNotNull(inputUriString)).joinToString(",")
                 )
             )
 
@@ -725,8 +967,19 @@ class ConversionWorker @AssistedInject constructor(
             "merge_pdf", "merge_pdfs" -> "Merge PDFs"
             "compress_pdf" -> "Compress PDF"
             "pdf_to_images" -> "PDF to Images"
+            "pdf_to_text" -> "PDF to Text"
+            "pdf_to_docx" -> "PDF to Word"
             "images_to_pdf", "image_to_pdf" -> "Images to PDF"
             "excel_to_pdf" -> "Excel to PDF"
+            "xlsx_to_csv" -> "Excel to CSV"
+            "csv_to_xlsx" -> "CSV to Excel"
+            "csv_to_pdf" -> "CSV to PDF"
+            "heic_to_image" -> "HEIC to Image"
+            "ocr_searchable_pdf" -> "OCR to Searchable PDF"
+            "sign_pdf" -> "Sign PDF"
+            "pdf_to_csv" -> "PDF to CSV"
+            "pdf_to_excel" -> "PDF to Excel"
+            "image_resize" -> "Resize Images"
             "text_to_pdf", "txt_to_pdf" -> "Text to PDF"
             "md_to_pdf", "markdown_to_pdf" -> "Markdown to PDF"
             "image_converter" -> "Image Converter"
@@ -791,4 +1044,28 @@ class ConversionWorker @AssistedInject constructor(
         }
         return inlinePayload
     }
+}
+
+/**
+ * Renders a batch output-name pattern for one file. Tokens: {name} is the
+ * original file name without extension, {n} the 1-based position, {nn}
+ * the zero-padded position, {date} today as yyyyMMdd. Characters that
+ * are illegal in file names are replaced, and a pattern that renders
+ * blank falls back to the original name.
+ */
+internal fun applyOutputNamePattern(
+    pattern: String,
+    originalBaseName: String,
+    index: Int,
+    date: Date = Date()
+): String {
+    val dateText = SimpleDateFormat("yyyyMMdd", Locale.US).format(date)
+    val rendered = pattern
+        .replace("{name}", originalBaseName)
+        .replace("{nn}", index.toString().padStart(2, '0'))
+        .replace("{n}", index.toString())
+        .replace("{date}", dateText)
+        .replace(Regex("""[\\/:*?"<>|]"""), "_")
+        .trim()
+    return rendered.ifBlank { originalBaseName }
 }

@@ -14,7 +14,7 @@ import com.morphdrop.app.data.local.entity.PdfAnnotationEntity
 
 @Database(
     entities = [ConversionHistoryEntity::class, FavoriteEntity::class, BookmarkEntity::class, PdfAnnotationEntity::class],
-    version = 6,
+    version = 8,
     exportSchema = false
 )
 abstract class MorphDropDatabase : RoomDatabase() {

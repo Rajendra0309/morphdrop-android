@@ -58,6 +58,8 @@ data class ConversionConfigState(
     val pageRangeStart: String = "",
     val pageRangeEnd: String = "",
     val outputFileName: String = "",
+    val outputNamePattern: String = "",
+    val ocrScript: String = "LATIN",
     val isConvertEnabled: Boolean = false,
     val showQualitySlider: Boolean = false,
     val showPageRange: Boolean = false,
@@ -200,6 +202,17 @@ class ConversionConfigViewModel @Inject constructor(
                             splitEveryN = preset.splitEveryN.toIntOrNull() ?: next.splitEveryN
                         )
                     }
+                    // The HEIC tool only writes JPG/PNG; never let a saved
+                    // format from another image tool (e.g. WEBP) leak in.
+                    if (type.id == "heic_to_image" && next.outputFormat !in listOf("jpg", "png")) {
+                        next = next.copy(outputFormat = "jpg")
+                    }
+                    // Compress declares JPG output: unless the user saved a
+                    // Compress preset of their own, do not inherit whatever
+                    // format another image tool used last.
+                    if (type.id == "compress_images" && preset == null) {
+                        next = next.copy(outputFormat = "jpg")
+                    }
                     next.copy(isConvertEnabled = isStateValid(next))
                 }
             }
@@ -225,10 +238,13 @@ class ConversionConfigViewModel @Inject constructor(
         val t = type ?: return emptyList()
         return when (t.id) {
             "excel_to_pdf" -> listOf("xls", "xlsx", "csv")
+            "xlsx_to_csv" -> listOf("xlsx")
+            "csv_to_xlsx", "csv_to_pdf" -> listOf("csv")
+            "heic_to_image" -> listOf("heic", "heif")
             "txt_to_pdf", "text_to_pdf" -> listOf("txt")
             "md_to_pdf" -> listOf("md", "markdown")
-            "pdf_to_images", "split_pdf", "compress_pdf", "protect_pdf", "unlock_pdf", "organize_pdf", "merge_pdf" -> listOf("pdf")
-            "images_to_pdf", "compress_images", "image_converter" -> listOf("png", "jpg", "jpeg", "webp", "bmp")
+            "pdf_to_images", "pdf_to_text", "pdf_to_docx", "pdf_to_csv", "pdf_to_excel", "ocr_searchable_pdf", "split_pdf", "compress_pdf", "protect_pdf", "unlock_pdf", "organize_pdf", "merge_pdf" -> listOf("pdf")
+            "images_to_pdf", "compress_images", "image_converter", "image_resize" -> listOf("png", "jpg", "jpeg", "webp", "bmp")
             "metadata_editor" -> emptyList() // Empty list = ALL file types allowed!
             else -> listOf(t.inputType.extension)
         }
@@ -283,7 +299,7 @@ class ConversionConfigViewModel @Inject constructor(
                 "txt_to_pdf", "text_to_pdf" -> mime.startsWith("text/")
                 "md_to_pdf" -> mime.contains("markdown") || mime.startsWith("text/")
                 "images_to_pdf", "compress_images", "image_converter" -> mime.startsWith("image/")
-                "pdf_to_images", "split_pdf", "compress_pdf", "protect_pdf", "unlock_pdf", "organize_pdf", "merge_pdf" -> mime == "application/pdf"
+                "pdf_to_images", "pdf_to_text", "pdf_to_docx", "split_pdf", "compress_pdf", "protect_pdf", "unlock_pdf", "organize_pdf", "merge_pdf" -> mime == "application/pdf"
                 else -> false
             }
 
@@ -678,6 +694,14 @@ class ConversionConfigViewModel @Inject constructor(
         }
     }
 
+    fun onOcrScriptChanged(script: String) {
+        _state.update { it.copy(ocrScript = script) }
+    }
+
+    fun onOutputNamePatternChanged(value: String) {
+        _state.update { it.copy(outputNamePattern = value) }
+    }
+
     // Workbench Grid Actions
     fun onWorkbenchItemClicked(item: WorkbenchImageItem) {
         _state.update { 
@@ -816,6 +840,8 @@ class ConversionConfigViewModel @Inject constructor(
     fun onCompressionPresetSelected(preset: String) {
         _state.update {
             val s = when (preset) {
+                "Exam 100KB" -> it.copy(compressionPreset = preset, targetSizeKb = "100", targetWidth = "", targetHeight = "")
+                "Exam 200KB" -> it.copy(compressionPreset = preset, targetSizeKb = "200", targetWidth = "", targetHeight = "")
                 "Under 500KB" -> it.copy(compressionPreset = preset, targetSizeKb = "500", targetWidth = "", targetHeight = "")
                 "Under 1MB" -> it.copy(compressionPreset = preset, targetSizeKb = "1024", targetWidth = "", targetHeight = "")
                 "Profile Picture (256x256)" -> it.copy(compressionPreset = preset, targetWidth = "256", targetHeight = "256", targetSizeKb = "")
@@ -1009,7 +1035,15 @@ class ConversionConfigViewModel @Inject constructor(
                 .putString(com.morphdrop.app.worker.ConversionWorker.KEY_OUTPUT_FILE_NAME, currentState.outputFileName)
                 .putString(com.morphdrop.app.worker.ConversionWorker.KEY_TARGET_FORMAT, currentState.outputFormat)
                 .putInt(com.morphdrop.app.worker.ConversionWorker.KEY_QUALITY, currentState.quality)
+                .putString(com.morphdrop.app.worker.ConversionWorker.KEY_OCR_SCRIPT, currentState.ocrScript)
                 .putBoolean(com.morphdrop.app.worker.ConversionWorker.KEY_STRIP_METADATA, currentState.stripMetadata)
+
+            if (currentState.outputNamePattern.isNotBlank()) {
+                dataBuilder.putString(
+                    com.morphdrop.app.worker.ConversionWorker.KEY_NAME_PATTERN,
+                    currentState.outputNamePattern.trim()
+                )
+            }
 
             val resizeScaleFloat = when (currentState.resizeOption) {
                 "50%" -> 0.5f
@@ -1188,6 +1222,9 @@ class ConversionConfigViewModel @Inject constructor(
         return when (type.id) {
             "pdf_to_images" -> listOf("png", "jpg")
             "image_converter" -> listOf("png", "jpg", "webp", "bmp")
+            "image_resize" -> listOf("png", "jpg", "webp", "bmp")
+            "heic_to_image" -> listOf("jpg", "png")
+            "compress_images" -> listOf("png", "jpg", "webp", "bmp")
             else -> listOf(type.outputType.extension)
         }
     }

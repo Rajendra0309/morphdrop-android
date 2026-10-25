@@ -22,7 +22,17 @@ import javax.inject.Inject
 data class HistoryDetailUiState(
     val historyItem: ConversionHistoryEntity? = null,
     val isLoading: Boolean = true,
-    val isDeleted: Boolean = false
+    val isDeleted: Boolean = false,
+    /** Set when this entry can be run again: the tool id and its original input URIs joined for the config route. */
+    val reRunToolId: String? = null,
+    val reRunUriArg: String? = null
+)
+
+/** Tools with their own screens; the generic config route cannot re-run them. */
+private val DEDICATED_SCREEN_TOOL_IDS = setOf(
+    "ocr_text_extractor", "batch_ocr", "photo_studio", "qr_studio", "batch_pdf",
+    "markdown_editor", "watermark_pdf", "page_numbers_pdf", "compress_pdf",
+    "rotate_pdf", "sign_pdf"
 )
 
 @HiltViewModel
@@ -40,10 +50,20 @@ class HistoryDetailViewModel @Inject constructor(
         if (historyId > 0L) {
             viewModelScope.launch {
                 historyRepository.getHistoryById(historyId).collect { item ->
+                    val type = item?.let { resolveConversionType(it.conversionTypeId, it.conversionType) }
+                    val canReRun = item != null && item.inputUris.isNotBlank() &&
+                        type != null && type.id !in DEDICATED_SCREEN_TOOL_IDS
                     _uiState.value = HistoryDetailUiState(
                         historyItem = item,
                         isLoading = false,
-                        isDeleted = item == null && _uiState.value.historyItem != null
+                        isDeleted = item == null && _uiState.value.historyItem != null,
+                        reRunToolId = if (canReRun) type?.id else null,
+                        reRunUriArg = if (canReRun) {
+                            item?.inputUris?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() }
+                                ?.joinToString("|")
+                        } else {
+                            null
+                        }
                     )
                 }
             }

@@ -12,6 +12,9 @@
 
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
+    <!-- Used only by the QR scanner, only while that screen is open -->
+    <uses-permission android:name="android.permission.CAMERA" />
+
     <!-- ChromeOS Compatibility: Enable installation on laptops, non-touchscreen Chromebooks, and desktop mice/keyboards -->
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />

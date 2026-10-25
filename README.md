@@ -71,13 +71,29 @@
 
 ## Features
 
-### Latest Updates (v1.5.0)
+### Latest Updates (v1.6.0)
+
+> - **13 New Tools, 34 in Total** — PDF to Text, PDF to Word, PDF to Excel, PDF to CSV, Excel to CSV, CSV to Excel, CSV to PDF, OCR to Searchable PDF, Sign PDF, Photo & Signature Studio, QR Code Studio, HEIC to Image, and Resize Images.
+> - **Searchable PDFs, Including Devanagari** — Turn scans into PDFs with a real, selectable text layer in English and Hindi/Marathi, readable by any PDF reader.
+> - **Sign PDFs on Device** — Draw a signature or pick one from photos and stamp it on one page or every page, with a live preview before applying.
+> - **Photo & Signature Studio** — Exam-ready photo and signature sizing with exact KB targets (e.g. 100 KB) for application forms.
+> - **QR Code Studio** — Create QR codes and scan them from the camera or an image, fully offline.
+> - **Cleaner Home** — A decluttered Home with a quick-return header (hides on scroll down, returns on any scroll up), search that keeps focus, and your scroll position and filter kept when you come back from a tool.
+> - **History Convert Again** — Re-run any past conversion from History with the same file and settings, including saved Compress presets.
+> - **Consistent Tool Screens** — Every PDF tool now shares the same file picker, sticky action button, and spacing as the rest of the app.
+
+<br>
+<details>
+<summary><b>Previous updates (v1.5.0)</b></summary>
+<br>
 
 > - **Ember Design Language** — Modern, warm aesthetic with responsive tablet/foldable layouts, comfortable screen paddings, and dynamic Android 12+ wallpaper palette theming.
 > - **Rich Markdown to PDF Engine** — Full rendering overhaul supporting tables, inline/block math equations, syntax-highlighted code blocks, blockquotes, and task checklists.
 > - **Quick Presets & Reading Continuation** — One-tap conversion via saved tool presets (long-press cards) and Home resume-reading card for your last opened PDF.
 > - **Streamlined APK Footprint** — Reduced release download size by >70% (from 73MB to ~21MB) via 64-bit architecture optimization and R8 bytecode shrinking.
 > - **History Multi-Select & Pinning** — Bulk log deletion with instant undo, combined with pinned-to-top ordering for favorite conversions.
+
+</details>
 
 <br>
 <details>
@@ -159,9 +175,13 @@
 | PDF | Images (PNG, JPG) |
 | Images (PNG, JPG, WebP, BMP) | PDF |
 | Excel (XLSX) | PDF |
+| Excel (XLSX) | CSV |
+| CSV | Excel (XLSX), PDF |
 | Text (TXT) | PDF |
 | Markdown (MD) | PDF |
-| Image / Scanned Document | Selectable Text (OCR / Batch OCR) |
+| PDF | Text (TXT), Word (DOCX), Excel (XLSX), CSV |
+| Image / Scanned Document | Selectable Text (OCR / Batch OCR), Searchable PDF |
+| PDF | Signed PDF (drawn or photo signature) |
 | Multiple PDFs | Batch Compressed, Watermarked, Numbered, Encrypted, Rotated, Merged |
 
 </details>
@@ -176,6 +196,7 @@
 | JPG | PNG, WebP, BMP |
 | WebP | PNG, JPG, BMP |
 | BMP | PNG, JPG, WebP |
+| HEIC | JPG, PNG |
 
 </details>
 

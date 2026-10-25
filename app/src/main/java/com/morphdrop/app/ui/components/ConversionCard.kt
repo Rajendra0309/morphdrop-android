@@ -32,6 +32,9 @@ import androidx.compose.ui.unit.dp
 import com.morphdrop.app.domain.model.ConversionType
 import com.morphdrop.app.ui.theme.chipColors
 
+/** Tools whose output format is chosen per conversion, so no single "to X" label is honest. */
+private val MULTI_FORMAT_TOOL_IDS = setOf("image_converter", "image_resize", "heic_to_image", "pdf_to_images")
+
 @Composable
 fun ConversionCard(
     conversionType: ConversionType,
@@ -45,6 +48,15 @@ fun ConversionCard(
 ) {
     val (badgeContainer, badgeContent) = conversionType.inputType.chipColors()
     val interactionSource = remember { MutableInteractionSource() }
+    // Long-press quick conversion only exists for tools that go through the
+    // conversion config screen; dedicated-screen tools (mirroring the
+    // special cases in NavGraph) open the same screen on long-press, so
+    // the accessibility text must not promise a quick conversion for them.
+    val quickConvertSuffix = if (onLongClick != null && conversionType.id !in DEDICATED_SCREEN_TOOL_IDS) {
+        ". Long-press for quick conversion."
+    } else {
+        ""
+    }
 
     ElevatedCard(
         modifier = modifier
@@ -56,9 +68,16 @@ fun ConversionCard(
             )
             .semantics {
                 contentDescription =
-                    "${conversionType.name}: ${conversionType.inputType.displayName} " +
-                        "to ${conversionType.outputType.displayName}" +
-                        if (onLongClick != null) ". Long-press for quick conversion." else ""
+                    if (conversionType.id == "photo_studio" || conversionType.id == "qr_studio" ||
+                        conversionType.id in MULTI_FORMAT_TOOL_IDS
+                    ) {
+                        // Studios are not "X to Y" conversions, and
+                        // multi-format tools have no single output type.
+                        "${conversionType.name}: ${conversionType.description}" + quickConvertSuffix
+                    } else {
+                        "${conversionType.name}: ${conversionType.inputType.displayName} " +
+                            "to ${conversionType.outputType.displayName}" + quickConvertSuffix
+                    }
             },
         shape = RoundedCornerShape(16.dp)
     ) {
@@ -144,3 +163,17 @@ fun ConversionCard(
         }
     }
 }
+
+/** Tools with their own screens; kept in sync with the NavGraph handlers. */
+private val DEDICATED_SCREEN_TOOL_IDS = setOf(
+    "ocr_text_extractor",
+    "batch_ocr",
+    "batch_pdf",
+    "markdown_editor",
+    "watermark_pdf",
+    "page_numbers_pdf",
+    "compress_pdf",
+    "rotate_pdf",
+    "photo_studio",
+    "qr_studio"
+)
