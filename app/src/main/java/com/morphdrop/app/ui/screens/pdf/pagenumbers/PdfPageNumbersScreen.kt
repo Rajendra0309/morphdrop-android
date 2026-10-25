@@ -73,6 +73,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -89,8 +90,9 @@ import com.morphdrop.app.domain.model.PageNumberConfig
 import com.morphdrop.app.domain.model.PageNumberFormat
 import com.morphdrop.app.domain.model.PageNumberPosition
 import com.morphdrop.app.ui.components.FormatChip
+import com.morphdrop.app.ui.components.dashedBorder
 import com.morphdrop.app.ui.components.MorphDropTopAppBar
-import com.morphdrop.app.ui.components.PrimaryButton
+import com.morphdrop.app.ui.components.MorphButton
 import com.morphdrop.app.ui.screens.processing.ProcessingScreenContent
 import com.morphdrop.app.ui.screens.processing.ProcessingUiState
 import com.morphdrop.app.ui.screens.result.OutputFileItem
@@ -252,11 +254,15 @@ fun PdfPageNumbersContent(
                 .fillMaxSize()
                 .padding(innerPadding)
                 .imePadding()
-                .padding(horizontal = 16.dp)
-                .verticalScroll(scrollState),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Spacer(modifier = Modifier.height(4.dp))
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .verticalScroll(scrollState)
+                    .padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(24.dp)
+            ) {
+            Spacer(modifier = Modifier.height(8.dp))
 
             // Error banner if any
             AnimatedVisibility(visible = state.errorMessage != null) {
@@ -367,26 +373,37 @@ fun PdfPageNumbersContent(
                                 CircularProgressIndicator(modifier = Modifier.size(36.dp))
                             }
                         } else {
+                            // Empty state matches the generic config
+                            // screens: a dashed drop zone, not a solid
+                            // placeholder panel.
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                                    .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f)),
+                                    .padding(16.dp)
+                                    .dashedBorder(2.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.6f), 16.dp)
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .clickable(role = Role.Button, onClick = onPickPdfClick),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     Icon(
-                                        imageVector = Icons.Outlined.PictureAsPdf,
+                                        imageVector = Icons.Default.UploadFile,
                                         contentDescription = null,
-                                        modifier = Modifier.size(56.dp),
+                                        modifier = Modifier.size(44.dp),
                                         tint = MaterialTheme.colorScheme.primary
                                     )
-                                    Spacer(modifier = Modifier.height(10.dp))
+                                    Spacer(modifier = Modifier.height(8.dp))
                                     Text(
-                                        text = "PDF Document",
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Bold,
+                                        text = "Tap to choose a file",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.SemiBold,
                                         color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = "Accepted: PDF",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                             }
@@ -676,14 +693,24 @@ fun PdfPageNumbersContent(
             }
 
             // Apply Button
-            PrimaryButton(
-                text = if (state.isProcessing) "Adding Page Numbers..." else "Add Page Numbers",
-                onClick = onApplyPageNumbers,
-                enabled = !state.isProcessing && state.selectedUri != null,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 24.dp)
-            )
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+            // Sticky bottom CTA, like the generic config screens: always
+            // reachable, same button component and padding.
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 3.dp
+            ) {
+                MorphButton(
+                    text = if (state.isProcessing) "Adding Page Numbers..." else "Add Page Numbers",
+                    onClick = onApplyPageNumbers,
+                    enabled = !state.isProcessing && state.selectedUri != null,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                )
+            }
         }
     }
 }
