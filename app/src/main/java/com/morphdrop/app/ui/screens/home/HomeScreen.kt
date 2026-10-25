@@ -221,12 +221,27 @@ fun HomeScreenContent(
     LaunchedEffect(isScrolledDown) {
         setSearchFabVisibility(isScrolledDown)
     }
+    // The navbar search shortcut cannot focus the field straight after
+    // scrolling: while the header is hidden, AnimatedVisibility has
+    // removed the search bar from composition, so an immediate
+    // requestFocus() lands on nothing and the keyboard never opens.
+    // Instead the tap only scrolls and raises this flag; the effect
+    // below focuses once the header is back and attached.
+    var pendingSearchFocus by remember { mutableStateOf(false) }
+    LaunchedEffect(headerVisible, pendingSearchFocus) {
+        if (pendingSearchFocus && headerVisible) {
+            // Let the header's enter animation attach the field first.
+            kotlinx.coroutines.delay(100)
+            focusRequester.requestFocus()
+            keyboardController?.show()
+            pendingSearchFocus = false
+        }
+    }
     LaunchedEffect(Unit) {
         setOnSearchFabClick {
             coroutineScope.launch {
                 gridState.scrollToItem(0)
-                focusRequester.requestFocus()
-                keyboardController?.show()
+                pendingSearchFocus = true
             }
         }
     }
