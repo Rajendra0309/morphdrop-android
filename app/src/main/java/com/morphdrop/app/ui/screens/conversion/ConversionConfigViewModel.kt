@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
+import android.media.MediaMetadataRetriever
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.morphdrop.app.domain.model.ConversionType
@@ -107,7 +108,11 @@ data class ConversionConfigState(
     val editCameraMake: String = "",
     val editCameraModel: String = "",
     val gpsError: String? = null,
-    val metadataAction: String = "scrub"
+    val metadataAction: String = "scrub",
+    // Audio Trimmer State
+    val trimStartSeconds: String = "",
+    val trimEndSeconds: String = "",
+    val audioDurationMs: Long = 0
 ) {
     val selectedFileUri: Uri?
         get() = selectedFileUris.firstOrNull()
@@ -242,6 +247,8 @@ class ConversionConfigViewModel @Inject constructor(
             "csv_to_xlsx", "csv_to_pdf" -> listOf("csv")
             "heic_to_image" -> listOf("heic", "heif")
             "audio_converter" -> listOf("mp3", "m4a", "aac", "wav", "ogg", "opus", "flac")
+            "audio_trimmer" -> listOf("mp3", "m4a", "aac", "wav", "ogg", "opus", "flac")
+            "video_to_audio" -> listOf("mp4", "mkv", "mov", "webm", "3gp")
             "txt_to_pdf", "text_to_pdf" -> listOf("txt")
             "md_to_pdf" -> listOf("md", "markdown")
             "pdf_to_images", "pdf_to_text", "pdf_to_docx", "pdf_to_csv", "pdf_to_excel", "ocr_searchable_pdf", "split_pdf", "compress_pdf", "protect_pdf", "unlock_pdf", "organize_pdf", "merge_pdf" -> listOf("pdf")
@@ -460,6 +467,16 @@ class ConversionConfigViewModel @Inject constructor(
         if (type?.id == "metadata_editor" && selectedUris.isNotEmpty()) {
             if (currentGeneration != fileSelectionGeneration) return@launch
             loadMetadata(context, selectedUris.first())
+        }
+
+        if (type?.id == "audio_trimmer" && selectedUris.isNotEmpty()) {
+            if (currentGeneration != fileSelectionGeneration) return@launch
+            val duration = probeAudioDurationMs(context, selectedUris.first())
+            if (currentGeneration != fileSelectionGeneration) return@launch
+            _state.update { s ->
+                val next = s.copy(audioDurationMs = duration ?: 0L)
+                next.copy(isConvertEnabled = isStateValid(next))
+            }
         }
         }
     }
@@ -1006,7 +1023,50 @@ class ConversionConfigViewModel @Inject constructor(
         }
         if (start != null && end != null && start > end) return false
         if ((s.conversionType?.id == "protect_pdf" || s.conversionType?.id == "unlock_pdf") && s.pdfPassword.isEmpty()) return false
+        if (s.conversionType?.id == "audio_trimmer") {
+            val start = when {
+                s.trimStartSeconds.isBlank() -> 0L
+                else -> s.trimStartSeconds.toLongOrNull() ?: return false
+            }
+            if (start < 0) return false
+            val end = s.trimEndSeconds.toLongOrNull()
+            if (s.trimEndSeconds.isNotBlank() && end == null) return false
+            if (end != null && end <= start) return false
+            if (s.audioDurationMs > 0) {
+                if (start >= s.audioDurationMs) return false
+                if (end != null && end > s.audioDurationMs) return false
+            }
+        }
         return true
+    }
+
+    fun onTrimStartChanged(value: String) {
+        _state.update { s ->
+            val next = s.copy(trimStartSeconds = value)
+            next.copy(isConvertEnabled = isStateValid(next))
+        }
+    }
+
+    fun onTrimEndChanged(value: String) {
+        _state.update { s ->
+            val next = s.copy(trimEndSeconds = value)
+            next.copy(isConvertEnabled = isStateValid(next))
+        }
+    }
+
+    private fun probeAudioDurationMs(context: Context, uri: Uri): Long? {
+        val retriever = MediaMetadataRetriever()
+        return try {
+            retriever.setDataSource(context, uri)
+            retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()
+        } catch (_: Exception) {
+            null
+        } finally {
+            try {
+                retriever.release()
+            } catch (_: Exception) {
+            }
+        }
     }
 
     fun startConversion(context: Context): UUID? {
@@ -1038,6 +1098,13 @@ class ConversionConfigViewModel @Inject constructor(
                 .putInt(com.morphdrop.app.worker.ConversionWorker.KEY_QUALITY, currentState.quality)
                 .putString(com.morphdrop.app.worker.ConversionWorker.KEY_OCR_SCRIPT, currentState.ocrScript)
                 .putBoolean(com.morphdrop.app.worker.ConversionWorker.KEY_STRIP_METADATA, currentState.stripMetadata)
+
+            if (type.id == "audio_trimmer") {
+                val startMs = (currentState.trimStartSeconds.toLongOrNull() ?: 0L) * 1000
+                val endMs = currentState.trimEndSeconds.toLongOrNull()?.let { it * 1000 } ?: 0L
+                dataBuilder.putLong(com.morphdrop.app.worker.ConversionWorker.KEY_TRIM_START_MS, startMs)
+                dataBuilder.putLong(com.morphdrop.app.worker.ConversionWorker.KEY_TRIM_END_MS, endMs)
+            }
 
             if (currentState.outputNamePattern.isNotBlank()) {
                 dataBuilder.putString(
@@ -1226,6 +1293,8 @@ class ConversionConfigViewModel @Inject constructor(
             "image_resize" -> listOf("png", "jpg", "webp", "bmp")
             "heic_to_image" -> listOf("jpg", "png")
             "audio_converter" -> listOf("wav", "m4a")
+            "audio_trimmer" -> listOf("wav", "m4a")
+            "video_to_audio" -> listOf("m4a", "wav")
             "compress_images" -> listOf("png", "jpg", "webp", "bmp")
             else -> listOf(type.outputType.extension)
         }

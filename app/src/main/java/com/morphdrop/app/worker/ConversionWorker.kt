@@ -35,6 +35,8 @@ import com.morphdrop.app.domain.usecase.conversion.WatermarkPdfUseCase
 import com.morphdrop.app.domain.usecase.conversion.XlsxToCsvUseCase
 import com.morphdrop.app.domain.usecase.conversion.AddPageNumbersUseCase
 import com.morphdrop.app.domain.usecase.conversion.AudioConverterUseCase
+import com.morphdrop.app.domain.usecase.conversion.AudioTrimmerUseCase
+import com.morphdrop.app.domain.usecase.conversion.VideoToAudioUseCase
 import com.morphdrop.app.domain.model.WatermarkConfig
 import com.morphdrop.app.domain.model.PageNumberConfig
 import com.morphdrop.app.util.FileHelper
@@ -72,6 +74,8 @@ class ConversionWorker @AssistedInject constructor(
     private val watermarkPdfUseCase: WatermarkPdfUseCase,
     private val addPageNumbersUseCase: AddPageNumbersUseCase,
     private val audioConverterUseCase: AudioConverterUseCase,
+    private val audioTrimmerUseCase: AudioTrimmerUseCase,
+    private val videoToAudioUseCase: VideoToAudioUseCase,
     private val reorderPdfPagesUseCase: ReorderPdfPagesUseCase,
     private val pdfPasswordUseCase: PdfPasswordUseCase,
     private val pdfPageEditorUseCase: PdfPageEditorUseCase,
@@ -92,6 +96,8 @@ class ConversionWorker @AssistedInject constructor(
         const val KEY_PASSWORD = "password"
         const val KEY_ACTION = "action"
         const val KEY_TARGET_FORMAT = "target_format"
+        const val KEY_TRIM_START_MS = "trim_start_ms"
+        const val KEY_TRIM_END_MS = "trim_end_ms"
         const val KEY_SPLIT_MODE = "split_mode"
 
         const val KEY_ALLOW_PRINTING = "allow_printing"
@@ -191,6 +197,8 @@ class ConversionWorker @AssistedInject constructor(
                 "csv_to_xlsx" -> "xlsx"
                 "image_converter", "compress_images", "heic_to_image", "image_resize" -> inputData.getString(KEY_TARGET_FORMAT) ?: "jpg"
                 "audio_converter" -> inputData.getString(KEY_TARGET_FORMAT) ?: "wav"
+                "audio_trimmer" -> inputData.getString(KEY_TARGET_FORMAT) ?: "m4a"
+                "video_to_audio" -> inputData.getString(KEY_TARGET_FORMAT) ?: "m4a"
                 "metadata_editor" -> inputExt
                 else -> if (inputExt.isNotBlank()) inputExt else "pdf"
             }
@@ -547,6 +555,48 @@ class ConversionWorker @AssistedInject constructor(
                     val targetFormat = (inputData.getString(KEY_TARGET_FORMAT) ?: "wav")
                         .lowercase().takeIf { it == "wav" || it == "m4a" } ?: "wav"
                     val result = audioConverterUseCase(
+                        inputUri = uri,
+                        outputFormat = targetFormat,
+                        outputFileName = outputFileName
+                    )
+                    outputsToCleanup.add(result)
+                    checkCancellation()
+                    notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 80, cancelPendingIntent)
+                    setProgress(workDataOf("progress" to 80))
+                    listOf(result)
+                }
+
+                "audio_trimmer" -> {
+                    checkCancellation()
+                    notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 30, cancelPendingIntent)
+                    setProgress(workDataOf("progress" to 30))
+                    val uri = Uri.parse(requireNotNull(inputUriString))
+                    val targetFormat = (inputData.getString(KEY_TARGET_FORMAT) ?: "m4a")
+                        .lowercase().takeIf { it == "wav" || it == "m4a" } ?: "m4a"
+                    val startMs = inputData.getLong(KEY_TRIM_START_MS, 0L)
+                    val endMsRaw = inputData.getLong(KEY_TRIM_END_MS, 0L)
+                    val result = audioTrimmerUseCase(
+                        inputUri = uri,
+                        outputFormat = targetFormat,
+                        startMs = startMs,
+                        endMs = endMsRaw.takeIf { it > 0 },
+                        outputFileName = outputFileName
+                    )
+                    outputsToCleanup.add(result)
+                    checkCancellation()
+                    notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 80, cancelPendingIntent)
+                    setProgress(workDataOf("progress" to 80))
+                    listOf(result)
+                }
+
+                "video_to_audio" -> {
+                    checkCancellation()
+                    notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 30, cancelPendingIntent)
+                    setProgress(workDataOf("progress" to 30))
+                    val uri = Uri.parse(requireNotNull(inputUriString))
+                    val targetFormat = (inputData.getString(KEY_TARGET_FORMAT) ?: "m4a")
+                        .lowercase().takeIf { it == "wav" || it == "m4a" } ?: "m4a"
+                    val result = videoToAudioUseCase(
                         inputUri = uri,
                         outputFormat = targetFormat,
                         outputFileName = outputFileName
@@ -998,6 +1048,8 @@ class ConversionWorker @AssistedInject constructor(
             "csv_to_pdf" -> "CSV to PDF"
             "heic_to_image" -> "HEIC to Image"
             "audio_converter" -> "Audio Converter"
+            "audio_trimmer" -> "Audio Trimmer"
+            "video_to_audio" -> "Video to Audio"
             "ocr_searchable_pdf" -> "OCR to Searchable PDF"
             "sign_pdf" -> "Sign PDF"
             "pdf_to_csv" -> "PDF to CSV"

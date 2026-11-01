@@ -7,6 +7,7 @@ import androidx.compose.material.icons.automirrored.outlined.MergeType
 import androidx.compose.material.icons.automirrored.outlined.RotateRight
 import androidx.compose.material.icons.outlined.Article
 import androidx.compose.material.icons.outlined.AudioFile
+import androidx.compose.material.icons.outlined.ContentCut
 import androidx.compose.material.icons.outlined.Badge
 import androidx.compose.material.icons.outlined.Collections
 import androidx.compose.material.icons.outlined.QrCode2
@@ -20,6 +21,7 @@ import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.DocumentScanner
 import androidx.compose.material.icons.outlined.Draw
 import androidx.compose.material.icons.outlined.Layers
+import androidx.compose.material.icons.outlined.Movie
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.PictureAsPdf
 import androidx.compose.material.icons.outlined.Slideshow
@@ -403,6 +405,26 @@ data class ConversionType(
                 inputType = FileType.MP3,
                 outputType = FileType.WAV,
                 icon = Icons.Outlined.AudioFile,
+                category = CATEGORY_AUDIO,
+                isMultiFileAllowed = false
+            ),
+            ConversionType(
+                id = "audio_trimmer",
+                name = "Audio Trimmer",
+                description = "Cut a segment out of an audio file",
+                inputType = FileType.MP3,
+                outputType = FileType.M4A,
+                icon = Icons.Outlined.ContentCut,
+                category = CATEGORY_AUDIO,
+                isMultiFileAllowed = false
+            ),
+            ConversionType(
+                id = "video_to_audio",
+                name = "Video to Audio",
+                description = "Extract the audio track from a video",
+                inputType = FileType.MP4,
+                outputType = FileType.M4A,
+                icon = Icons.Outlined.Movie,
                 category = CATEGORY_AUDIO,
                 isMultiFileAllowed = false
             )

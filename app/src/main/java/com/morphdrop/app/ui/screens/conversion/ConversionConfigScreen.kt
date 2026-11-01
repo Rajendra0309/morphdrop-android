@@ -86,6 +86,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import com.morphdrop.app.domain.model.AudioMatrix
 import com.morphdrop.app.domain.model.ConversionType
 import com.morphdrop.app.domain.model.FileMetadata
 import com.morphdrop.app.domain.model.FileType
@@ -137,6 +138,8 @@ fun ConversionConfigScreen(
         "pdf_to_images", "pdf_to_text", "pdf_to_docx", "pdf_to_csv", "pdf_to_excel", "ocr_searchable_pdf", "split_pdf", "compress_pdf", "protect_pdf", "unlock_pdf", "organize_pdf", "merge_pdf" -> arrayOf("application/pdf")
         "images_to_pdf", "compress_images", "image_converter", "image_resize" -> arrayOf("image/*")
         "audio_converter" -> arrayOf("audio/*")
+        "audio_trimmer" -> arrayOf("audio/*")
+        "video_to_audio" -> arrayOf("video/*")
         else -> arrayOf("*/*")
     }
 
@@ -243,6 +246,8 @@ fun ConversionConfigScreen(
         onPaddingColorChanged = viewModel::onPaddingColorChanged,
         onOcrScriptChanged = viewModel::onOcrScriptChanged,
         onTargetSizeKbChanged = viewModel::onTargetSizeKbChanged,
+        onTrimStartChanged = viewModel::onTrimStartChanged,
+        onTrimEndChanged = viewModel::onTrimEndChanged,
         onCompressionPresetSelected = viewModel::onCompressionPresetSelected,
         onPdfCompressionPresetSelected = viewModel::onPdfCompressionPresetSelected,
         onAspectRatioPresetSelected = viewModel::onAspectRatioPresetSelected,
@@ -444,6 +449,8 @@ fun ConversionConfigScreenContent(
     onClearError: () -> Unit = {},
     onRemoveFiles: () -> Unit = {},
     onReloadMetadata: (Context, Uri) -> Unit = { _, _ -> },
+    onTrimStartChanged: (String) -> Unit = {},
+    onTrimEndChanged: (String) -> Unit = {},
     onConvert: () -> Unit
 ) {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
@@ -650,6 +657,44 @@ fun ConversionConfigScreenContent(
                                 "WAV or M4A, on-device. MP3 output is not available: " +
                                 "Android has no MP3 encoder, so an MP3 converts to " +
                                 "M4A or WAV instead.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                // Audio Trimmer: start/end in seconds, with the probed
+                // duration shown so the user is not trimming blind.
+                if (state.conversionType?.id == "audio_trimmer") {
+                    ConfigSection(title = "Trim Range") {
+                        if (state.audioDurationMs > 0) {
+                            Text(
+                                text = "Duration: " + AudioMatrix.formatDuration(state.audioDurationMs),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        OutlinedTextField(
+                            value = state.trimStartSeconds,
+                            onValueChange = onTrimStartChanged,
+                            label = { Text("Start (seconds)") },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                        )
+                        OutlinedTextField(
+                            value = state.trimEndSeconds,
+                            onValueChange = onTrimEndChanged,
+                            label = { Text("End (seconds, empty = end of file)") },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                        )
+                        Text(
+                            text = "Cuts land on the nearest frame at or after the start " +
+                                "time. Trimmed audio is saved as WAV or M4A — never MP3.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
