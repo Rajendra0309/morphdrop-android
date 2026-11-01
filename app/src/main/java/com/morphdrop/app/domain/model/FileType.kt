@@ -18,5 +18,11 @@ enum class FileType(
     MD("MD", "md", Color(0xFF00E676)),
     DOCX("DOCX", "docx", Color(0xFF1565C0)), // Word Blue
     CSV("CSV", "csv", Color(0xFF00897B)), // Teal
-    HEIC("HEIC", "heic", Color(0xFF5E35B1)) // Deep Purple
+    HEIC("HEIC", "heic", Color(0xFF5E35B1)), // Deep Purple
+    MP3("MP3", "mp3", Color(0xFFEF6C00)), // Orange
+    M4A("M4A", "m4a", Color(0xFF7B1FA2)), // Purple
+    WAV("WAV", "wav", Color(0xFF00897B)), // Teal
+    OGG("OGG", "ogg", Color(0xFF5C6BC0)), // Indigo
+    FLAC("FLAC", "flac", Color(0xFF43A047)), // Green
+    MP4("MP4", "mp4", Color(0xFFD81B60)) // Pink
 }

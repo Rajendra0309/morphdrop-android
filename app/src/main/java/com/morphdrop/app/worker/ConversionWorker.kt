@@ -34,6 +34,7 @@ import com.morphdrop.app.domain.usecase.conversion.SignPdfUseCase
 import com.morphdrop.app.domain.usecase.conversion.WatermarkPdfUseCase
 import com.morphdrop.app.domain.usecase.conversion.XlsxToCsvUseCase
 import com.morphdrop.app.domain.usecase.conversion.AddPageNumbersUseCase
+import com.morphdrop.app.domain.usecase.conversion.AudioConverterUseCase
 import com.morphdrop.app.domain.model.WatermarkConfig
 import com.morphdrop.app.domain.model.PageNumberConfig
 import com.morphdrop.app.util.FileHelper
@@ -70,6 +71,7 @@ class ConversionWorker @AssistedInject constructor(
     private val rotatePdfPagesUseCase: RotatePdfPagesUseCase,
     private val watermarkPdfUseCase: WatermarkPdfUseCase,
     private val addPageNumbersUseCase: AddPageNumbersUseCase,
+    private val audioConverterUseCase: AudioConverterUseCase,
     private val reorderPdfPagesUseCase: ReorderPdfPagesUseCase,
     private val pdfPasswordUseCase: PdfPasswordUseCase,
     private val pdfPageEditorUseCase: PdfPageEditorUseCase,
@@ -188,6 +190,7 @@ class ConversionWorker @AssistedInject constructor(
                 "xlsx_to_csv" -> "csv"
                 "csv_to_xlsx" -> "xlsx"
                 "image_converter", "compress_images", "heic_to_image", "image_resize" -> inputData.getString(KEY_TARGET_FORMAT) ?: "jpg"
+                "audio_converter" -> inputData.getString(KEY_TARGET_FORMAT) ?: "wav"
                 "metadata_editor" -> inputExt
                 else -> if (inputExt.isNotBlank()) inputExt else "pdf"
             }
@@ -534,6 +537,25 @@ class ConversionWorker @AssistedInject constructor(
                     // stamped PDF is saved, so the working copy can go.
                     runCatching { java.io.File(signaturePath).delete() }
                     result
+                }
+
+                "audio_converter" -> {
+                    checkCancellation()
+                    notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 30, cancelPendingIntent)
+                    setProgress(workDataOf("progress" to 30))
+                    val uri = Uri.parse(requireNotNull(inputUriString))
+                    val targetFormat = (inputData.getString(KEY_TARGET_FORMAT) ?: "wav")
+                        .lowercase().takeIf { it == "wav" || it == "m4a" } ?: "wav"
+                    val result = audioConverterUseCase(
+                        inputUri = uri,
+                        outputFormat = targetFormat,
+                        outputFileName = outputFileName
+                    )
+                    outputsToCleanup.add(result)
+                    checkCancellation()
+                    notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 80, cancelPendingIntent)
+                    setProgress(workDataOf("progress" to 80))
+                    listOf(result)
                 }
 
                 "heic_to_image" -> {
@@ -975,6 +997,7 @@ class ConversionWorker @AssistedInject constructor(
             "csv_to_xlsx" -> "CSV to Excel"
             "csv_to_pdf" -> "CSV to PDF"
             "heic_to_image" -> "HEIC to Image"
+            "audio_converter" -> "Audio Converter"
             "ocr_searchable_pdf" -> "OCR to Searchable PDF"
             "sign_pdf" -> "Sign PDF"
             "pdf_to_csv" -> "PDF to CSV"

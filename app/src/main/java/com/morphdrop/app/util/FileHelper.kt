@@ -126,6 +126,64 @@ object FileHelper {
         }
     }
 
+    /**
+     * Stream variant of [saveToFile] for outputs too large to hold as a
+     * byte array (audio/video transcoding). Same destination, same
+     * MediaStore pending pattern, but copied in 8 KB chunks.
+     */
+    suspend fun saveStreamToFile(
+        context: Context,
+        settingsRepository: SettingsRepository,
+        fileName: String,
+        sourceFile: File
+    ): Uri {
+        val folderName = settingsRepository.outputFolderName.first()
+        return saveStreamToFile(context, folderName, fileName, sourceFile)
+    }
+
+    fun saveStreamToFile(context: Context, folderName: String, fileName: String, sourceFile: File): Uri {
+        val resolver = context.contentResolver
+        val mimeType = MimeTypeMap.getSingleton().getMimeTypeFromExtension(getFileExtension(fileName)) ?: "application/octet-stream"
+
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            val contentValues = android.content.ContentValues().apply {
+                put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                put(android.provider.MediaStore.MediaColumns.MIME_TYPE, mimeType)
+                put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS + "/" + folderName)
+                put(android.provider.MediaStore.MediaColumns.IS_PENDING, 1)
+            }
+
+            val collection = android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI
+            val uri = resolver.insert(collection, contentValues) ?: throw FileNotFoundException("Could not create MediaStore entry")
+
+            resolver.openOutputStream(uri)?.use { out ->
+                sourceFile.inputStream().use { input ->
+                    input.copyTo(out, DEFAULT_BUFFER_SIZE)
+                }
+            }
+
+            try {
+                val updateValues = android.content.ContentValues().apply {
+                    put(android.provider.MediaStore.MediaColumns.IS_PENDING, 0)
+                    put(android.provider.MediaStore.MediaColumns.SIZE, sourceFile.length())
+                }
+                resolver.update(uri, updateValues, null, null)
+            } catch (_: Exception) {}
+
+            return uri
+        } else {
+            @Suppress("DEPRECATION")
+            val dir = File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), folderName)
+            if (!dir.exists()) dir.mkdirs()
+            val file = File(dir, fileName)
+            sourceFile.inputStream().use { input ->
+                file.outputStream().use { output -> input.copyTo(output, DEFAULT_BUFFER_SIZE) }
+            }
+
+            return Uri.fromFile(file)
+        }
+    }
+
     fun saveToUri(context: Context, outputUri: Uri, data: ByteArray) {
         context.contentResolver.openOutputStream(outputUri)?.use { it.write(data) }
             ?: throw FileNotFoundException("Cannot open output stream for URI: $outputUri")

@@ -6,6 +6,7 @@ import androidx.compose.material.icons.automirrored.outlined.CallSplit
 import androidx.compose.material.icons.automirrored.outlined.MergeType
 import androidx.compose.material.icons.automirrored.outlined.RotateRight
 import androidx.compose.material.icons.outlined.Article
+import androidx.compose.material.icons.outlined.AudioFile
 import androidx.compose.material.icons.outlined.Badge
 import androidx.compose.material.icons.outlined.Collections
 import androidx.compose.material.icons.outlined.QrCode2
@@ -45,6 +46,7 @@ data class ConversionType(
         const val CATEGORY_CONVERSIONS = "Conversions"
         const val CATEGORY_PDF_TOOLS = "PDF Tools"
         const val CATEGORY_IMAGE_TOOLS = "Image Tools"
+        const val CATEGORY_AUDIO = "Audio"
 
         val defaultList = listOf(
             // Conversions
@@ -390,6 +392,18 @@ data class ConversionType(
                 outputType = FileType.PNG,
                 icon = Icons.Outlined.QrCode2,
                 category = CATEGORY_IMAGE_TOOLS,
+                isMultiFileAllowed = false
+            ),
+
+            // Audio Tools
+            ConversionType(
+                id = "audio_converter",
+                name = "Audio Converter",
+                description = "Convert audio between MP3, M4A, WAV, OGG, Opus and FLAC (Offline)",
+                inputType = FileType.MP3,
+                outputType = FileType.WAV,
+                icon = Icons.Outlined.AudioFile,
+                category = CATEGORY_AUDIO,
                 isMultiFileAllowed = false
             )
         )

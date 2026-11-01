@@ -241,6 +241,7 @@ class ConversionConfigViewModel @Inject constructor(
             "xlsx_to_csv" -> listOf("xlsx")
             "csv_to_xlsx", "csv_to_pdf" -> listOf("csv")
             "heic_to_image" -> listOf("heic", "heif")
+            "audio_converter" -> listOf("mp3", "m4a", "aac", "wav", "ogg", "opus", "flac")
             "txt_to_pdf", "text_to_pdf" -> listOf("txt")
             "md_to_pdf" -> listOf("md", "markdown")
             "pdf_to_images", "pdf_to_text", "pdf_to_docx", "pdf_to_csv", "pdf_to_excel", "ocr_searchable_pdf", "split_pdf", "compress_pdf", "protect_pdf", "unlock_pdf", "organize_pdf", "merge_pdf" -> listOf("pdf")
@@ -1224,6 +1225,7 @@ class ConversionConfigViewModel @Inject constructor(
             "image_converter" -> listOf("png", "jpg", "webp", "bmp")
             "image_resize" -> listOf("png", "jpg", "webp", "bmp")
             "heic_to_image" -> listOf("jpg", "png")
+            "audio_converter" -> listOf("wav", "m4a")
             "compress_images" -> listOf("png", "jpg", "webp", "bmp")
             else -> listOf(type.outputType.extension)
         }

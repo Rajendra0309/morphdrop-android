@@ -136,6 +136,7 @@ fun ConversionConfigScreen(
         "md_to_pdf" -> arrayOf("text/markdown", "text/x-markdown", "text/plain")
         "pdf_to_images", "pdf_to_text", "pdf_to_docx", "pdf_to_csv", "pdf_to_excel", "ocr_searchable_pdf", "split_pdf", "compress_pdf", "protect_pdf", "unlock_pdf", "organize_pdf", "merge_pdf" -> arrayOf("application/pdf")
         "images_to_pdf", "compress_images", "image_converter", "image_resize" -> arrayOf("image/*")
+        "audio_converter" -> arrayOf("audio/*")
         else -> arrayOf("*/*")
     }
 
@@ -634,6 +635,21 @@ fun ConversionConfigScreenContent(
                         Text(
                             text = "Pick the script the scan is written in. The text layer " +
                                 "uses a matching font when the device provides one.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                // Audio Converter: state its output limits up front, so a
+                // user picking an MP3 is never surprised by the result.
+                if (state.conversionType?.id == "audio_converter") {
+                    ConfigSection(title = "About Audio Converter") {
+                        Text(
+                            text = "Converts MP3, M4A, WAV, OGG, Opus and FLAC audio to " +
+                                "WAV or M4A, on-device. MP3 output is not available: " +
+                                "Android has no MP3 encoder, so an MP3 converts to " +
+                                "M4A or WAV instead.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
