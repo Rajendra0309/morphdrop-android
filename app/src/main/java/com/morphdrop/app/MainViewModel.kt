@@ -131,6 +131,27 @@ class MainViewModel @Inject constructor(
         _onSearchFabClick.value = null
     }
 
+    /**
+     * A file (or files) shared to the app from another app. Home shows
+     * the same "Convert this file" picker for it as for a file picked
+     * from its own drop zone — the share path must not auto-pick a tool.
+     */
+    data class PendingSharedFile(
+        val uris: List<android.net.Uri>,
+        val fileName: String = ""
+    )
+
+    private val _pendingSharedFile = MutableStateFlow<PendingSharedFile?>(null)
+    val pendingSharedFile = _pendingSharedFile.asStateFlow()
+
+    fun setPendingSharedFile(uris: List<android.net.Uri>, fileName: String = "") {
+        _pendingSharedFile.value = PendingSharedFile(uris, fileName)
+    }
+
+    fun clearPendingSharedFile() {
+        _pendingSharedFile.value = null
+    }
+
     private val _updateInfo = MutableStateFlow<UpdateInfo?>(savedStateHandle.get<UpdateInfo?>("update_info"))
     val updateInfo = _updateInfo.asStateFlow()
 

@@ -90,6 +90,60 @@ class MainActivity : ComponentActivity() {
             return
         }
 
+        // Share (ACTION_SEND / SEND_MULTIPLE) is NOT auto-routed: the
+        // file goes to Home, which shows the same "Convert this file"
+        // picker as its drop zone. ACTION_VIEW ("Open with") keeps the
+        // direct behaviour below, so opening a PDF still opens it.
+        if (intent.action == Intent.ACTION_SEND || intent.action == Intent.ACTION_SEND_MULTIPLE) {
+            val sharedUris = extractIncomingUris(intent)
+            if (sharedUris.isEmpty()) {
+                val sharedText = intent.getStringExtra(Intent.EXTRA_TEXT)
+                if (!sharedText.isNullOrBlank()) {
+                    lifecycleScope.launch(Dispatchers.IO) {
+                        val sharedDir = java.io.File(filesDir, "shared_text").apply { mkdirs() }
+                        val sharedFile = java.io.File(sharedDir, "shared_text_${System.currentTimeMillis()}.md")
+                        runCatching {
+                            sharedFile.writeText(sharedText)
+                            val fileUri = androidx.core.content.FileProvider.getUriForFile(
+                                this@MainActivity,
+                                "${packageName}.fileprovider",
+                                sharedFile
+                            )
+                            withContext(Dispatchers.Main) {
+                                if (isFinishing || isDestroyed) return@withContext
+                                viewModel.setPendingSharedFile(listOf(fileUri), "Shared text.md")
+                                pendingShortcutRoute.value = Screen.Home.route
+                            }
+                        }
+                    }
+                }
+                return
+            }
+            val firstSharedName = getUriFileName(sharedUris.first())
+            lifecycleScope.launch(Dispatchers.IO) {
+                val hasPersistableGrant =
+                    (intent.flags and Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION) != 0
+                val finalUris = if (hasPersistableGrant) {
+                    sharedUris.forEach { u ->
+                        runCatching {
+                            contentResolver.takePersistableUriPermission(u, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                    }
+                    sharedUris
+                } else {
+                    // Senders almost never grant a persistable URI, so
+                    // copy into app-private cache like the old route did.
+                    sharedUris.map { uri -> copySharedUriToCache(uri) ?: uri }
+                }
+                withContext(Dispatchers.Main) {
+                    if (isFinishing || isDestroyed) return@withContext
+                    viewModel.setPendingSharedFile(finalUris, firstSharedName)
+                    pendingShortcutRoute.value = Screen.Home.route
+                }
+            }
+            return
+        }
+
         val incomingUris = extractIncomingUris(intent)
         if ((intent.flags and Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION) != 0) {
             incomingUris.forEach { u ->

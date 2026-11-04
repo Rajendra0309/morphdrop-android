@@ -45,6 +45,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.SearchOff
+import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -128,6 +129,83 @@ fun HomeScreen(
     val lastOpenedPdf by mainViewModel.lastOpenedPdf.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val homeScope = rememberCoroutineScope()
+
+    // File shared from another app: the SAME picker as the drop zone,
+    // never an auto-picked tool. Always shown, even for one candidate.
+    val pendingShared by mainViewModel.pendingSharedFile.collectAsStateWithLifecycle()
+    var sharedCandidates by remember { mutableStateOf<List<ConversionType>>(emptyList()) }
+    var sharedViewOption by remember { mutableStateOf<PickerViewOption?>(null) }
+    var showSharedPicker by remember { mutableStateOf(false) }
+    androidx.compose.runtime.LaunchedEffect(pendingShared) {
+        val shared = pendingShared
+        if (shared != null && shared.uris.isNotEmpty()) {
+            val first = shared.uris.first()
+            val candidates = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                candidateToolsForUri(context, first)
+            }
+            if (shared.uris.size > 1) {
+                // Multi-file share: only tools that accept several files.
+                val multi = candidates.filter { it.isMultiFileAllowed }
+                if (multi.isEmpty()) {
+                    android.widget.Toast.makeText(
+                        context,
+                        "These files can't be converted together — share them one at a time.",
+                        android.widget.Toast.LENGTH_LONG
+                    ).show()
+                    mainViewModel.clearPendingSharedFile()
+                } else {
+                    sharedCandidates = multi
+                    sharedViewOption = null
+                    showSharedPicker = true
+                }
+            } else {
+                val viewOption = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    viewOptionForUri(context, first)
+                }
+                sharedCandidates = candidates
+                sharedViewOption = viewOption
+                showSharedPicker = true
+            }
+        }
+    }
+    if (showSharedPicker && pendingShared != null) {
+        ToolPickerDialog(
+            fileName = pendingShared!!.fileName.ifBlank {
+                if (pendingShared!!.uris.size > 1) "${pendingShared!!.uris.size} files" else "Shared file"
+            },
+            candidates = sharedCandidates,
+            onDismiss = {
+                showSharedPicker = false
+                mainViewModel.clearPendingSharedFile()
+            },
+            onPick = { tool ->
+                val uris = pendingShared!!.uris
+                showSharedPicker = false
+                mainViewModel.clearPendingSharedFile()
+                onOpenRoute(routeForToolWithUris(tool.id, uris))
+            },
+            viewOption = sharedViewOption,
+            onViewPicked = {
+                val uri = pendingShared!!.uris.first()
+                showSharedPicker = false
+                mainViewModel.clearPendingSharedFile()
+                when (sharedViewOption?.label) {
+                    "View PDF" -> {
+                        val pdfIntent = android.content.Intent(context, com.morphdrop.app.PdfViewerActivity::class.java).apply {
+                            action = android.content.Intent.ACTION_VIEW
+                            data = uri
+                            putExtra("pdf_uri", uri)
+                            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        context.startActivity(pdfIntent)
+                    }
+                    "View Markdown" -> onOpenRoute(
+                        Screen.MarkdownViewer.createRoute(uri.toString())
+                    )
+                }
+            }
+        )
+    }
 
     HomeScreenContent(
         searchQuery = searchQuery,
@@ -256,6 +334,7 @@ fun HomeScreenContent(
     var pendingUri by remember { mutableStateOf<Uri?>(null) }
     var pendingFileName by remember { mutableStateOf("") }
     var toolCandidates by remember { mutableStateOf<List<ConversionType>>(emptyList()) }
+    var pendingViewOption by remember { mutableStateOf<PickerViewOption?>(null) }
     var showToolPicker by remember { mutableStateOf(false) }
 
     val dropZonePicker = rememberLauncherForActivityResult(
@@ -275,12 +354,16 @@ fun HomeScreenContent(
                 val name = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                     FileHelper.getFileName(context, uri)
                 }
-                if (candidates.size == 1) {
+                val viewOption = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    viewOptionForUri(context, uri)
+                }
+                if (candidates.size == 1 && viewOption == null) {
                     onOpenRoute(routeForToolWithUri(candidates.first().id, uri))
                 } else {
                     pendingUri = uri
                     pendingFileName = name
                     toolCandidates = candidates
+                    pendingViewOption = viewOption
                     showToolPicker = true
                 }
             }
@@ -295,6 +378,25 @@ fun HomeScreenContent(
             onPick = { tool ->
                 showToolPicker = false
                 onOpenRoute(routeForToolWithUri(tool.id, pendingUri!!))
+            },
+            viewOption = pendingViewOption,
+            onViewPicked = {
+                showToolPicker = false
+                val uri = pendingUri!!
+                when (pendingViewOption?.label) {
+                    "View PDF" -> {
+                        val pdfIntent = android.content.Intent(context, com.morphdrop.app.PdfViewerActivity::class.java).apply {
+                            action = android.content.Intent.ACTION_VIEW
+                            data = uri
+                            putExtra("pdf_uri", uri)
+                            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        context.startActivity(pdfIntent)
+                    }
+                    "View Markdown" -> onOpenRoute(
+                        Screen.MarkdownViewer.createRoute(uri.toString())
+                    )
+                }
             }
         )
     }
@@ -747,7 +849,10 @@ private fun ToolPickerDialog(
     fileName: String,
     candidates: List<ConversionType>,
     onDismiss: () -> Unit,
-    onPick: (ConversionType) -> Unit
+    onPick: (ConversionType) -> Unit,
+    /** First row when the file has an in-app viewer (PDF/Markdown). */
+    viewOption: PickerViewOption? = null,
+    onViewPicked: (() -> Unit)? = null
 ) {
     Dialog(onDismissRequest = onDismiss) {
         Surface(
@@ -809,6 +914,41 @@ private fun ToolPickerDialog(
                         // never covers the last row's content.
                         contentPadding = PaddingValues(bottom = 48.dp)
                     ) {
+                    if (viewOption != null) {
+                        item(key = "view_option") {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable(role = Role.Button, onClick = { onViewPicked?.invoke() })
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = viewOption.icon,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = viewOption.label,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = viewOption.description,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
                     items(candidates, key = { it.id }) { tool ->
                         Row(
                             modifier = Modifier
@@ -893,15 +1033,53 @@ private fun candidateToolsForUri(context: android.content.Context, uri: Uri): Li
         ext == "xls" -> listOf("excel_to_pdf", "metadata_editor")
         ext == "txt" -> listOf("txt_to_pdf", "metadata_editor")
         ext in listOf("md", "markdown") -> listOf("md_to_pdf", "metadata_editor")
+        ext in listOf("mp3", "m4a", "aac", "wav", "ogg", "oga", "opus", "flac") ->
+            listOf("audio_converter", "audio_trimmer", "metadata_editor")
+        ext in listOf("mp4", "mkv", "mov", "webm", "3gp") ->
+            listOf("video_to_audio", "metadata_editor")
         // Fallback for unknown extensions: sniff the MIME type.
         mime.startsWith("image/") ->
             listOf("images_to_pdf", "image_converter", "compress_images", "metadata_editor")
         mime == "application/pdf" -> listOf("pdf_to_text", "pdf_to_docx", "pdf_to_images", "merge_pdf", "compress_pdf", "metadata_editor")
+        mime.startsWith("audio/") ->
+            listOf("audio_converter", "audio_trimmer", "metadata_editor")
+        mime.startsWith("video/") ->
+            listOf("video_to_audio", "metadata_editor")
         mime.startsWith("text/") -> listOf("txt_to_pdf", "metadata_editor")
         else -> listOf("metadata_editor")
     }
     val byId = ConversionType.defaultList.associateBy { it.id }
     return ids.mapNotNull { byId[it] }
+}
+
+/** "View in the app" row for the picker, when the file has a viewer. */
+data class PickerViewOption(
+    val label: String,
+    val description: String,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector
+)
+
+/**
+ * View option for a picked/shared file, by extension first, then MIME.
+ * Only PDF and Markdown have in-app viewers; everything else converts.
+ */
+private fun viewOptionForUri(context: android.content.Context, uri: Uri): PickerViewOption? {
+    val name = FileHelper.getFileName(context, uri)
+    val ext = name.substringAfterLast('.', "").lowercase()
+    val mime = context.contentResolver.getType(uri)?.lowercase().orEmpty()
+    return when {
+        ext == "pdf" || mime == "application/pdf" -> PickerViewOption(
+            label = "View PDF",
+            description = "Open in the PDF viewer",
+            icon = Icons.Filled.PictureAsPdf
+        )
+        ext in listOf("md", "markdown") || mime.contains("markdown") -> PickerViewOption(
+            label = "View Markdown",
+            description = "Open in the Markdown viewer",
+            icon = Icons.Outlined.EditNote
+        )
+        else -> null
+    }
 }
 
 /** Route that carries the picked URI into the right screen for [toolId]. */
@@ -917,6 +1095,16 @@ private fun routeForToolWithUri(toolId: String, uri: Uri): String {
     }
 }
 
+
+/**
+ * Multi-file route: the config screen splits the uri argument on "|",
+ * so multi-file tools get every shared URI. Only tools with
+ * [ConversionType.isMultiFileAllowed] are ever offered this route.
+ */
+private fun routeForToolWithUris(toolId: String, uris: List<Uri>): String {
+    if (uris.size == 1) return routeForToolWithUri(toolId, uris.first())
+    return Screen.ConversionConfig.createRoute(toolId, uris.joinToString("|") { it.toString() })
+}
 
 /**
  * "Pick up where you left off" card: reopens the last-viewed PDF at the
