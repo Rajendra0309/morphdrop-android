@@ -156,7 +156,11 @@ class PdfViewerActivity : ComponentActivity() {
                 }
             val safeName = sanitizeFileName(sourceName) ?: "document"
             val uriHash = uri.toString().hashCode().toUInt().toString(16)
-            val dest = java.io.File(destDir, "${safeName}_$uriHash.pdf")
+            // The viewer title comes from this file's name, so keep the
+            // cache filename clean: a hash suffix here used to show up as
+            // "SI-14_bb094950.pdf" in the title bar. Collisions are handled
+            // by uniqueFile() ("name (2).pdf") instead of a hash.
+            val dest = uniqueFile(destDir, "$safeName.pdf")
             val temp = java.io.File(destDir, "${safeName}_${uriHash}.tmp")
             try {
                 contentResolver.openInputStream(uri)?.use { input ->

@@ -100,15 +100,8 @@ class MainActivity : ComponentActivity() {
                 val sharedText = intent.getStringExtra(Intent.EXTRA_TEXT)
                 if (!sharedText.isNullOrBlank()) {
                     lifecycleScope.launch(Dispatchers.IO) {
-                        val sharedDir = java.io.File(filesDir, "shared_text").apply { mkdirs() }
-                        val sharedFile = java.io.File(sharedDir, "shared_text_${System.currentTimeMillis()}.md")
                         runCatching {
-                            sharedFile.writeText(sharedText)
-                            val fileUri = androidx.core.content.FileProvider.getUriForFile(
-                                this@MainActivity,
-                                "${packageName}.fileprovider",
-                                sharedFile
-                            )
+                            val fileUri = createSharedTextFile(sharedText)
                             withContext(Dispatchers.Main) {
                                 if (isFinishing || isDestroyed) return@withContext
                                 viewModel.setPendingSharedFile(listOf(fileUri), "Shared text.md")
@@ -266,7 +259,14 @@ class MainActivity : ComponentActivity() {
     private fun copySharedUriToCache(uri: Uri): Uri? {
         return runCatching {
             val rawName = getUriFileName(uri).substringAfterLast('/').substringAfterLast('\\')
-            val safeName = rawName.replace(Regex("[^a-zA-Z0-9._-]"), "_").ifBlank { "shared_file" }
+            // Sanitize only what can break a path: separators and control
+            // characters. Spaces, parentheses and other ordinary filename
+            // characters survive, so a shared "test (5).m4a" keeps its name
+            // (and its output name) instead of becoming "test__5_.m4a".
+            val safeName = rawName
+                .replace('/', '_').replace('\\', '_')
+                .replace(Regex("[\\u0000-\\u001F\\u007F]"), "_")
+                .ifBlank { "shared_file" }
             // Open the stream FIRST: a failed open must not leave an
             // empty cache subfolder behind (orphan dirs on every failure).
             val input = contentResolver.openInputStream(uri) ?: return null
@@ -291,19 +291,29 @@ class MainActivity : ComponentActivity() {
         }.getOrNull()
     }
 
+    /**
+     * Writes shared plain text to a file whose display name is "Shared
+     * text.md" — the name the picker shows — instead of a timestamped temp
+     * name that used to leak into the viewer header. Uniqueness comes from
+     * the per-share subfolder, not from mangling the filename.
+     */
+    private fun createSharedTextFile(sharedText: String): Uri {
+        val sharedDir = java.io.File(filesDir, "shared_text/${System.currentTimeMillis()}").apply { mkdirs() }
+        val sharedFile = java.io.File(sharedDir, "Shared text.md")
+        sharedFile.writeText(sharedText)
+        return androidx.core.content.FileProvider.getUriForFile(
+            this,
+            "${packageName}.fileprovider",
+            sharedFile
+        )
+    }
+
     private fun resolveIncomingFileRoute(intent: Intent?, incomingUris: List<Uri>): String? {
         if (incomingUris.isEmpty()) {
             val sharedText = intent?.getStringExtra(Intent.EXTRA_TEXT)
             if (!sharedText.isNullOrBlank()) {
-                val sharedDir = java.io.File(filesDir, "shared_text").apply { mkdirs() }
-                val sharedFile = java.io.File(sharedDir, "shared_text_${System.currentTimeMillis()}.md")
                 runCatching {
-                    sharedFile.writeText(sharedText)
-                    val fileUri = androidx.core.content.FileProvider.getUriForFile(
-                        this,
-                        "${packageName}.fileprovider",
-                        sharedFile
-                    )
+                    val fileUri = createSharedTextFile(sharedText)
                     return Screen.MarkdownViewer.createRoute(fileUri.toString())
                 }
             }
@@ -425,6 +435,7 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch(Dispatchers.IO) {
             com.morphdrop.app.ui.widget.WidgetUpdateHelper.updateAllWidgets(applicationContext)
             cleanCacheIfOverLimit()
+            com.morphdrop.app.util.SharedFileCleanup.pruneOldSharedFiles(applicationContext)
         }
         
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {

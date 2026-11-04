@@ -152,6 +152,9 @@ fun HomeScreen(
                         "These files can't be converted together — share them one at a time.",
                         android.widget.Toast.LENGTH_LONG
                     ).show()
+                    // The rejected share did the full copy already; delete
+                    // it instead of leaking it into the cache.
+                    com.morphdrop.app.util.SharedFileCleanup.deleteShareCopies(context, shared.uris)
                     mainViewModel.clearPendingSharedFile()
                 } else {
                     sharedCandidates = multi
@@ -170,12 +173,20 @@ fun HomeScreen(
     }
     if (showSharedPicker && pendingShared != null) {
         ToolPickerDialog(
-            fileName = pendingShared!!.fileName.ifBlank {
-                if (pendingShared!!.uris.size > 1) "${pendingShared!!.uris.size} files" else "Shared file"
+            // A multi-file share is a batch, not the first file: the old
+            // code only showed "N files" when the name was blank, and the
+            // name is never blank for shares, so it always showed file 1.
+            fileName = if (pendingShared!!.uris.size > 1) {
+                "${pendingShared!!.uris.size} files"
+            } else {
+                pendingShared!!.fileName.ifBlank { "Shared file" }
             },
             candidates = sharedCandidates,
             onDismiss = {
                 showSharedPicker = false
+                // A dismissed share leaves nothing behind: delete the
+                // cache copies (sender originals are never touched).
+                com.morphdrop.app.util.SharedFileCleanup.deleteShareCopies(context, pendingShared!!.uris)
                 mainViewModel.clearPendingSharedFile()
             },
             onPick = { tool ->
@@ -187,32 +198,10 @@ fun HomeScreen(
             viewOption = sharedViewOption,
             onViewPicked = {
                 val uri = pendingShared!!.uris.first()
+                val kind = sharedViewOption?.kind
                 showSharedPicker = false
                 mainViewModel.clearPendingSharedFile()
-                when (sharedViewOption?.label) {
-                    "View PDF" -> {
-                        val pdfIntent = android.content.Intent(context, com.morphdrop.app.PdfViewerActivity::class.java).apply {
-                            action = android.content.Intent.ACTION_VIEW
-                            data = uri
-                            putExtra("pdf_uri", uri)
-                            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                        }
-                        // Never crash on an un-grantable URI: the copy
-                        // guard in MainActivity should prevent this, but
-                        // a grant can still die between share and tap.
-                        val opened = runCatching { context.startActivity(pdfIntent) }.isSuccess
-                        if (!opened) {
-                            android.widget.Toast.makeText(
-                                context,
-                                "Couldn't open this file — it may no longer be available.",
-                                android.widget.Toast.LENGTH_LONG
-                            ).show()
-                        }
-                    }
-                    "View Markdown" -> onOpenRoute(
-                        Screen.MarkdownViewer.createRoute(uri.toString())
-                    )
-                }
+                if (kind != null) openViewOption(context, kind, uri, onOpenRoute)
             }
         )
     }
@@ -393,27 +382,8 @@ fun HomeScreenContent(
             onViewPicked = {
                 showToolPicker = false
                 val uri = pendingUri!!
-                when (pendingViewOption?.label) {
-                    "View PDF" -> {
-                        val pdfIntent = android.content.Intent(context, com.morphdrop.app.PdfViewerActivity::class.java).apply {
-                            action = android.content.Intent.ACTION_VIEW
-                            data = uri
-                            putExtra("pdf_uri", uri)
-                            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                        }
-                        val opened = runCatching { context.startActivity(pdfIntent) }.isSuccess
-                        if (!opened) {
-                            android.widget.Toast.makeText(
-                                context,
-                                "Couldn't open this file — it may no longer be available.",
-                                android.widget.Toast.LENGTH_LONG
-                            ).show()
-                        }
-                    }
-                    "View Markdown" -> onOpenRoute(
-                        Screen.MarkdownViewer.createRoute(uri.toString())
-                    )
-                }
+                val kind = pendingViewOption?.kind
+                if (kind != null) openViewOption(context, kind, uri, onOpenRoute)
             }
         )
     }
@@ -991,7 +961,19 @@ private fun ToolPickerDialog(
                                     overflow = TextOverflow.Ellipsis
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
-                                TransformIndicator(conversionType = tool, compact = true)
+                                if (tool.id == "metadata_editor") {
+                                    // No format badge here: Metadata Editor
+                                    // works on any input and keeps it, so
+                                    // its static JPG -> JPG badge lies for
+                                    // MP4, PDF, CSV and Markdown alike.
+                                    Text(
+                                        text = tool.description,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                } else {
+                                    TransformIndicator(conversionType = tool, compact = true)
+                                }
                             }
                         }
                     }
@@ -1069,12 +1051,53 @@ private fun candidateToolsForUri(context: android.content.Context, uri: Uri): Li
     return ids.mapNotNull { byId[it] }
 }
 
+/** What the picker's "View in the app" row does. Matched on this, never on
+ *  the display label, so renaming a label can't silently break the action. */
+enum class PickerViewKind { VIEW_PDF, VIEW_MARKDOWN }
+
 /** "View in the app" row for the picker, when the file has a viewer. */
 data class PickerViewOption(
     val label: String,
     val description: String,
-    val icon: androidx.compose.ui.graphics.vector.ImageVector
+    val icon: androidx.compose.ui.graphics.vector.ImageVector,
+    val kind: PickerViewKind
 )
+
+/**
+ * Opens a picker view option. One shared implementation for the share dialog
+ * and the drop-zone dialog, so the two can never drift apart again.
+ * Returns false (with a toast) when the viewer can't be opened.
+ */
+private fun openViewOption(
+    context: android.content.Context,
+    kind: PickerViewKind,
+    uri: Uri,
+    onOpenRoute: (String) -> Unit
+) {
+    when (kind) {
+        PickerViewKind.VIEW_PDF -> {
+            val pdfIntent = android.content.Intent(context, com.morphdrop.app.PdfViewerActivity::class.java).apply {
+                action = android.content.Intent.ACTION_VIEW
+                data = uri
+                putExtra("pdf_uri", uri)
+                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            // Never crash on an un-grantable URI: a grant can die between
+            // share and tap even when the copy guard did its job.
+            val opened = runCatching { context.startActivity(pdfIntent) }.isSuccess
+            if (!opened) {
+                android.widget.Toast.makeText(
+                    context,
+                    "Couldn't open this file — it may no longer be available.",
+                    android.widget.Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+        PickerViewKind.VIEW_MARKDOWN -> onOpenRoute(
+            Screen.MarkdownViewer.createRoute(uri.toString())
+        )
+    }
+}
 
 /**
  * View option for a picked/shared file, by extension first, then MIME.
@@ -1088,12 +1111,14 @@ private fun viewOptionForUri(context: android.content.Context, uri: Uri): Picker
         ext == "pdf" || mime == "application/pdf" -> PickerViewOption(
             label = "View PDF",
             description = "Open in the PDF viewer",
-            icon = Icons.Filled.PictureAsPdf
+            icon = Icons.Filled.PictureAsPdf,
+            kind = PickerViewKind.VIEW_PDF
         )
         ext in listOf("md", "markdown") || mime.contains("markdown") -> PickerViewOption(
             label = "View Markdown",
             description = "Open in the Markdown viewer",
-            icon = Icons.Outlined.EditNote
+            icon = Icons.Outlined.EditNote,
+            kind = PickerViewKind.VIEW_MARKDOWN
         )
         else -> null
     }

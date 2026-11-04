@@ -220,6 +220,20 @@ class ConversionConfigViewModel @Inject constructor(
                     if (type.id == "compress_images" && preset == null) {
                         next = next.copy(outputFormat = "jpg")
                     }
+                    // A file staged before this settings load finished got
+                    // its output name from the fallback format (e.g. a
+                    // Video to Audio file named .m4a while the loaded preset
+                    // is WAV). The chip and the filename must agree, so
+                    // re-derive the staged name's extension from the format
+                    // that actually won. Folder-output tools have no
+                    // extension in their name and are left alone.
+                    if (current.selectedFileNames.isNotEmpty()
+                        && current.outputFileName.contains('.')
+                        && !isFolderOutput(type)
+                    ) {
+                        val base = current.outputFileName.substringBeforeLast('.')
+                        next = next.copy(outputFileName = "$base.${next.outputFormat}")
+                    }
                     next.copy(isConvertEnabled = isStateValid(next))
                 }
             }
