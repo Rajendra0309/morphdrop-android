@@ -133,7 +133,21 @@ class MainActivity : ComponentActivity() {
                 } else {
                     // Senders almost never grant a persistable URI, so
                     // copy into app-private cache like the old route did.
-                    sharedUris.map { uri -> copySharedUriToCache(uri) ?: uri }
+                    // A copy that fails is DROPPED, never passed on: the
+                    // raw URI is un-grantable and crashed the viewer.
+                    sharedUris.mapNotNull { uri -> copySharedUriToCache(uri) }
+                }
+                if (finalUris.isEmpty()) {
+                    withContext(Dispatchers.Main) {
+                        if (isFinishing || isDestroyed) return@withContext
+                        android.widget.Toast.makeText(
+                            this@MainActivity,
+                            "Couldn't open the shared file — it may have been deleted, or the other app didn't share it with access.",
+                            android.widget.Toast.LENGTH_LONG
+                        ).show()
+                        pendingShortcutRoute.value = Screen.Home.route
+                    }
+                    return@launch
                 }
                 withContext(Dispatchers.Main) {
                     if (isFinishing || isDestroyed) return@withContext
@@ -253,6 +267,9 @@ class MainActivity : ComponentActivity() {
         return runCatching {
             val rawName = getUriFileName(uri).substringAfterLast('/').substringAfterLast('\\')
             val safeName = rawName.replace(Regex("[^a-zA-Z0-9._-]"), "_").ifBlank { "shared_file" }
+            // Open the stream FIRST: a failed open must not leave an
+            // empty cache subfolder behind (orphan dirs on every failure).
+            val input = contentResolver.openInputStream(uri) ?: return null
             val uniqueSubdir = java.io.File(
                 cacheDir,
                 "shared_incoming/${System.currentTimeMillis()}_${java.util.UUID.randomUUID().toString().take(8)}"
@@ -260,11 +277,12 @@ class MainActivity : ComponentActivity() {
             val dest = java.io.File(uniqueSubdir, safeName)
             val allowedPrefix = uniqueSubdir.canonicalPath.let { if (it.endsWith(java.io.File.separator)) it else it + java.io.File.separator }
             if (!dest.canonicalPath.startsWith(allowedPrefix)) {
+                runCatching { input.close() }
                 return null
             }
-            contentResolver.openInputStream(uri)?.use { input ->
-                dest.outputStream().use { output -> input.copyTo(output) }
-            } ?: return null
+            input.use { stream ->
+                dest.outputStream().use { output -> stream.copyTo(output) }
+            }
             androidx.core.content.FileProvider.getUriForFile(
                 this,
                 "${packageName}.fileprovider",

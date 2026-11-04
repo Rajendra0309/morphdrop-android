@@ -197,7 +197,17 @@ fun HomeScreen(
                             putExtra("pdf_uri", uri)
                             addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
                         }
-                        context.startActivity(pdfIntent)
+                        // Never crash on an un-grantable URI: the copy
+                        // guard in MainActivity should prevent this, but
+                        // a grant can still die between share and tap.
+                        val opened = runCatching { context.startActivity(pdfIntent) }.isSuccess
+                        if (!opened) {
+                            android.widget.Toast.makeText(
+                                context,
+                                "Couldn't open this file — it may no longer be available.",
+                                android.widget.Toast.LENGTH_LONG
+                            ).show()
+                        }
                     }
                     "View Markdown" -> onOpenRoute(
                         Screen.MarkdownViewer.createRoute(uri.toString())
@@ -391,7 +401,14 @@ fun HomeScreenContent(
                             putExtra("pdf_uri", uri)
                             addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
                         }
-                        context.startActivity(pdfIntent)
+                        val opened = runCatching { context.startActivity(pdfIntent) }.isSuccess
+                        if (!opened) {
+                            android.widget.Toast.makeText(
+                                context,
+                                "Couldn't open this file — it may no longer be available.",
+                                android.widget.Toast.LENGTH_LONG
+                            ).show()
+                        }
                     }
                     "View Markdown" -> onOpenRoute(
                         Screen.MarkdownViewer.createRoute(uri.toString())
