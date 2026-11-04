@@ -31,7 +31,9 @@ class AudioConverterUseCase @Inject constructor(
     suspend operator fun invoke(
         inputUri: Uri,
         outputFormat: String,
-        outputFileName: String = "converted_audio_${System.currentTimeMillis()}"
+        outputFileName: String = "converted_audio_${System.currentTimeMillis()}",
+        onProgress: ((Float) -> Unit)? = null,
+        shouldContinue: (() -> Boolean)? = null
     ): Uri = withContext(Dispatchers.IO) {
         val inputName = FileHelper.getFileName(context, inputUri)
         val inputExt = inputName.substringAfterLast('.', "").lowercase()
@@ -49,7 +51,9 @@ class AudioConverterUseCase @Inject constructor(
                     inputUri = inputUri,
                     inputExtension = inputExt,
                     outputFile = tmp,
-                    outputFormat = format
+                    outputFormat = format,
+                    onProgress = onProgress,
+                    shouldContinue = shouldContinue
                 )
             )
             val baseName = outputFileName.substringBeforeLast(".", outputFileName)

@@ -7,8 +7,10 @@ import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaMuxer
 import android.net.Uri
+import android.util.Log
 import com.morphdrop.app.domain.model.AudioMatrix
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import java.io.File
 import java.nio.ByteBuffer
 import javax.inject.Inject
@@ -35,7 +37,11 @@ class AudioTranscoder @Inject constructor(
         val outputFile: File,
         val outputFormat: String, // "wav" or "m4a"
         val startUs: Long? = null,
-        val endUs: Long? = null
+        val endUs: Long? = null,
+        /** 0..1 fraction of the (trimmed) source, throttled inside the transcoder. */
+        val onProgress: ((Float) -> Unit)? = null,
+        /** Checked periodically; false stops the job with CancellationException. */
+        val shouldContinue: (() -> Boolean)? = null
     )
 
     fun transcode(request: Request) {
@@ -52,7 +58,22 @@ class AudioTranscoder @Inject constructor(
         if (request.inputExtension.lowercase() == "wav") {
             transcodeWavInput(request, format)
         } else {
-            transcodeCodecInput(request, format)
+            try {
+                transcodeCodecInput(request, format)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: AudioTranscoderException) {
+                throw e
+            } catch (e: Exception) {
+                // MediaExtractor/MediaCodec surface framework internals
+                // ("Failed to instantiate extractor") for corrupt or
+                // empty files; the user gets a plain-language message.
+                Log.w("AudioTranscoder", "Unreadable audio input", e)
+                throw AudioTranscoderException(
+                    "This file couldn't be read as audio — it may be corrupt or empty.",
+                    e
+                )
+            }
         }
     }
 
@@ -73,14 +94,33 @@ class AudioTranscoder @Inject constructor(
         val endByte = request.endUs?.let {
             (it * reader.sampleRate.toLong() * frameSize / 1_000_000L / frameSize) * frameSize
         }
+        // Progress is throttled to 2% steps so the worker is not
+        // flooded with progress updates on every 64 KB chunk.
+        var lastReported = -1f
+        fun reportProgress(written: Long, total: Long) {
+            if (total <= 0) return
+            val fraction = (written.toFloat() / total).coerceIn(0f, 1f)
+            if (fraction - lastReported >= 0.02f || fraction >= 1f) {
+                lastReported = fraction
+                request.onProgress?.invoke(fraction)
+            }
+        }
+        fun checkContinue() {
+            if (request.shouldContinue?.invoke() == false) {
+                throw CancellationException("Audio conversion cancelled")
+            }
+        }
         try {
             if (startByte > 0) reader.skipConvertedBytes(startByte)
+            val effectiveTotal = endByte?.let { it - startByte }
+                ?: reader.remainingPcmBytes()
             when (format) {
                 "wav" -> {
                     WavWriter(request.outputFile, reader.sampleRate, reader.channels).apply {
                         try {
                             var written = 0L
                             while (true) {
+                                checkContinue()
                                 val remaining = endByte?.let { it - startByte - written }
                                 if (remaining != null && remaining <= 0) break
                                 val want = remaining?.let { minOf(it, CHUNK_BYTES.toLong()).toInt() }
@@ -88,7 +128,9 @@ class AudioTranscoder @Inject constructor(
                                 val chunk = reader.readConvertedChunk(want) ?: break
                                 writePcm(chunk)
                                 written += chunk.size
+                                reportProgress(written, effectiveTotal)
                             }
+                            reportProgress(effectiveTotal, effectiveTotal)
                         } finally {
                             close()
                         }
@@ -99,6 +141,7 @@ class AudioTranscoder @Inject constructor(
                     try {
                         var written = 0L
                         while (true) {
+                            checkContinue()
                             val remaining = endByte?.let { it - startByte - written }
                             if (remaining != null && remaining <= 0) break
                             val want = remaining?.let { minOf(it, CHUNK_BYTES.toLong()).toInt() }
@@ -107,7 +150,9 @@ class AudioTranscoder @Inject constructor(
                             val ptsUs = written * 1_000_000L / (reader.sampleRate.toLong() * frameSize)
                             encoder.writePcm(chunk, ptsUs)
                             written += chunk.size
+                            reportProgress(written, effectiveTotal)
                         }
+                        reportProgress(effectiveTotal, effectiveTotal)
                     } finally {
                         encoder.finish()
                     }
@@ -157,11 +202,19 @@ class AudioTranscoder @Inject constructor(
                 if (request.startUs != null && request.startUs > 0) {
                     extractor.seekTo(request.startUs, MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
                 }
+                val durationUs = runCatching {
+                    trackFormat.getLong(MediaFormat.KEY_DURATION)
+                }.getOrNull()?.takeIf { it > 0 }
                 when (format) {
                     "wav" -> {
                         val writer = WavWriter(request.outputFile, sampleRate, channels)
                         try {
-                            decodePcm(extractor, audioTrack, mime, request.startUs, request.endUs) { bytes, _ ->
+                            decodePcm(
+                                extractor, audioTrack, mime, request.startUs, request.endUs,
+                                durationUs = durationUs,
+                                onProgress = request.onProgress,
+                                shouldContinue = request.shouldContinue
+                            ) { bytes, _ ->
                                 writer.writePcm(bytes)
                             }
                         } finally {
@@ -171,7 +224,12 @@ class AudioTranscoder @Inject constructor(
                     "m4a" -> {
                         val encoder = AacEncoder(sampleRate, channels, request.outputFile)
                         try {
-                            decodePcm(extractor, audioTrack, mime, request.startUs, request.endUs) { bytes, ptsUs ->
+                            decodePcm(
+                                extractor, audioTrack, mime, request.startUs, request.endUs,
+                                durationUs = durationUs,
+                                onProgress = request.onProgress,
+                                shouldContinue = request.shouldContinue
+                            ) { bytes, ptsUs ->
                                 encoder.writePcm(bytes, ptsUs)
                             }
                         } finally {
@@ -197,6 +255,9 @@ class AudioTranscoder @Inject constructor(
         mime: String,
         startUs: Long?,
         endUs: Long?,
+        durationUs: Long? = null,
+        onProgress: ((Float) -> Unit)? = null,
+        shouldContinue: (() -> Boolean)? = null,
         onPcm: (bytes: ByteArray, ptsUs: Long) -> Unit
     ) {
         val decoder = try {
@@ -213,6 +274,8 @@ class AudioTranscoder @Inject constructor(
             var firstKeptPts: Long? = null
             var trimEnded = false
             var idlePasses = 0
+            var outputBufferCount = 0
+            var lastReported = -1f
             // Most decoders emit 16-bit PCM, but some emit float;
             // writing float bytes into a 16-bit WAV would be noise.
             var outputIsFloat = false
@@ -242,6 +305,10 @@ class AudioTranscoder @Inject constructor(
                 if (outIndex >= 0) idlePasses = 0
                 when {
                     outIndex >= 0 -> {
+                        outputBufferCount++
+                        if (outputBufferCount % 20 == 0 && shouldContinue?.invoke() == false) {
+                            throw CancellationException("Audio conversion cancelled")
+                        }
                         val outBuffer = decoder.getOutputBuffer(outIndex)
                         if (bufferInfo.size > 0 && outBuffer != null) {
                             val pts = bufferInfo.presentationTimeUs
@@ -249,6 +316,7 @@ class AudioTranscoder @Inject constructor(
                                 trimEnded = true
                             } else if (startUs == null || pts >= startUs) {
                                 if (firstKeptPts == null) firstKeptPts = pts
+                                val firstKept = firstKeptPts!!
                                 // Output buffers carry their data at
                                 // info.offset, not at position 0.
                                 val dup = outBuffer.duplicate()
@@ -259,7 +327,18 @@ class AudioTranscoder @Inject constructor(
                                 if (outputIsFloat) {
                                     bytes = floatPcmTo16Bit(bytes)
                                 }
-                                onPcm(bytes, pts - firstKeptPts)
+                                val rebasedPts = pts - firstKept
+                                onPcm(bytes, rebasedPts)
+                                // Progress from sample time over the
+                                // (trimmed) source duration, 2% steps.
+                                val totalUs = (endUs ?: durationUs)?.let { it - firstKept }
+                                if (onProgress != null && totalUs != null && totalUs > 0) {
+                                    val fraction = (rebasedPts.toFloat() / totalUs).coerceIn(0f, 1f)
+                                    if (fraction - lastReported >= 0.02f || fraction >= 1f) {
+                                        lastReported = fraction
+                                        onProgress(fraction)
+                                    }
+                                }
                             }
                         }
                         decoder.releaseOutputBuffer(outIndex, false)

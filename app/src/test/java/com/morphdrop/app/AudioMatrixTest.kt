@@ -77,6 +77,20 @@ class AudioMatrixTest {
     }
 
     @Test
+    fun `trim error compares seconds against milliseconds, not raw values`() {
+        // Reviewer repro: 60s file, start 90s must be blocked, not
+        // compared as 90 >= 60_000 (which never fires in practice).
+        val pastDuration = AudioMatrix.trimErrorForSeconds(90, null, 60_000)
+        assertTrue(pastDuration!!.contains("1:30"))
+        assertTrue(pastDuration.contains("1:00"))
+        assertEquals(null, AudioMatrix.trimErrorForSeconds(30, null, 60_000))
+        assertEquals(null, AudioMatrix.trimErrorForSeconds(10, 30, 60_000))
+        assertTrue(AudioMatrix.trimErrorForSeconds(30, 10, 60_000)!!.contains("after trim start"))
+        assertTrue(AudioMatrix.trimErrorForSeconds(10, 90, 60_000)!!.contains("past the end"))
+        assertEquals(null, AudioMatrix.trimErrorForSeconds(30, null, 0))
+    }
+
+    @Test
     fun `video containers are listed separately from audio inputs`() {
         assertFalse(AudioMatrix.isSupportedInput("mp4"))
         assertTrue(AudioMatrix.VIDEO_EXTENSIONS.contains("mp4"))

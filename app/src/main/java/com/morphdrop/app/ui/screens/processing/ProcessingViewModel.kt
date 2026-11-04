@@ -23,6 +23,9 @@ import javax.inject.Inject
 
 data class ProcessingUiState(
     val conversionType: ConversionType? = null,
+    /** Real formats from worker progress data, uppercase; null = fall back to the tool definition. */
+    val inputFormat: String? = null,
+    val outputFormat: String? = null,
     val fileName: String = "Processing...",
     val progress: Float = 0f,
     val currentStage: String = "Initializing conversion...",
@@ -111,6 +114,13 @@ class ProcessingViewModel @Inject constructor(
                     else -> {
                         val rawProgress = workInfo.progress.getInt("progress", 0)
                         val outputName = workInfo.progress.getString("output_name") ?: ""
+                        // Cache the worker's real formats on first sight:
+                        // later progress updates replace the whole Data
+                        // and may not carry them again.
+                        val progressInputFormat = workInfo.progress.getString("input_format")
+                            ?.takeIf { it.isNotBlank() }?.uppercase()
+                        val progressOutputFormat = workInfo.progress.getString("output_format")
+                            ?.takeIf { it.isNotBlank() }?.uppercase()
                         val currentProgress = (rawProgress / 100f).coerceIn(0f, 1f)
 
                         // Never let progress move backwards.
@@ -128,7 +138,9 @@ class ProcessingViewModel @Inject constructor(
                             it.copy(
                                 progress = currentProgress * 100f,
                                 currentStage = stage,
-                                fileName = if (outputName.isNotBlank()) outputName else it.fileName
+                                fileName = if (outputName.isNotBlank()) outputName else it.fileName,
+                                inputFormat = progressInputFormat ?: it.inputFormat,
+                                outputFormat = progressOutputFormat ?: it.outputFormat
                             )
                         }
                     }

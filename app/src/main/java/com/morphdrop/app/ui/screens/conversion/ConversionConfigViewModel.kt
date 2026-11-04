@@ -112,7 +112,9 @@ data class ConversionConfigState(
     // Audio Trimmer State
     val trimStartSeconds: String = "",
     val trimEndSeconds: String = "",
-    val audioDurationMs: Long = 0
+    val audioDurationMs: Long = 0,
+    /** User-readable trim problem, shown under the End field; null = range OK. */
+    val trimErrorMessage: String? = null
 ) {
     val selectedFileUri: Uri?
         get() = selectedFileUris.firstOrNull()
@@ -1028,29 +1030,55 @@ class ConversionConfigViewModel @Inject constructor(
                 s.trimStartSeconds.isBlank() -> 0L
                 else -> s.trimStartSeconds.toLongOrNull() ?: return false
             }
-            if (start < 0) return false
-            val end = s.trimEndSeconds.toLongOrNull()
-            if (s.trimEndSeconds.isNotBlank() && end == null) return false
-            if (end != null && end <= start) return false
-            if (s.audioDurationMs > 0) {
-                if (start >= s.audioDurationMs) return false
-                if (end != null && end > s.audioDurationMs) return false
-            }
+            if (s.trimEndSeconds.isNotBlank() && s.trimEndSeconds.toLongOrNull() == null) return false
+            // Seconds vs milliseconds: never compare seconds against
+            // audioDurationMs directly — AudioMatrix converts first.
+            if (com.morphdrop.app.domain.model.AudioMatrix.trimErrorForSeconds(
+                    startSeconds = start,
+                    endSeconds = s.trimEndSeconds.toLongOrNull(),
+                    durationMs = s.audioDurationMs
+                ) != null
+            ) return false
         }
         return true
+    }
+
+    /** Trim message for [s], or null when the typed range is usable. */
+    private fun trimErrorMessageFor(s: ConversionConfigState): String? {
+        if (s.conversionType?.id != "audio_trimmer") return null
+        val start = when {
+            s.trimStartSeconds.isBlank() -> 0L
+            else -> s.trimStartSeconds.toLongOrNull() ?: return "Trim times must be whole seconds."
+        }
+        if (s.trimEndSeconds.isNotBlank() && s.trimEndSeconds.toLongOrNull() == null) {
+            return "Trim times must be whole seconds."
+        }
+        return com.morphdrop.app.domain.model.AudioMatrix.trimErrorForSeconds(
+            startSeconds = start,
+            endSeconds = s.trimEndSeconds.toLongOrNull(),
+            durationMs = s.audioDurationMs
+        )
     }
 
     fun onTrimStartChanged(value: String) {
         _state.update { s ->
             val next = s.copy(trimStartSeconds = value)
-            next.copy(isConvertEnabled = isStateValid(next))
+            val trimError = trimErrorMessageFor(next)
+            next.copy(
+                trimErrorMessage = trimError,
+                isConvertEnabled = trimError == null && isStateValid(next)
+            )
         }
     }
 
     fun onTrimEndChanged(value: String) {
         _state.update { s ->
             val next = s.copy(trimEndSeconds = value)
-            next.copy(isConvertEnabled = isStateValid(next))
+            val trimError = trimErrorMessageFor(next)
+            next.copy(
+                trimErrorMessage = trimError,
+                isConvertEnabled = trimError == null && isStateValid(next)
+            )
         }
     }
 

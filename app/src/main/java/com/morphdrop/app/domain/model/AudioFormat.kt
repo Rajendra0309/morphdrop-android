@@ -101,4 +101,37 @@ object AudioMatrix {
         }
         return startMs to end
     }
+
+    /**
+     * The trim screen's view of [validateTrimRange], in the units the
+     * user actually types: start/end are seconds, the duration is
+     * milliseconds. Returns null when the range is usable, otherwise
+     * the exact user-readable message to show. Keeping this conversion
+     * in one pure place is what stops the seconds-vs-milliseconds
+     * mismatch from coming back: the ViewModel must never compare
+     * seconds directly against [durationMs].
+     */
+    fun trimErrorForSeconds(
+        startSeconds: Long,
+        endSeconds: Long?,
+        durationMs: Long
+    ): String? {
+        if (startSeconds < 0) return "Trim start cannot be negative."
+        if (endSeconds != null && endSeconds <= startSeconds) {
+            return "Trim end must be after trim start."
+        }
+        // Unknown duration: nothing past-duration to check; an empty
+        // end means "to the end of the file" and is always usable.
+        if (durationMs <= 0) return null
+        return try {
+            validateTrimRange(
+                startMs = startSeconds * 1000,
+                endMs = endSeconds?.let { it * 1000 },
+                durationMs = durationMs
+            )
+            null
+        } catch (e: IllegalArgumentException) {
+            e.message
+        }
+    }
 }

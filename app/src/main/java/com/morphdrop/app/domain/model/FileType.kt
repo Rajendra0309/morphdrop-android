@@ -24,5 +24,7 @@ enum class FileType(
     WAV("WAV", "wav", Color(0xFF00897B)), // Teal
     OGG("OGG", "ogg", Color(0xFF5C6BC0)), // Indigo
     FLAC("FLAC", "flac", Color(0xFF43A047)), // Green
+    OPUS("OPUS", "opus", Color(0xFF5E35B1)), // Deep Purple
+    AAC("AAC", "aac", Color(0xFF00838F)), // Teal
     MP4("MP4", "mp4", Color(0xFFD81B60)) // Pink
 }

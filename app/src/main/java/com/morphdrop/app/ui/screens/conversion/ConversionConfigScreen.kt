@@ -76,6 +76,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -681,7 +682,10 @@ fun ConversionConfigScreenContent(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(12.dp),
                             singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Number,
+                                imeAction = ImeAction.Next
+                            )
                         )
                         OutlinedTextField(
                             value = state.trimEndSeconds,
@@ -690,8 +694,18 @@ fun ConversionConfigScreenContent(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(12.dp),
                             singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Number,
+                                imeAction = ImeAction.Done
+                            )
                         )
+                        if (state.trimErrorMessage != null) {
+                            Text(
+                                text = state.trimErrorMessage,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
                         Text(
                             text = "Cuts land on the nearest frame at or after the start " +
                                 "time. Trimmed audio is saved as WAV or M4A — never MP3.",
@@ -1145,8 +1159,20 @@ private fun FileDropZone(
                             )
                         }
                     } else if (state.conversionType != null) {
+                        // Real formats, not the tool definition: the
+                        // definition says MP3 -> WAV for every audio job,
+                        // even when the file is M4A and the user picked M4A.
+                        val realInput = state.fileMetadata?.fileExtension
+                            ?.takeIf { it.isNotBlank() }
+                            ?: state.selectedFileName.substringAfterLast('.', "")
+                                .takeIf { it.isNotBlank() && state.selectedFileName.contains(".") }
+                            ?: state.conversionType!!.inputType.displayName
+                        val realOutput = state.outputFormat
+                            .takeIf { it.isNotBlank() }
+                            ?: state.conversionType!!.outputType.displayName
                         TransformIndicator(
-                            conversionType = state.conversionType!!,
+                            inputFormat = realInput,
+                            outputFormat = realOutput,
                             compact = true
                         )
                     }
@@ -1520,7 +1546,7 @@ private fun getContentIconForFileName(fileName: String): androidx.compose.ui.gra
     return when (ext) {
         "pdf" -> Icons.Outlined.PictureAsPdf
         "mp4", "mkv", "avi", "mov", "3gp", "webm", "m4v" -> Icons.Outlined.Movie
-        "mp3", "flac", "wav", "aac", "ogg", "m4a" -> Icons.Outlined.AudioFile
+        "mp3", "flac", "wav", "aac", "ogg", "m4a", "opus", "oga" -> Icons.Outlined.AudioFile
         "xlsx", "xls", "csv" -> Icons.Outlined.TableChart
         "txt", "md", "markdown" -> Icons.AutoMirrored.Outlined.Article
         else -> Icons.AutoMirrored.Filled.InsertDriveFile
@@ -1532,7 +1558,7 @@ private fun getContentLabelForFileName(fileName: String): String {
     return when (ext) {
         "pdf" -> "PDF Document"
         "mp4", "mkv", "avi", "mov", "3gp", "webm", "m4v" -> "Video File"
-        "mp3", "flac", "wav", "aac", "ogg", "m4a" -> "Audio File"
+        "mp3", "flac", "wav", "aac", "ogg", "m4a", "opus", "oga" -> "Audio File"
         "xlsx", "xls", "csv" -> "Spreadsheet"
         "txt", "md", "markdown" -> "Text Document"
         "" -> "File"

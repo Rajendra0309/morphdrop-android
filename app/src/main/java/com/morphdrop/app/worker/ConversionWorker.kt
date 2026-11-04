@@ -231,10 +231,27 @@ class ConversionWorker @AssistedInject constructor(
                 5,
                 cancelPendingIntent
             )
-            setProgress(workDataOf(
-                "progress" to 5,
-                "output_name" to outputFileName
-            ))
+            // Real input/output formats for the Processing screen.
+            // WorkInfo (WorkManager 2.11) exposes no inputData, so the
+            // worker must surface them through progress data; the
+            // ProcessingViewModel caches them on first sight, since
+            // later progress updates replace the whole progress Data.
+            val inputFormatForProgress =
+                inputFileName.substringAfterLast('.', "").lowercase()
+                    .takeIf { it.isNotBlank() }
+            val outputFormatForProgress =
+                outputFileName.substringAfterLast('.', "").lowercase()
+                    .takeIf { it.isNotBlank() && outputFileName.contains(".") }
+            // Data values may not be null, so only add formats we know.
+            val initialProgress = androidx.work.Data.Builder()
+                .putInt("progress", 5)
+                .putString("output_name", outputFileName)
+                .apply {
+                    if (inputFormatForProgress != null) putString("input_format", inputFormatForProgress)
+                    if (outputFormatForProgress != null) putString("output_format", outputFormatForProgress)
+                }
+                .build()
+            setProgress(initialProgress)
 
             val resultUris: List<Uri> = when (conversionType) {
                 "pdf_to_images" -> {
@@ -549,15 +566,33 @@ class ConversionWorker @AssistedInject constructor(
 
                 "audio_converter" -> {
                     checkCancellation()
-                    notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 30, cancelPendingIntent)
-                    setProgress(workDataOf("progress" to 30))
                     val uri = Uri.parse(requireNotNull(inputUriString))
                     val targetFormat = (inputData.getString(KEY_TARGET_FORMAT) ?: "wav")
                         .lowercase().takeIf { it == "wav" || it == "m4a" } ?: "wav"
+                    notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 30, cancelPendingIntent)
+                    setProgress(workDataOf(
+                        "progress" to 30,
+                        "input_format" to inputFileName.substringAfterLast('.', "").lowercase(),
+                        "output_format" to targetFormat
+                    ))
+                    var lastMappedProgress = 30
                     val result = audioConverterUseCase(
                         inputUri = uri,
                         outputFormat = targetFormat,
-                        outputFileName = outputFileName
+                        outputFileName = outputFileName,
+                        onProgress = { fraction ->
+                            val mapped = (30 + (fraction.coerceIn(0f, 1f) * 50)).toInt()
+                            if (mapped != lastMappedProgress) {
+                                lastMappedProgress = mapped
+                                notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), mapped, cancelPendingIntent)
+                                setProgressAsync(workDataOf(
+                                    "progress" to mapped,
+                                    "input_format" to inputFileName.substringAfterLast('.', "").lowercase(),
+                                    "output_format" to targetFormat
+                                ))
+                            }
+                        },
+                        shouldContinue = { !isStopped }
                     )
                     outputsToCleanup.add(result)
                     checkCancellation()
@@ -568,19 +603,37 @@ class ConversionWorker @AssistedInject constructor(
 
                 "audio_trimmer" -> {
                     checkCancellation()
-                    notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 30, cancelPendingIntent)
-                    setProgress(workDataOf("progress" to 30))
                     val uri = Uri.parse(requireNotNull(inputUriString))
                     val targetFormat = (inputData.getString(KEY_TARGET_FORMAT) ?: "m4a")
                         .lowercase().takeIf { it == "wav" || it == "m4a" } ?: "m4a"
+                    notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 30, cancelPendingIntent)
+                    setProgress(workDataOf(
+                        "progress" to 30,
+                        "input_format" to inputFileName.substringAfterLast('.', "").lowercase(),
+                        "output_format" to targetFormat
+                    ))
                     val startMs = inputData.getLong(KEY_TRIM_START_MS, 0L)
                     val endMsRaw = inputData.getLong(KEY_TRIM_END_MS, 0L)
+                    var lastMappedProgress = 30
                     val result = audioTrimmerUseCase(
                         inputUri = uri,
                         outputFormat = targetFormat,
                         startMs = startMs,
                         endMs = endMsRaw.takeIf { it > 0 },
-                        outputFileName = outputFileName
+                        outputFileName = outputFileName,
+                        onProgress = { fraction ->
+                            val mapped = (30 + (fraction.coerceIn(0f, 1f) * 50)).toInt()
+                            if (mapped != lastMappedProgress) {
+                                lastMappedProgress = mapped
+                                notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), mapped, cancelPendingIntent)
+                                setProgressAsync(workDataOf(
+                                    "progress" to mapped,
+                                    "input_format" to inputFileName.substringAfterLast('.', "").lowercase(),
+                                    "output_format" to targetFormat
+                                ))
+                            }
+                        },
+                        shouldContinue = { !isStopped }
                     )
                     outputsToCleanup.add(result)
                     checkCancellation()
@@ -591,15 +644,33 @@ class ConversionWorker @AssistedInject constructor(
 
                 "video_to_audio" -> {
                     checkCancellation()
-                    notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 30, cancelPendingIntent)
-                    setProgress(workDataOf("progress" to 30))
                     val uri = Uri.parse(requireNotNull(inputUriString))
                     val targetFormat = (inputData.getString(KEY_TARGET_FORMAT) ?: "m4a")
                         .lowercase().takeIf { it == "wav" || it == "m4a" } ?: "m4a"
+                    notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 30, cancelPendingIntent)
+                    setProgress(workDataOf(
+                        "progress" to 30,
+                        "input_format" to inputFileName.substringAfterLast('.', "").lowercase(),
+                        "output_format" to targetFormat
+                    ))
+                    var lastMappedProgress = 30
                     val result = videoToAudioUseCase(
                         inputUri = uri,
                         outputFormat = targetFormat,
-                        outputFileName = outputFileName
+                        outputFileName = outputFileName,
+                        onProgress = { fraction ->
+                            val mapped = (30 + (fraction.coerceIn(0f, 1f) * 50)).toInt()
+                            if (mapped != lastMappedProgress) {
+                                lastMappedProgress = mapped
+                                notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), mapped, cancelPendingIntent)
+                                setProgressAsync(workDataOf(
+                                    "progress" to mapped,
+                                    "input_format" to inputFileName.substringAfterLast('.', "").lowercase(),
+                                    "output_format" to targetFormat
+                                ))
+                            }
+                        },
+                        shouldContinue = { !isStopped }
                     )
                     outputsToCleanup.add(result)
                     checkCancellation()

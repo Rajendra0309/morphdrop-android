@@ -37,7 +37,9 @@ class AudioTrimmerUseCase @Inject constructor(
         outputFormat: String,
         startMs: Long,
         endMs: Long?,
-        outputFileName: String = "trimmed_audio_${System.currentTimeMillis()}"
+        outputFileName: String = "trimmed_audio_${System.currentTimeMillis()}",
+        onProgress: ((Float) -> Unit)? = null,
+        shouldContinue: (() -> Boolean)? = null
     ): Uri = withContext(Dispatchers.IO) {
         val inputName = FileHelper.getFileName(context, inputUri)
         val inputExt = inputName.substringAfterLast('.', "").lowercase()
@@ -70,7 +72,9 @@ class AudioTrimmerUseCase @Inject constructor(
                     outputFile = tmp,
                     outputFormat = format,
                     startUs = start * 1000,
-                    endUs = end?.let { it * 1000 }
+                    endUs = end?.let { it * 1000 },
+                    onProgress = onProgress,
+                    shouldContinue = shouldContinue
                 )
             )
             val baseName = outputFileName.substringBeforeLast(".", outputFileName)
