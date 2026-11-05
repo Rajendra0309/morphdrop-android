@@ -25,6 +25,14 @@ import javax.inject.Inject
  * unpacked size / entry count are capped. A .rar file is rejected with a
  * plain message — RAR is not supported by the archive library at all.
  */
+/**
+ * The result of an extraction: the saved files, plus a warning when the
+ * archive was recovered only in part (a truncated ZIP, for example).
+ * The warning is a note, not an error — the recovered files are real
+ * and are kept.
+ */
+data class ExtractResult(val uris: List<Uri>, val warning: String? = null)
+
 class ExtractArchiveUseCase @Inject constructor(
     @param:ApplicationContext private val context: Context,
     private val settingsRepository: SettingsRepository,
@@ -36,13 +44,15 @@ class ExtractArchiveUseCase @Inject constructor(
         outputFolderName: String,
         onProgress: ((Float) -> Unit)? = null,
         shouldContinue: (() -> Boolean)? = null
-    ): List<Uri> = withContext(Dispatchers.IO) {
+    ): ExtractResult = withContext(Dispatchers.IO) {
         val inputName = FileHelper.getFileName(context, inputUri)
         val totalInputBytes = context.contentResolver.openFileDescriptor(inputUri, "r")
             ?.use { pfd -> pfd.statSize.takeIf { it >= 0 } ?: -1L }
             ?: -1L
+        // Compound extensions included: "packed.tar.gz" extracts to
+        // "packed_extracted", not "packed.tar_extracted".
         val folderName = outputFolderName.ifBlank {
-            inputName.substringBeforeLast('.', inputName).ifBlank { "extracted" }
+            FileHelper.stripArchiveExtension(inputName).ifBlank { "extracted" }
         }
         val baseFolder = settingsRepository.outputFolderName.first()
         val workDir = File(context.cacheDir, "archive_extract_${System.currentTimeMillis()}").apply { mkdirs() }
@@ -65,14 +75,57 @@ class ExtractArchiveUseCase @Inject constructor(
             }
             if (extractedFiles.isEmpty()) throw ArchiveException.EmptyArchive("This archive contains no files.")
             // Preserve subfolders inside the archive in Downloads.
-            extractedFiles.map { file ->
+            val saved = extractedFiles.map { file ->
                 val relative = file.relativeTo(workDir).path
                 val parent = relative.substringBeforeLast('/', "")
                 val targetFolder = if (parent.isBlank()) "$baseFolder/$folderName" else "$baseFolder/$folderName/$parent"
                 FileHelper.saveStreamToFile(context, targetFolder, file.name, file)
             }
+            // A truncated ZIP still yields its complete entries, so the
+            // extract above succeeds — and without this check the Result
+            // screen would call it "Complete" while files are missing.
+            // The exact lost count is unknowable (the index is gone), so
+            // the note says what is known, not a number. TAR and 7z
+            // aren't checked: a truncated 7z fails loudly during the
+            // read instead of silently, and TAR has no equivalent cheap
+            // end-of-file marker.
+            val warning = if (format == ArchiveFormat.ZIP && zipLooksTruncated(inputUri)) {
+                "Recovered ${saved.size} ${if (saved.size == 1) "entry" else "entries"} — " +
+                    "this archive looks truncated (its index is missing), so more files may have been lost."
+            } else {
+                null
+            }
+            ExtractResult(saved, warning)
         } finally {
             workDir.deleteRecursively()
+        }
+    }
+
+    /**
+     * True when the file's tail holds no End of Central Directory
+     * record — the signature of a ZIP cut short. Reads at most the last
+     * 64 KiB through the file descriptor, so it costs almost nothing.
+     * Any read failure returns false: an unreadable file is the
+     * extractor's problem, not this check's.
+     */
+    private fun zipLooksTruncated(inputUri: Uri): Boolean {
+        return try {
+            val pfd = context.contentResolver.openFileDescriptor(inputUri, "r") ?: return false
+            try {
+                val size = pfd.statSize
+                if (size < 22) return true
+                val tailSize = minOf(size, 65_557L).toInt()
+                val tail = ByteArray(tailSize)
+                // Positional read: no stream to close, no skipping.
+                val read = android.system.Os.pread(
+                    pfd.fileDescriptor, tail, 0, tailSize, size - tailSize
+                )
+                !ArchiveEngine.hasZipEndRecord(tail.copyOf(read.coerceAtLeast(0)))
+            } finally {
+                pfd.close()
+            }
+        } catch (_: Exception) {
+            false
         }
     }
 

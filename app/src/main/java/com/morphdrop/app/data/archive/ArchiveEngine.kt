@@ -85,6 +85,30 @@ class ArchiveEngine(
         /** 1 GiB of uncompressed output per extraction — a phone has no business unpacking more. */
         const val DEFAULT_MAX_TOTAL_BYTES: Long = 1_000_000_000L
         const val DEFAULT_MAX_ENTRIES: Int = 10_000
+
+        /**
+         * Whether [tail] — the last bytes of a file — contains a ZIP End of
+         * Central Directory record (signature 50 4B 05 06). Every valid
+         * ZIP ends with one; a truncated archive loses it, while the
+         * local-header stream still yields the entries that survived —
+         * so an extract can succeed and silently drop files. The record
+         * itself is 22 bytes, but the scan covers the last 64 KiB like
+         * the standard readers do, so trailing junk and ZIP64 locators
+         * don't produce a false alarm. The exact number of lost entries
+         * is unknowable without the central directory, so callers must
+         * phrase the warning as "looks truncated", never as a count.
+         */
+        fun hasZipEndRecord(tail: ByteArray): Boolean {
+            // EOCD signature, little-endian: 0x50 0x4B 0x05 0x06.
+            for (i in 0..tail.size - 4) {
+                if (tail[i] == 0x50.toByte() && tail[i + 1] == 0x4B.toByte() &&
+                    tail[i + 2] == 0x05.toByte() && tail[i + 3] == 0x06.toByte()
+                ) {
+                    return true
+                }
+            }
+            return false
+        }
     }
 
     // ---- listing (preview) ----

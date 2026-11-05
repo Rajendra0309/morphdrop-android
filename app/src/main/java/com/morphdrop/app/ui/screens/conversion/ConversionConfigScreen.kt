@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.AudioFile
 import androidx.compose.material.icons.outlined.Movie
 import androidx.compose.material.icons.outlined.PictureAsPdf
@@ -998,6 +999,15 @@ fun ConversionConfigScreenContent(
                 // produced when the tool offers a choice (e.g. "Convert to
                 // WEBP"); single-format tools keep the plain label, and the
                 // accessibility description always names the target.
+                // Archive tools don't convert anything, so they name the
+                // action instead: "Extract", "Create ZIP", "Create TAR.GZ".
+                val toolId = state.conversionType?.id
+                val archiveLabel = when (toolId) {
+                    in ConversionConfigViewModel.ARCHIVE_EXTRACT_TOOL_IDS -> "Extract"
+                    "zip_create" -> "Create ZIP"
+                    "tar_create" -> "Create TAR.GZ"
+                    else -> null
+                }
                 val convertTarget = state.conversionType?.let {
                     if (state.availableOutputFormats.size > 1) {
                         state.outputFormat.uppercase()
@@ -1006,18 +1016,20 @@ fun ConversionConfigScreenContent(
                     }
                 }
                 MorphButton(
-                    text = if (state.availableOutputFormats.size > 1 && convertTarget != null) {
-                        "Convert to $convertTarget"
-                    } else {
-                        "Convert"
-                    },
+                    text = archiveLabel
+                        ?: if (state.availableOutputFormats.size > 1 && convertTarget != null) {
+                            "Convert to $convertTarget"
+                        } else {
+                            "Convert"
+                        },
                     onClick = onConvert,
                     enabled = state.isConvertEnabled,
                     variant = MorphButtonVariant.Primary,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 12.dp),
-                    contentDescription = convertTarget?.let { "Convert to $it" }
+                    contentDescription = archiveLabel
+                        ?: convertTarget?.let { "Convert to $it" }
                 )
             }
         }
@@ -1183,19 +1195,33 @@ private fun FileDropZone(
                         // Real formats, not the tool definition: the
                         // definition says MP3 -> WAV for every audio job,
                         // even when the file is M4A and the user picked M4A.
-                        val realInput = state.fileMetadata?.fileExtension
-                            ?.takeIf { it.isNotBlank() }
-                            ?: state.selectedFileName.substringAfterLast('.', "")
-                                .takeIf { it.isNotBlank() && state.selectedFileName.contains(".") }
+                        // Compound extensions included: "packed.tar.gz"
+                        // is TAR.GZ, not GZ. The filename is the
+                        // authority here — the metadata extension is a
+                        // plain substringAfterLast('.'), so it says "gz".
+                        val realInput = FileHelper.displayFormatOfFileName(state.selectedFileName)
+                            .takeIf { it.isNotBlank() }
+                            ?: state.fileMetadata?.fileExtension?.takeIf { it.isNotBlank() }
                             ?: state.conversionType!!.inputType.displayName
                         val realOutput = state.outputFormat
                             .takeIf { it.isNotBlank() }
                             ?: state.conversionType!!.outputType.displayName
-                        TransformIndicator(
-                            inputFormat = realInput,
-                            outputFormat = realOutput,
-                            compact = true
-                        )
+                        // Archive tools don't convert one format into
+                        // another, so "ZIP -> ZIP" is a lie the picker
+                        // fix never reached: show what the tool does.
+                        when (state.conversionType!!.id) {
+                            in ConversionConfigViewModel.ARCHIVE_EXTRACT_TOOL_IDS -> FormatChip(
+                                format = "$realInput → FOLDER"
+                            )
+                            in ConversionConfigViewModel.ARCHIVE_CREATE_TOOL_IDS -> FormatChip(
+                                format = "ALL → $realOutput"
+                            )
+                            else -> TransformIndicator(
+                                inputFormat = realInput,
+                                outputFormat = realOutput,
+                                compact = true
+                            )
+                        }
                     }
                 }
 
@@ -1677,25 +1703,29 @@ private fun ExcelPreviewCard(
 }
 
 private fun getContentIconForFileName(fileName: String): androidx.compose.ui.graphics.vector.ImageVector {
-    val ext = fileName.substringAfterLast('.', "").lowercase()
+    val ext = FileHelper.displayFormatOfFileName(fileName).lowercase()
     return when (ext) {
         "pdf" -> Icons.Outlined.PictureAsPdf
         "mp4", "mkv", "avi", "mov", "3gp", "webm", "m4v" -> Icons.Outlined.Movie
         "mp3", "flac", "wav", "aac", "ogg", "m4a", "opus", "oga" -> Icons.Outlined.AudioFile
         "xlsx", "xls", "csv" -> Icons.Outlined.TableChart
         "txt", "md", "markdown" -> Icons.AutoMirrored.Outlined.Article
+        "zip", "tar.gz", "7z" -> Icons.Outlined.Archive
         else -> Icons.AutoMirrored.Filled.InsertDriveFile
     }
 }
 
 private fun getContentLabelForFileName(fileName: String): String {
-    val ext = fileName.substringAfterLast('.', "").lowercase()
+    val ext = FileHelper.displayFormatOfFileName(fileName).lowercase()
     return when (ext) {
         "pdf" -> "PDF Document"
         "mp4", "mkv", "avi", "mov", "3gp", "webm", "m4v" -> "Video File"
         "mp3", "flac", "wav", "aac", "ogg", "m4a", "opus", "oga" -> "Audio File"
         "xlsx", "xls", "csv" -> "Spreadsheet"
         "txt", "md", "markdown" -> "Text Document"
+        "zip" -> "ZIP Archive"
+        "tar.gz" -> "TAR.GZ Archive"
+        "7z" -> "7z Archive"
         "" -> "File"
         else -> "${ext.uppercase()} File"
     }

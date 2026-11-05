@@ -50,7 +50,13 @@ data class ResultUiState(
      * Savings summary, e.g. "75% smaller". Null when not meaningful
      * (unknown input size, or output larger/equal — shown as neutral text).
      */
-    val savingsText: String? = null
+    val savingsText: String? = null,
+    /**
+     * A partial-recovery note, e.g. a truncated ZIP that yielded only
+     * some of its entries. The recovered files are real, so this is a
+     * warning on a successful result — never an error.
+     */
+    val warning: String? = null
 )
 
 @HiltViewModel
@@ -154,7 +160,10 @@ class ResultViewModel @Inject constructor(
                                 folderName = folderName,
                                 inputSizeFormatted = inputSizeFormatted,
                                 outputSizeFormatted = outputSizeFormatted,
-                                savingsText = savingsText
+                                savingsText = savingsText,
+                                warning = workInfo.outputData
+                                    .getString(ConversionWorker.KEY_PARTIAL_WARNING)
+                                    ?.takeIf { it.isNotBlank() }
                             )
                         } else {
                             _uiState.update {

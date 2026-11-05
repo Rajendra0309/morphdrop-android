@@ -378,7 +378,9 @@ class ConversionConfigViewModel @Inject constructor(
         }
 
         val firstFileName = names.firstOrNull() ?: "file"
-        val baseName = firstFileName.substringBeforeLast('.')
+        // Compound extensions included: "packed.tar.gz" extracts to
+        // "packed_extracted", not "packed.tar_extracted".
+        val baseName = FileHelper.stripArchiveExtension(firstFileName)
         val outputExt = _state.value.outputFormat.ifBlank {
             _state.value.conversionType?.outputType?.extension ?: "pdf"
         }
@@ -565,6 +567,9 @@ class ConversionConfigViewModel @Inject constructor(
     companion object {
         /** Tools whose config screen shows an archive-contents preview. */
         val ARCHIVE_EXTRACT_TOOL_IDS = setOf("zip_extract", "tar_extract", "sevenz_extract")
+
+        /** Tools that pack files into an archive (output is a folder's worth of files, not a conversion). */
+        val ARCHIVE_CREATE_TOOL_IDS = setOf("zip_create", "tar_create")
     }
 
     fun loadMetadata(context: Context, uri: Uri) {

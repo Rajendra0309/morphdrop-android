@@ -335,6 +335,35 @@ object FileHelper {
 
     private fun getFileExtension(fileName: String): String = fileName.substringAfterLast('.', "").lowercase(Locale.ROOT)
 
+    /**
+     * The format label for a filename, compound extensions included: a
+     * plain substringAfterLast('.') calls "packed.tar.gz" a GZ file, and
+     * the config card and the file preview both showed that. The worker
+     * already knew better (its formatOfFileName is tar.gz-aware); this
+     * is the same rule for the UI side.
+     */
+    fun displayFormatOfFileName(fileName: String): String {
+        val lower = fileName.lowercase(Locale.ROOT)
+        return when {
+            lower.endsWith(".tar.gz") || lower.endsWith(".tgz") -> "tar.gz"
+            else -> fileName.substringAfterLast('.', "")
+        }
+    }
+
+    /**
+     * A filename with its archive extension removed, compound ones
+     * included: "packed.tar.gz" -> "packed", not "packed.tar". Used for
+     * the "_extracted" output folder name.
+     */
+    fun stripArchiveExtension(fileName: String): String {
+        val lower = fileName.lowercase(Locale.ROOT)
+        return when {
+            lower.endsWith(".tar.gz") -> fileName.dropLast(".tar.gz".length)
+            lower.endsWith(".tgz") -> fileName.dropLast(".tgz".length)
+            else -> fileName.substringBeforeLast('.', fileName)
+        }
+    }
+
     fun getFileNameWithoutExtension(fileName: String): String = fileName.substringBeforeLast('.')
 
     fun deleteFileByName(context: Context, folderName: String, fileName: String) {

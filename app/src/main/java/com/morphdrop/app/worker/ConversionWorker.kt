@@ -112,6 +112,8 @@ class ConversionWorker @AssistedInject constructor(
         const val KEY_OUTPUT_URI = "output_uri"
         const val KEY_OUTPUT_URIS = "output_uris"
         const val KEY_ERROR = "error"
+        /** A partial-recovery note (e.g. a truncated ZIP): shown on Result, never a failure. */
+        const val KEY_PARTIAL_WARNING = "partial_warning"
         /** Total input size in bytes, for before/after size display on Result. */
         const val KEY_INPUT_SIZE_BYTES = "input_size_bytes"
         
@@ -264,6 +266,10 @@ class ConversionWorker @AssistedInject constructor(
             // Archive tools share one create and one extract path (ZIP,
             // TAR.GZ, 7z differ only in format), so a new archive tool is
             // one line in the when below instead of a copied branch.
+            // Set by the extract branch when an archive was recovered
+            // only in part; carried into the success data below.
+            var partialWarning: String? = null
+
             suspend fun runCreateArchive(format: ArchiveFormat, outputExt: String): List<Uri> {
                 checkCancellation()
                 val uris = inputUrisArray?.map { Uri.parse(it) }
@@ -328,11 +334,12 @@ class ConversionWorker @AssistedInject constructor(
                     },
                     shouldContinue = { !isStopped }
                 )
-                outputsToCleanup.addAll(result)
+                outputsToCleanup.addAll(result.uris)
+                partialWarning = result.warning
                 checkCancellation()
                 notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 80, cancelPendingIntent)
                 setProgress(workDataOf("progress" to 80))
-                return result
+                return result.uris
             }
 
             val resultUris: List<Uri> = when (conversionType) {
@@ -1115,7 +1122,8 @@ class ConversionWorker @AssistedInject constructor(
                 workDataOf(
                     KEY_OUTPUT_URI to primaryOutputUri.toString(),
                     KEY_OUTPUT_URIS to outUrisString,
-                    KEY_INPUT_SIZE_BYTES to totalInputBytes
+                    KEY_INPUT_SIZE_BYTES to totalInputBytes,
+                    KEY_PARTIAL_WARNING to (partialWarning ?: "")
                 )
             )
         } catch (e: Exception) {

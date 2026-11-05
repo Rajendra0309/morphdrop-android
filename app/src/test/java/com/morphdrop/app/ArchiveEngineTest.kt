@@ -9,6 +9,7 @@ import org.apache.commons.compress.archivers.sevenz.SevenZOutputFile
 import org.apache.commons.compress.archivers.zip.ZipArchiveEntry
 import org.apache.commons.compress.archivers.zip.ZipArchiveOutputStream
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -166,6 +167,18 @@ class ArchiveEngineTest {
         } finally {
             dir.deleteRecursively()
         }
+    }
+
+    @Test
+    fun `zip end record is found in a valid tail and missed in a truncated one`() {
+        // Minimal End of Central Directory record: signature + 18 zero bytes.
+        val validTail = byteArrayOf(0x50, 0x4B, 0x05, 0x06) + ByteArray(18)
+        assertTrue(ArchiveEngine.hasZipEndRecord(validTail))
+        // Junk after the record doesn't hide it (trailing data, ZIP64 locator).
+        assertTrue(ArchiveEngine.hasZipEndRecord(validTail + byteArrayOf(1, 2, 3)))
+        // A tail cut before the record — the truncated case — has no signature.
+        assertFalse(ArchiveEngine.hasZipEndRecord(ByteArray(64) { 0x41 }))
+        assertFalse(ArchiveEngine.hasZipEndRecord(ByteArray(0)))
     }
 
     @Test

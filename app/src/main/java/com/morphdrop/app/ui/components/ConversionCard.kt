@@ -35,6 +35,15 @@ import com.morphdrop.app.ui.theme.chipColors
 /** Tools whose output format is chosen per conversion, so no single "to X" label is honest. */
 private val MULTI_FORMAT_TOOL_IDS = setOf("image_converter", "image_resize", "heic_to_image", "pdf_to_images")
 
+/**
+ * Tools that don't convert one format into another: their input and
+ * output types are the same ("ZIP to ZIP"), so a screen reader should
+ * announce the name and description instead.
+ */
+private val DESCRIPTION_TOOL_IDS = setOf(
+    "zip_create", "zip_extract", "tar_create", "tar_extract", "sevenz_extract"
+)
+
 @Composable
 fun ConversionCard(
     conversionType: ConversionType,
@@ -69,7 +78,8 @@ fun ConversionCard(
             .semantics {
                 contentDescription =
                     if (conversionType.id == "photo_studio" || conversionType.id == "qr_studio" ||
-                        conversionType.id in MULTI_FORMAT_TOOL_IDS
+                        conversionType.id in MULTI_FORMAT_TOOL_IDS ||
+                        conversionType.id in DESCRIPTION_TOOL_IDS
                     ) {
                         // Studios are not "X to Y" conversions, and
                         // multi-format tools have no single output type.
