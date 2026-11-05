@@ -144,6 +144,31 @@ class ArchiveEngineTest {
     }
 
     @Test
+    fun `plain tar extract`() {
+        val bytes = ByteArrayOutputStream().also { out ->
+            org.apache.commons.compress.archivers.tar.TarArchiveOutputStream(out).use { tar ->
+                val data = "plain".toByteArray()
+                val entry = org.apache.commons.compress.archivers.tar.TarArchiveEntry("plain.txt")
+                entry.size = data.size.toLong()
+                tar.putArchiveEntry(entry)
+                tar.write(data)
+                tar.closeArchiveEntry()
+                tar.finish()
+            }
+        }.toByteArray()
+        val listed = engine.listEntries(ByteArrayInputStream(bytes), ArchiveFormat.TAR)
+        assertEquals(listOf("plain.txt"), listed.map { it.name })
+        val dir = createTempDir("archive-test").apply { mkdirs() }
+        try {
+            val extracted = engine.extract(ByteArrayInputStream(bytes), ArchiveFormat.TAR, dir, bytes.size.toLong())
+            assertEquals(1, extracted.size)
+            assertEquals("plain", File(dir, "plain.txt").readText())
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
     fun `sevenz list and extract round trip`() {
         val sevenZFile = File.createTempFile("archive-test", ".7z")
         SevenZOutputFile(sevenZFile).use { out ->

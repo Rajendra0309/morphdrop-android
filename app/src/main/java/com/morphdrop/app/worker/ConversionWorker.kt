@@ -205,6 +205,7 @@ class ConversionWorker @AssistedInject constructor(
                 "audio_trimmer" -> inputData.getString(KEY_TARGET_FORMAT) ?: "m4a"
                 "video_to_audio" -> inputData.getString(KEY_TARGET_FORMAT) ?: "m4a"
                 "zip_create" -> "zip"
+                "tar_create" -> "tar.gz"
                 "zip_extract", "tar_extract", "sevenz_extract" -> "" // Folder
                 "metadata_editor" -> inputExt
                 else -> if (inputExt.isNotBlank()) inputExt else "pdf"
@@ -244,7 +245,7 @@ class ConversionWorker @AssistedInject constructor(
             // ProcessingViewModel caches them on first sight, since
             // later progress updates replace the whole progress Data.
             val inputFormatForProgress =
-                inputFileName.substringAfterLast('.', "").lowercase()
+                formatOfFileName(inputFileName)
                     .takeIf { it.isNotBlank() }
             val outputFormatForProgress =
                 outputFileName.substringAfterLast('.', "").lowercase()
@@ -259,6 +260,80 @@ class ConversionWorker @AssistedInject constructor(
                 }
                 .build()
             setProgress(initialProgress)
+
+            // Archive tools share one create and one extract path (ZIP,
+            // TAR.GZ, 7z differ only in format), so a new archive tool is
+            // one line in the when below instead of a copied branch.
+            suspend fun runCreateArchive(format: ArchiveFormat, outputExt: String): List<Uri> {
+                checkCancellation()
+                val uris = inputUrisArray?.map { Uri.parse(it) }
+                    ?: listOf(Uri.parse(requireNotNull(inputUriString)))
+                val firstExt = formatOfFileName(FileHelper.getFileName(appContext, uris.first()))
+                notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 30, cancelPendingIntent)
+                setProgress(workDataOf(
+                    "progress" to 30,
+                    "input_format" to firstExt,
+                    "output_format" to outputExt
+                ))
+                var lastMappedProgress = 30
+                val result = createArchiveUseCase(
+                    inputUris = uris,
+                    format = format,
+                    outputFileName = outputFileName,
+                    onProgress = { fraction ->
+                        val mapped = (30 + (fraction.coerceIn(0f, 1f) * 50)).toInt()
+                        if (mapped != lastMappedProgress) {
+                            lastMappedProgress = mapped
+                            notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), mapped, cancelPendingIntent)
+                            setProgressAsync(workDataOf(
+                                "progress" to mapped,
+                                "input_format" to firstExt,
+                                "output_format" to outputExt
+                            ))
+                        }
+                    },
+                    shouldContinue = { !isStopped }
+                )
+                outputsToCleanup.add(result)
+                checkCancellation()
+                notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 80, cancelPendingIntent)
+                setProgress(workDataOf("progress" to 80))
+                return listOf(result)
+            }
+
+            suspend fun runExtractArchive(format: ArchiveFormat): List<Uri> {
+                checkCancellation()
+                val uri = Uri.parse(requireNotNull(inputUriString))
+                val inputExt = formatOfFileName(inputFileName)
+                notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 30, cancelPendingIntent)
+                setProgress(workDataOf(
+                    "progress" to 30,
+                    "input_format" to inputExt
+                ))
+                var lastMappedProgress = 30
+                val result = extractArchiveUseCase(
+                    inputUri = uri,
+                    format = format,
+                    outputFolderName = outputFileName,
+                    onProgress = { fraction ->
+                        val mapped = (30 + (fraction.coerceIn(0f, 1f) * 50)).toInt()
+                        if (mapped != lastMappedProgress) {
+                            lastMappedProgress = mapped
+                            notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), mapped, cancelPendingIntent)
+                            setProgressAsync(workDataOf(
+                                "progress" to mapped,
+                                "input_format" to inputExt
+                            ))
+                        }
+                    },
+                    shouldContinue = { !isStopped }
+                )
+                outputsToCleanup.addAll(result)
+                checkCancellation()
+                notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 80, cancelPendingIntent)
+                setProgress(workDataOf("progress" to 80))
+                return result
+            }
 
             val resultUris: List<Uri> = when (conversionType) {
                 "pdf_to_images" -> {
@@ -686,77 +761,13 @@ class ConversionWorker @AssistedInject constructor(
                     listOf(result)
                 }
 
-                "zip_create" -> {
-                    checkCancellation()
-                    val uris = inputUrisArray?.map { Uri.parse(it) }
-                        ?: listOf(Uri.parse(requireNotNull(inputUriString)))
-                    val firstExt = FileHelper.getFileName(appContext, uris.first())
-                        .substringAfterLast('.', "").lowercase()
-                    notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 30, cancelPendingIntent)
-                    setProgress(workDataOf(
-                        "progress" to 30,
-                        "input_format" to firstExt,
-                        "output_format" to "zip"
-                    ))
-                    var lastMappedProgress = 30
-                    val result = createArchiveUseCase(
-                        inputUris = uris,
-                        format = ArchiveFormat.ZIP,
-                        outputFileName = outputFileName,
-                        onProgress = { fraction ->
-                            val mapped = (30 + (fraction.coerceIn(0f, 1f) * 50)).toInt()
-                            if (mapped != lastMappedProgress) {
-                                lastMappedProgress = mapped
-                                notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), mapped, cancelPendingIntent)
-                                setProgressAsync(workDataOf(
-                                    "progress" to mapped,
-                                    "input_format" to firstExt,
-                                    "output_format" to "zip"
-                                ))
-                            }
-                        },
-                        shouldContinue = { !isStopped }
-                    )
-                    outputsToCleanup.add(result)
-                    checkCancellation()
-                    notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 80, cancelPendingIntent)
-                    setProgress(workDataOf("progress" to 80))
-                    listOf(result)
-                }
-
-                "zip_extract" -> {
-                    checkCancellation()
-                    val uri = Uri.parse(requireNotNull(inputUriString))
-                    val inputExt = inputFileName.substringAfterLast('.', "").lowercase()
-                    notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 30, cancelPendingIntent)
-                    setProgress(workDataOf(
-                        "progress" to 30,
-                        "input_format" to inputExt
-                    ))
-                    var lastMappedProgress = 30
-                    val result = extractArchiveUseCase(
-                        inputUri = uri,
-                        format = ArchiveFormat.ZIP,
-                        outputFolderName = outputFileName,
-                        onProgress = { fraction ->
-                            val mapped = (30 + (fraction.coerceIn(0f, 1f) * 50)).toInt()
-                            if (mapped != lastMappedProgress) {
-                                lastMappedProgress = mapped
-                                notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), mapped, cancelPendingIntent)
-                                setProgressAsync(workDataOf(
-                                    "progress" to mapped,
-                                    "input_format" to inputExt
-                                ))
-                            }
-                        },
-                        shouldContinue = { !isStopped }
-                    )
-                    outputsToCleanup.addAll(result)
-                    checkCancellation()
-                    notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 80, cancelPendingIntent)
-                    setProgress(workDataOf("progress" to 80))
-                    result
-                }
+                "zip_create" -> runCreateArchive(ArchiveFormat.ZIP, "zip")
+                "tar_create" -> runCreateArchive(ArchiveFormat.TAR_GZ, "tar.gz")
+                "zip_extract" -> runExtractArchive(ArchiveFormat.ZIP)
+                "tar_extract" -> runExtractArchive(
+                    ArchiveFormat.detect(inputFileName) ?: ArchiveFormat.TAR_GZ
+                )
+                "sevenz_extract" -> runExtractArchive(ArchiveFormat.SEVENZ)
 
                 "heic_to_image" -> {
                     val uris = inputUrisArray?.map { Uri.parse(it) }
@@ -1180,6 +1191,19 @@ class ConversionWorker @AssistedInject constructor(
         }
     }
 
+    /**
+     * The format label for a filename, for the Processing screen. A plain
+     * substringAfterLast('.') would call "backup.tar.gz" just "gz", so
+     * two-part archive extensions are handled here.
+     */
+    private fun formatOfFileName(name: String): String {
+        val lower = name.lowercase()
+        return when {
+            lower.endsWith(".tar.gz") || lower.endsWith(".tgz") -> "tar.gz"
+            else -> name.substringAfterLast('.', "").lowercase()
+        }
+    }
+
     private fun mapIdToDisplayName(id: String): String {
         return when (id) {
             "metadata_editor" -> "Metadata Inspector & Editor"
@@ -1202,6 +1226,9 @@ class ConversionWorker @AssistedInject constructor(
             "video_to_audio" -> "Video to Audio"
             "zip_create" -> "Create ZIP"
             "zip_extract" -> "Extract ZIP"
+            "tar_create" -> "Create TAR.GZ"
+            "tar_extract" -> "Extract TAR.GZ"
+            "sevenz_extract" -> "Extract 7z"
             "ocr_searchable_pdf" -> "OCR to Searchable PDF"
             "sign_pdf" -> "Sign PDF"
             "pdf_to_csv" -> "PDF to CSV"

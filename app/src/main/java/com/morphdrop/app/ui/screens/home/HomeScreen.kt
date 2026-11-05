@@ -961,11 +961,14 @@ private fun ToolPickerDialog(
                                     overflow = TextOverflow.Ellipsis
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
-                                if (tool.id == "metadata_editor") {
+                                if (tool.id == "metadata_editor" || tool.id in ARCHIVE_EXTRACT_TOOL_IDS) {
                                     // No format badge here: Metadata Editor
                                     // works on any input and keeps it, so
                                     // its static JPG -> JPG badge lies for
-                                    // MP4, PDF, CSV and Markdown alike.
+                                    // MP4, PDF, CSV and Markdown alike; and
+                                    // an extract tool's output is a folder,
+                                    // not another archive, so its ZIP -> ZIP
+                                    // (or TAR.GZ -> TAR.GZ) badge lies too.
                                     Text(
                                         text = tool.description,
                                         style = MaterialTheme.typography.bodySmall,
@@ -1037,6 +1040,8 @@ private fun candidateToolsForUri(context: android.content.Context, uri: Uri): Li
         ext in listOf("mp4", "mkv", "mov", "webm", "3gp") ->
             listOf("video_to_audio", "metadata_editor")
         ext == "zip" -> listOf("zip_extract", "metadata_editor")
+        ext in listOf("tar", "gz", "tgz") -> listOf("tar_extract", "metadata_editor")
+        ext == "7z" -> listOf("sevenz_extract", "metadata_editor")
         // Fallback for unknown extensions: sniff the MIME type.
         mime.startsWith("image/") ->
             listOf("images_to_pdf", "image_converter", "compress_images", "metadata_editor")
@@ -1051,6 +1056,9 @@ private fun candidateToolsForUri(context: android.content.Context, uri: Uri): Li
     val byId = ConversionType.defaultList.associateBy { it.id }
     return ids.mapNotNull { byId[it] }
 }
+
+/** Archive extract tools: their output is a folder, not another archive. */
+private val ARCHIVE_EXTRACT_TOOL_IDS = setOf("zip_extract", "tar_extract", "sevenz_extract")
 
 /** What the picker's "View in the app" row does. Matched on this, never on
  *  the display label, so renaming a label can't silently break the action. */

@@ -267,6 +267,9 @@ class ConversionConfigViewModel @Inject constructor(
             "video_to_audio" -> listOf("mp4", "mkv", "mov", "webm", "3gp")
             "zip_create" -> emptyList() // Empty list = ALL file types allowed!
             "zip_extract" -> listOf("zip")
+            "tar_create" -> emptyList() // Empty list = ALL file types allowed!
+            "tar_extract" -> listOf("tar", "gz", "tgz")
+            "sevenz_extract" -> listOf("7z")
             "txt_to_pdf", "text_to_pdf" -> listOf("txt")
             "md_to_pdf" -> listOf("md", "markdown")
             "pdf_to_images", "pdf_to_text", "pdf_to_docx", "pdf_to_csv", "pdf_to_excel", "ocr_searchable_pdf", "split_pdf", "compress_pdf", "protect_pdf", "unlock_pdf", "organize_pdf", "merge_pdf" -> listOf("pdf")

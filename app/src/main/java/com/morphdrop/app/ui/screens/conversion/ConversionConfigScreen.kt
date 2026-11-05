@@ -143,6 +143,9 @@ fun ConversionConfigScreen(
         "video_to_audio" -> arrayOf("video/*")
         "zip_create" -> arrayOf("*/*")
         "zip_extract" -> arrayOf("application/zip", "application/x-zip-compressed")
+        "tar_create" -> arrayOf("*/*")
+        "tar_extract" -> arrayOf("application/x-tar", "application/gzip", "application/x-gzip")
+        "sevenz_extract" -> arrayOf("application/x-7z-compressed")
         else -> arrayOf("*/*")
     }
 

@@ -452,6 +452,36 @@ data class ConversionType(
                 icon = Icons.Outlined.Unarchive,
                 category = CATEGORY_ARCHIVES,
                 isMultiFileAllowed = false
+            ),
+            ConversionType(
+                id = "tar_create",
+                name = "Create TAR.GZ",
+                description = "Combine files into a TAR.GZ archive",
+                inputType = FileType.TAR,
+                outputType = FileType.TAR,
+                icon = Icons.Outlined.Archive,
+                category = CATEGORY_ARCHIVES,
+                isMultiFileAllowed = true
+            ),
+            ConversionType(
+                id = "tar_extract",
+                name = "Extract TAR.GZ",
+                description = "Unpack a TAR or TAR.GZ archive into a folder",
+                inputType = FileType.TAR,
+                outputType = FileType.TAR,
+                icon = Icons.Outlined.Unarchive,
+                category = CATEGORY_ARCHIVES,
+                isMultiFileAllowed = false
+            ),
+            ConversionType(
+                id = "sevenz_extract",
+                name = "Extract 7z",
+                description = "Unpack a 7z archive into a folder",
+                inputType = FileType.SEVENZ,
+                outputType = FileType.SEVENZ,
+                icon = Icons.Outlined.Unarchive,
+                category = CATEGORY_ARCHIVES,
+                isMultiFileAllowed = false
             )
         )
     }

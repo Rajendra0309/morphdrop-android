@@ -169,6 +169,24 @@ fun ConversionCard(
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                     contentColor = MaterialTheme.colorScheme.onPrimaryContainer
                 )
+            } else if (conversionType.id == "tar_create") {
+                FormatChip(
+                    format = "ALL → TAR.GZ",
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            } else if (conversionType.id == "tar_extract") {
+                FormatChip(
+                    format = "TAR.GZ → FOLDER",
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            } else if (conversionType.id == "sevenz_extract") {
+                FormatChip(
+                    format = "7Z → FOLDER",
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                )
             } else {
                 TransformIndicator(
                     conversionType = conversionType,
