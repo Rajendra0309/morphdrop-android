@@ -5,10 +5,12 @@ import android.content.res.Configuration
 import android.net.Uri
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -77,11 +79,13 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.Role
@@ -269,21 +273,52 @@ fun HomeScreenContent(
     // Quick-return header: visible at the top, hidden while scrolling
     // down, and shown again on any upward scroll — not only when the
     // grid reaches the very top.
+    //
+    // The old version flipped on ANY direction change, so the natural
+    // micro-reversals of a finger drag flickered the header in and out
+    // and the list jumped under the finger. Now a flip needs real
+    // travel in one direction first (48dp down to hide, 24dp up to
+    // show), and the very top always shows the header.
     var headerVisible by remember { mutableStateOf(true) }
+    val headerDensity = LocalDensity.current
+    val hideAfterPx = with(headerDensity) { 48.dp.toPx() }
+    val showAfterPx = with(headerDensity) { 24.dp.toPx() }
     LaunchedEffect(gridState) {
         var previousIndex = 0
         var previousOffset = 0
+        // Distance travelled in the current direction, in pixels. An
+        // item-index step counts as one row of travel, since the offset
+        // resets to 0 on the new item.
+        var travelPx = 0f
         snapshotFlow {
             gridState.firstVisibleItemIndex to gridState.firstVisibleItemScrollOffset
         }.collect { (index, offset) ->
-            headerVisible = when {
-                index == 0 && offset == 0 -> true
-                index > previousIndex ||
-                    (index == previousIndex && offset > previousOffset) -> false
-                else -> true
+            val deltaPx = if (index != previousIndex) {
+                (index - previousIndex) * 100f
+            } else {
+                (offset - previousOffset).toFloat()
             }
             previousIndex = index
             previousOffset = offset
+            if (index == 0 && offset == 0) {
+                headerVisible = true
+                travelPx = 0f
+                return@collect
+            }
+            if (deltaPx == 0f) return@collect
+            if (travelPx == 0f || (travelPx > 0) == (deltaPx > 0)) {
+                travelPx += deltaPx
+            } else {
+                // Direction reversed: start counting the new direction.
+                travelPx = deltaPx
+            }
+            if (headerVisible && travelPx > hideAfterPx) {
+                headerVisible = false
+                travelPx = 0f
+            } else if (!headerVisible && travelPx < -showAfterPx) {
+                headerVisible = true
+                travelPx = 0f
+            }
         }
     }
 
@@ -443,130 +478,42 @@ fun HomeScreenContent(
             }
         }
 
-        Column(modifier = Modifier.fillMaxSize()) {
-            AnimatedVisibility(
-                visible = headerVisible,
-                enter = expandVertically() + fadeIn(),
-                exit = shrinkVertically() + fadeOut()
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(
-                            top = innerPadding.calculateTopPadding(),
-                            start = 16.dp,
-                            end = 16.dp
-                        )
-                ) {
-                    Text(
-                        text = "MorphDrop",
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Black,
-                        color = MaterialTheme.colorScheme.onBackground
-                    )
-                    Text(
-                        text = "Drop. Transform. Done.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    MorphDropSearchBar(
-                        query = searchQuery,
-                        onQueryChange = onSearchQueryChange,
-                        active = false,
-                        onActiveChange = { },
-                        focusRequester = focusRequester,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp, bottom = 4.dp)
-                    )
-                    Box(modifier = Modifier.fillMaxWidth()) {
-                        LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            contentPadding = PaddingValues(end = 32.dp, top = 4.dp, bottom = 4.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            item {
-                                FilterChip(
-                                    selected = selectedFilter == HomeFilter.ALL,
-                                    onClick = { selectedFilter = HomeFilter.ALL },
-                                    label = { Text("All ${ConversionType.defaultList.size}") },
-                                    modifier = Modifier.semantics {
-                                        contentDescription = "Show all ${ConversionType.defaultList.size} tools"
-                                    }
-                                )
-                            }
-                            item {
-                                FilterChip(
-                                    selected = selectedFilter == HomeFilter.FAVORITES,
-                                    onClick = { selectedFilter = HomeFilter.FAVORITES },
-                                    label = { Text("Favorites") },
-                                    leadingIcon = {
-                                        Icon(
-                                            imageVector = Icons.Default.Favorite,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                    },
-                                    modifier = Modifier.semantics {
-                                        contentDescription = "Show favorite tools, ${favoriteTypes.size} pinned"
-                                    }
-                                )
-                            }
-                            val categoryFilters = listOf(
-                                HomeFilter.CONVERSIONS to ConversionType.CATEGORY_CONVERSIONS,
-                                HomeFilter.PDF_TOOLS to ConversionType.CATEGORY_PDF_TOOLS,
-                                HomeFilter.IMAGE_TOOLS to ConversionType.CATEGORY_IMAGE_TOOLS,
-                                HomeFilter.AUDIO to ConversionType.CATEGORY_AUDIO,
-                                HomeFilter.ARCHIVES to ConversionType.CATEGORY_ARCHIVES
-                            )
-                            categoryFilters.forEach { (filter, categoryName) ->
-                                val count = ConversionType.defaultList.count { it.category == categoryName }
-                                item {
-                                    FilterChip(
-                                        selected = selectedFilter == filter,
-                                        onClick = { selectedFilter = filter },
-                                        label = { Text("$categoryName $count") },
-                                        modifier = Modifier.semantics {
-                                            contentDescription = "Filter by $categoryName, $count tools"
-                                        }
-                                    )
-                                }
-                            }
-                        }
-                        // Fade at the right edge: a hint the chip row
-                        // scrolls. The 32dp end padding keeps the last
-                        // chip out from under it, so it is never clipped.
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.CenterEnd)
-                                .width(28.dp)
-                                .height(40.dp)
-                                .background(
-                                    Brush.horizontalGradient(
-                                        listOf(
-                                            Color.Transparent,
-                                            MaterialTheme.colorScheme.background
-                                        )
-                                    )
-                                )
-                        )
-                    }
-                }
-            }
+        // Header overlays the grid instead of sitting above it: the
+        // old expand/shrink AnimatedVisibility resized the grid on
+        // every flip, so the cards shifted under the finger mid-scroll
+        // (and the search bar clipped half-way through the animation).
+        // Now the header slides away intact and the grid's top padding
+        // animates with it, so the list glides instead of jumping. The
+        // header stays OUTSIDE the grid, so the search-focus fix is
+        // untouched.
+        val density = LocalDensity.current
+        var headerHeightPx by remember {
+            mutableStateOf(with(density) { 216.dp.roundToPx() })
+        }
+        val headerHeightDp = with(density) { headerHeightPx.toDp() }
+        val gridTopPadding by animateDpAsState(
+            targetValue = if (headerVisible) headerHeightDp + 8.dp else 8.dp,
+            animationSpec = tween(durationMillis = 200),
+            label = "gridTopPadding"
+        )
+        // The chip row keeps its scroll position when the header hides
+        // and comes back: its state lives outside the AnimatedVisibility,
+        // so leaving composition doesn't reset it to "All 42".
+        val chipsListState = rememberLazyListState()
 
+        Box(modifier = Modifier.fillMaxSize()) {
             LazyVerticalGrid(
                 state = gridState,
                 columns = GridCells.Fixed(gridColumns),
                 contentPadding = PaddingValues(
                     start = 16.dp,
                     end = 16.dp,
-                    top = 8.dp,
+                    top = gridTopPadding,
                     bottom = innerPadding.calculateBottomPadding() + 48.dp
                 ),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.fillMaxSize()
             ) {
                 if (searching) {
                     item(key = "search-count", span = { GridItemSpan(maxLineSpan) }) {
@@ -746,6 +693,121 @@ fun HomeScreenContent(
                                 )
                             }
                         }
+                    }
+                }
+            }
+            AnimatedVisibility(
+                visible = headerVisible,
+                modifier = Modifier.align(Alignment.TopCenter),
+                enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
+                exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.background)
+                        .onGloballyPositioned { headerHeightPx = it.size.height }
+                        .padding(
+                            top = innerPadding.calculateTopPadding(),
+                            start = 16.dp,
+                            end = 16.dp,
+                            bottom = 8.dp
+                        )
+                ) {
+                    Text(
+                        text = "MorphDrop",
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Black,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                    Text(
+                        text = "Drop. Transform. Done.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    MorphDropSearchBar(
+                        query = searchQuery,
+                        onQueryChange = onSearchQueryChange,
+                        active = false,
+                        onActiveChange = { },
+                        focusRequester = focusRequester,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp, bottom = 4.dp)
+                    )
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        LazyRow(
+                            state = chipsListState,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            contentPadding = PaddingValues(end = 32.dp, top = 4.dp, bottom = 4.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            item {
+                                FilterChip(
+                                    selected = selectedFilter == HomeFilter.ALL,
+                                    onClick = { selectedFilter = HomeFilter.ALL },
+                                    label = { Text("All ${ConversionType.defaultList.size}") },
+                                    modifier = Modifier.semantics {
+                                        contentDescription = "Show all ${ConversionType.defaultList.size} tools"
+                                    }
+                                )
+                            }
+                            item {
+                                FilterChip(
+                                    selected = selectedFilter == HomeFilter.FAVORITES,
+                                    onClick = { selectedFilter = HomeFilter.FAVORITES },
+                                    label = { Text("Favorites") },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.Favorite,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    },
+                                    modifier = Modifier.semantics {
+                                        contentDescription = "Show favorite tools, ${favoriteTypes.size} pinned"
+                                    }
+                                )
+                            }
+                            val categoryFilters = listOf(
+                                HomeFilter.CONVERSIONS to ConversionType.CATEGORY_CONVERSIONS,
+                                HomeFilter.PDF_TOOLS to ConversionType.CATEGORY_PDF_TOOLS,
+                                HomeFilter.IMAGE_TOOLS to ConversionType.CATEGORY_IMAGE_TOOLS,
+                                HomeFilter.AUDIO to ConversionType.CATEGORY_AUDIO,
+                                HomeFilter.ARCHIVES to ConversionType.CATEGORY_ARCHIVES
+                            )
+                            categoryFilters.forEach { (filter, categoryName) ->
+                                val count = ConversionType.defaultList.count { it.category == categoryName }
+                                item {
+                                    FilterChip(
+                                        selected = selectedFilter == filter,
+                                        onClick = { selectedFilter = filter },
+                                        label = { Text("$categoryName $count") },
+                                        modifier = Modifier.semantics {
+                                            contentDescription = "Filter by $categoryName, $count tools"
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                        // Fade at the right edge: a hint the chip row
+                        // scrolls. The 32dp end padding keeps the last
+                        // chip out from under it, so it is never clipped.
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.CenterEnd)
+                                .width(28.dp)
+                                .height(40.dp)
+                                .background(
+                                    Brush.horizontalGradient(
+                                        listOf(
+                                            Color.Transparent,
+                                            MaterialTheme.colorScheme.background
+                                        )
+                                    )
+                                )
+                        )
                     }
                 }
             }

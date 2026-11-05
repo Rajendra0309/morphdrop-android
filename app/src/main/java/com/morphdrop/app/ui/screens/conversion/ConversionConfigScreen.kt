@@ -1081,6 +1081,7 @@ private fun FileDropZone(
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             text = if (isExcel) "Select Excel Spreadsheet (.xlsx, .xls, .csv)"
+                            else if (state.conversionType?.isMultiFileAllowed == true) "Tap to choose files"
                             else "Tap to choose a file",
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.SemiBold,
@@ -1125,15 +1126,22 @@ private fun FileDropZone(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.Center
                         ) {
+                            // Several files staged (e.g. Create ZIP): the
+                            // name field reads "N files selected", which
+                            // is not a filename — don't run it through
+                            // the per-file icon/label helpers.
+                            val fileCount = state.selectedFileUris.size
                             Icon(
-                                imageVector = getContentIconForFileName(state.selectedFileName),
+                                imageVector = if (fileCount > 1) Icons.AutoMirrored.Filled.InsertDriveFile
+                                else getContentIconForFileName(state.selectedFileName),
                                 contentDescription = null,
                                 modifier = Modifier.size(56.dp),
                                 tint = scheme.primary
                             )
                             Spacer(modifier = Modifier.height(10.dp))
                             Text(
-                                text = getContentLabelForFileName(state.selectedFileName),
+                                text = if (fileCount > 1) "$fileCount files"
+                                else getContentLabelForFileName(state.selectedFileName),
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = scheme.onSurface
@@ -1204,7 +1212,15 @@ private fun FileDropZone(
                         modifier = Modifier.weight(1f),
                         leadingIcon = Icons.Default.UploadFile
                     )
-                    if (state.conversionType?.id == "merge_pdf" && hasFile) {
+                    // Add More is for every multi-file tool, not just
+                    // Merge PDF: without it, Create ZIP / Create TAR.GZ
+                    // (and Batch OCR, Compress Images) could only ever
+                    // hold the one file the picker returned, even though
+                    // the ViewModel and the worker both handle a list.
+                    // The picker itself may return one file on some
+                    // devices, so accumulating one tap at a time is the
+                    // path that works everywhere.
+                    if (state.conversionType?.isMultiFileAllowed == true && hasFile) {
                         MorphButton(
                             text = "Add More",
                             onClick = { onPickFile(true) },
@@ -1220,6 +1236,30 @@ private fun FileDropZone(
                             variant = MorphButtonVariant.Ghost,
                             contentDescription = "Remove selected file"
                         )
+                    }
+                }
+
+                // Staged files, so the user can see what will actually
+                // go into the archive (including same-name collisions).
+                if (state.selectedFileUris.size > 1) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        state.selectedFileNames.take(5).forEach { name ->
+                            Text(
+                                text = name,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = scheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        if (state.selectedFileNames.size > 5) {
+                            Text(
+                                text = "and ${state.selectedFileNames.size - 5} more",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = scheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
             }
