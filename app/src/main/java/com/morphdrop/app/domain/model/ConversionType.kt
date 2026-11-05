@@ -6,7 +6,9 @@ import androidx.compose.material.icons.automirrored.outlined.CallSplit
 import androidx.compose.material.icons.automirrored.outlined.MergeType
 import androidx.compose.material.icons.automirrored.outlined.RotateRight
 import androidx.compose.material.icons.outlined.Article
+import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.AudioFile
+import androidx.compose.material.icons.outlined.Unarchive
 import androidx.compose.material.icons.outlined.ContentCut
 import androidx.compose.material.icons.outlined.Badge
 import androidx.compose.material.icons.outlined.Collections
@@ -49,6 +51,7 @@ data class ConversionType(
         const val CATEGORY_PDF_TOOLS = "PDF Tools"
         const val CATEGORY_IMAGE_TOOLS = "Image Tools"
         const val CATEGORY_AUDIO = "Audio"
+        const val CATEGORY_ARCHIVES = "Archives"
 
         val defaultList = listOf(
             // Conversions
@@ -426,6 +429,28 @@ data class ConversionType(
                 outputType = FileType.M4A,
                 icon = Icons.Outlined.Movie,
                 category = CATEGORY_AUDIO,
+                isMultiFileAllowed = false
+            ),
+            // Archives (Week 3) — RAR is deliberately absent: the archive
+            // library cannot read it at all, so no RAR tool is offered.
+            ConversionType(
+                id = "zip_create",
+                name = "Create ZIP",
+                description = "Combine files into a ZIP archive",
+                inputType = FileType.ZIP,
+                outputType = FileType.ZIP,
+                icon = Icons.Outlined.Archive,
+                category = CATEGORY_ARCHIVES,
+                isMultiFileAllowed = true
+            ),
+            ConversionType(
+                id = "zip_extract",
+                name = "Extract ZIP",
+                description = "Unpack a ZIP archive into a folder",
+                inputType = FileType.ZIP,
+                outputType = FileType.ZIP,
+                icon = Icons.Outlined.Unarchive,
+                category = CATEGORY_ARCHIVES,
                 isMultiFileAllowed = false
             )
         )

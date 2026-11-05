@@ -265,6 +265,8 @@ class ConversionConfigViewModel @Inject constructor(
             "audio_converter" -> listOf("mp3", "m4a", "aac", "wav", "ogg", "opus", "flac")
             "audio_trimmer" -> listOf("mp3", "m4a", "aac", "wav", "ogg", "opus", "flac")
             "video_to_audio" -> listOf("mp4", "mkv", "mov", "webm", "3gp")
+            "zip_create" -> emptyList() // Empty list = ALL file types allowed!
+            "zip_extract" -> listOf("zip")
             "txt_to_pdf", "text_to_pdf" -> listOf("txt")
             "md_to_pdf" -> listOf("md", "markdown")
             "pdf_to_images", "pdf_to_text", "pdf_to_docx", "pdf_to_csv", "pdf_to_excel", "ocr_searchable_pdf", "split_pdf", "compress_pdf", "protect_pdf", "unlock_pdf", "organize_pdf", "merge_pdf" -> listOf("pdf")
@@ -1309,11 +1311,15 @@ class ConversionConfigViewModel @Inject constructor(
 
     fun isFolderOutput(type: ConversionType?): Boolean {
         val t = type ?: return false
+        // Archive creation takes many files in and produces ONE archive
+        // file out, so it is never a folder output, however many files
+        // are selected.
+        if (t.id in listOf("zip_create", "tar_create")) return false
         val isMultipleSelected = _state.value.selectedFileUris.size > 1 || _state.value.workbenchImageItems.count { it.isSelected } > 1
         if (isMultipleSelected && t.id != "merge_pdf" && t.id != "images_to_pdf") {
             return true
         }
-        return t.id in listOf("split_pdf", "compress_images", "organize_pdf") || 
+        return t.id in listOf("split_pdf", "compress_images", "organize_pdf", "zip_extract", "tar_extract", "sevenz_extract") ||
                (t.id == "pdf_to_images" && (_state.value.pageRangeEnd.toIntOrNull() ?: 2) - (_state.value.pageRangeStart.toIntOrNull() ?: 1) > 0)
     }
 

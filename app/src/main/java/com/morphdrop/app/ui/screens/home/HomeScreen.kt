@@ -1036,6 +1036,7 @@ private fun candidateToolsForUri(context: android.content.Context, uri: Uri): Li
             listOf("audio_converter", "audio_trimmer", "metadata_editor")
         ext in listOf("mp4", "mkv", "mov", "webm", "3gp") ->
             listOf("video_to_audio", "metadata_editor")
+        ext == "zip" -> listOf("zip_extract", "metadata_editor")
         // Fallback for unknown extensions: sniff the MIME type.
         mime.startsWith("image/") ->
             listOf("images_to_pdf", "image_converter", "compress_images", "metadata_editor")

@@ -154,6 +154,21 @@ fun ConversionCard(
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                     contentColor = MaterialTheme.colorScheme.onPrimaryContainer
                 )
+            } else if (conversionType.id == "zip_create") {
+                // Create ZIP takes any file in: a ZIP -> ZIP badge would lie
+                // the same way Metadata Editor's JPG -> JPG badge did.
+                FormatChip(
+                    format = "ALL → ZIP",
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            } else if (conversionType.id == "zip_extract") {
+                // Extract produces a folder of files, not another ZIP.
+                FormatChip(
+                    format = "ZIP → FOLDER",
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                )
             } else {
                 TransformIndicator(
                     conversionType = conversionType,

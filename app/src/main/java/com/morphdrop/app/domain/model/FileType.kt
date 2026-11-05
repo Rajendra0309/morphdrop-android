@@ -26,5 +26,8 @@ enum class FileType(
     FLAC("FLAC", "flac", Color(0xFF43A047)), // Green
     OPUS("OPUS", "opus", Color(0xFF5E35B1)), // Deep Purple
     AAC("AAC", "aac", Color(0xFF00838F)), // Teal
-    MP4("MP4", "mp4", Color(0xFFD81B60)) // Pink
+    MP4("MP4", "mp4", Color(0xFFD81B60)), // Pink
+    ZIP("ZIP", "zip", Color(0xFFFF8F00)), // Amber
+    TAR("TAR.GZ", "tar.gz", Color(0xFF26A69A)), // Teal
+    SEVENZ("7Z", "7z", Color(0xFFAB47BC)) // Purple
 }

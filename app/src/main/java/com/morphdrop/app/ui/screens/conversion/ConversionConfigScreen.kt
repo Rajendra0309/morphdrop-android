@@ -141,6 +141,8 @@ fun ConversionConfigScreen(
         "audio_converter" -> arrayOf("audio/*")
         "audio_trimmer" -> arrayOf("audio/*")
         "video_to_audio" -> arrayOf("video/*")
+        "zip_create" -> arrayOf("*/*")
+        "zip_extract" -> arrayOf("application/zip", "application/x-zip-compressed")
         else -> arrayOf("*/*")
     }
 
