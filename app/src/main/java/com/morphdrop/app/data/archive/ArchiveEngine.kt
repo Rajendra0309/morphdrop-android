@@ -120,9 +120,24 @@ class ArchiveEngine(
             ArchiveFormat.ZIP -> {
                 ZipArchiveInputStream(input).use { zip ->
                     var entry = zip.nextEntry
+                    var pending: org.apache.commons.compress.archivers.zip.ZipArchiveEntry? = null
+                    // An entry's size is final only once its data has
+                    // been read: a streaming writer leaves the local
+                    // header at 0 and puts the real size in the data
+                    // descriptor after the data. Advancing to the next
+                    // entry drains the previous one, so record each
+                    // entry one step late — recording immediately is
+                    // what made the preview show "0 B" for every entry
+                    // of an archive the app itself created.
                     while (entry != null) {
-                        entries += ArchiveEntryInfo(entry.name, entry.size.coerceAtLeast(0), entry.isDirectory)
+                        pending?.let { prev ->
+                            entries += ArchiveEntryInfo(prev.name, prev.size.coerceAtLeast(0), prev.isDirectory)
+                        }
+                        pending = entry
                         entry = zip.nextEntry
+                    }
+                    pending?.let { prev ->
+                        entries += ArchiveEntryInfo(prev.name, prev.size.coerceAtLeast(0), prev.isDirectory)
                     }
                 }
             }

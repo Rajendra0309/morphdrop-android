@@ -116,7 +116,9 @@ class ResultViewModel @Inject constructor(
                                         fileName = fileName,
                                         fileSizeFormatted = FileHelper.formatFileSize(fileSize),
                                         fileSizeBytes = fileSize,
-                                        extension = fileName.substringAfterLast('.', ""),
+                                        // Compound extensions included:
+                                        // "packed.tar.gz" is TAR.GZ, not GZ.
+                                        extension = FileHelper.displayFormatOfFileName(fileName),
                                         uri = uri
                                     )
                                 }

@@ -170,6 +170,28 @@ class ArchiveEngineTest {
     }
 
     @Test
+    fun `created zip carries entry sizes in its local headers`() {
+        // The preview reads through a streaming reader, which only sees
+        // local headers: without setSize() every entry listed as 0 B.
+        val zipBytes = ByteArrayOutputStream().also { out ->
+            engine.createZip(
+                listOf(
+                    ArchiveEngine.SizedArchiveEntrySource(
+                        "hello.txt", ByteArrayInputStream("hello".toByteArray()), 5
+                    ),
+                    ArchiveEngine.SizedArchiveEntrySource(
+                        "docs/readme.md", ByteArrayInputStream("# readme".toByteArray()), 8
+                    )
+                ),
+                out, totalInputBytes = 13
+            )
+        }.toByteArray()
+
+        val listed = engine.listEntries(ByteArrayInputStream(zipBytes), ArchiveFormat.ZIP)
+        assertEquals(listOf(5L, 8L), listed.map { it.sizeBytes })
+    }
+
+    @Test
     fun `zip end record is found in a valid tail and missed in a truncated one`() {
         // Minimal End of Central Directory record: signature + 18 zero bytes.
         val validTail = byteArrayOf(0x50, 0x4B, 0x05, 0x06) + ByteArray(18)

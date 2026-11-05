@@ -39,7 +39,11 @@ class CreateArchiveUseCase @Inject constructor(
             "Only ZIP and TAR.GZ archives can be created."
         }
         val ext = if (format == ArchiveFormat.ZIP) "zip" else "tar.gz"
-        val baseName = outputFileName.substringBeforeLast(".", outputFileName)
+        // Compound extensions included: stripping one dot-component
+        // from "notes (v2)_converted.tar.gz" leaves "..._converted.tar",
+        // and re-appending "tar.gz" doubled it to ".tar.tar.gz".
+        // (ZIP was immune only because "zip" has no dot.)
+        val baseName = FileHelper.stripArchiveExtension(outputFileName)
 
         val tmp = File(context.cacheDir, "archive_create_${System.currentTimeMillis()}.tmp")
         try {
