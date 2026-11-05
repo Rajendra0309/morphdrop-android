@@ -147,7 +147,10 @@ class PdfViewerActivity : ComponentActivity() {
             return uri
         }
         return runCatching {
-            val destDir = java.io.File(cacheDir, "shared_incoming").apply { mkdirs() }
+            // Viewer copies live apart from share copies: one directory
+            // used to carry two lifecycles (loose viewer files in the
+            // shared_incoming root, per-share subfolders for shares).
+            val destDir = java.io.File(cacheDir, "viewer_incoming").apply { mkdirs() }
             // Preserve the sender's filename so the viewer's filename chain
             // (provider DISPLAY_NAME → path segment → fallback) shows the real name.
             val sourceName = queryDisplayName(uri)
@@ -191,12 +194,14 @@ class PdfViewerActivity : ComponentActivity() {
             }
     }.getOrNull()
 
-    /** Keeps alphanumerics, dots, dashes and underscores; drops everything else. */
+    /** Viewer cache name: the app's one shared filename rule (FileHelper),
+     *  so "table (1).pdf" keeps its spaces and parens instead of becoming
+     *  "table__1__.pdf" in the title bar. The old stricter rule lived only
+     *  here and disagreed with the share copy's rule. */
     private fun sanitizeFileName(name: String?): String? {
         val cleaned = name
             ?.substringBeforeLast('.')
-            ?.replace(Regex("[^A-Za-z0-9._-]"), "_")
-            ?.trim('_', '.', ' ')
+            ?.let { com.morphdrop.app.util.FileHelper.sanitizeFileName(it) }
             ?.take(80)
         return cleaned?.takeIf { it.isNotBlank() }
     }

@@ -50,13 +50,19 @@ object SharedFileCleanup {
         uris.forEach { deleteIfOwnCacheCopy(context, it) }
     }
 
-    /** Prunes stale share copies and plain-text shares. Call off the main thread. */
+    /** Prunes stale share copies, viewer copies and plain-text shares. Call off the main thread. */
     fun pruneOldSharedFiles(context: Context) {
         val cutoff = System.currentTimeMillis() - MAX_AGE_MS
         runCatching {
             context.cacheDir.resolve("shared_incoming").listFiles()
                 ?.forEach { dir ->
                     if (dir.lastModified() < cutoff) dir.deleteRecursively()
+                }
+        }
+        runCatching {
+            context.cacheDir.resolve("viewer_incoming").listFiles()
+                ?.forEach { file ->
+                    if (file.lastModified() < cutoff) file.delete()
                 }
         }
         runCatching {

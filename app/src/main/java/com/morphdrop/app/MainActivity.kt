@@ -259,13 +259,11 @@ class MainActivity : ComponentActivity() {
     private fun copySharedUriToCache(uri: Uri): Uri? {
         return runCatching {
             val rawName = getUriFileName(uri).substringAfterLast('/').substringAfterLast('\\')
-            // Sanitize only what can break a path: separators and control
-            // characters. Spaces, parentheses and other ordinary filename
-            // characters survive, so a shared "test (5).m4a" keeps its name
-            // (and its output name) instead of becoming "test__5_.m4a".
-            val safeName = rawName
-                .replace('/', '_').replace('\\', '_')
-                .replace(Regex("[\\u0000-\\u001F\\u007F]"), "_")
+            // One shared filename rule for the whole app (FileHelper):
+            // only path-breaking characters are replaced, so a shared
+            // "test (5).m4a" keeps its name (and its output name) instead
+            // of becoming "test__5_.m4a".
+            val safeName = com.morphdrop.app.util.FileHelper.sanitizeFileName(rawName)
                 .ifBlank { "shared_file" }
             // Open the stream FIRST: a failed open must not leave an
             // empty cache subfolder behind (orphan dirs on every failure).

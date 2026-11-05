@@ -38,6 +38,19 @@ object FileHelper {
         }
     }
 
+    /**
+     * The one filename rule for the whole app: replace only what can break
+     * a path — separators and control characters. Spaces, parentheses,
+     * leading underscores and other ordinary filename characters survive,
+     * so a shared "table (1).pdf" keeps its name instead of becoming
+     * "table__1_.pdf". Used by both the share copy and the PDF viewer
+     * cache, which used to have two different (and conflicting) rules.
+     */
+    fun sanitizeFileName(name: String): String =
+        name
+            .replace('/', '_').replace('\\', '_')
+            .replace(Regex("[\\u0000-\\u001F\\u007F]"), "_")
+
     fun sanitizeForPdfBox(text: String): String {
         if (text.isEmpty()) return text
         val sb = StringBuilder(text.length)
