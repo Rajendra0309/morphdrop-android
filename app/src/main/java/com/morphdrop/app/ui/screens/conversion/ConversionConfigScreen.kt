@@ -43,6 +43,7 @@ import androidx.compose.material.icons.outlined.TableChart
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -568,6 +569,13 @@ fun ConversionConfigScreenContent(
                         mediaLocationLauncher.launch(android.Manifest.permission.ACCESS_MEDIA_LOCATION)
                     },
                     onDismiss = { locationBannerDismissed = true }
+                )
+            }
+            if (state.conversionType?.id in ConversionConfigViewModel.ARCHIVE_EXTRACT_TOOL_IDS && state.selectedFileUri != null) {
+                ArchivePreviewView(
+                    entries = state.archiveEntries,
+                    isLoading = state.isArchivePreviewLoading,
+                    error = state.archivePreviewError
                 )
             }
             if (state.conversionType?.id == "metadata_editor" && state.selectedFileUri != null) {
@@ -1291,6 +1299,88 @@ private fun ConfigSection(title: String, content: @Composable () -> Unit) {
             fontWeight = FontWeight.Bold
         )
         content()
+    }
+}
+
+/**
+ * Archive contents, listed before extracting: entry names and sizes,
+ * the first 10 with a "+ N more" line. Folders show as a trailing "/"
+ * and no size. A corrupt or unsupported archive shows its plain
+ * message here instead of a list.
+ */
+@Composable
+private fun ArchivePreviewView(
+    entries: List<com.morphdrop.app.data.archive.ArchiveEntryInfo>?,
+    isLoading: Boolean,
+    error: String?
+) {
+    ConfigSection(title = "Contents") {
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                when {
+                    isLoading -> {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp))
+                            Text(
+                                text = "Reading archive…",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    error != null -> {
+                        Text(
+                            text = error,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                    entries != null -> {
+                        val shown = entries.take(10)
+                        shown.forEach { entry ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = if (entry.isDirectory) "${entry.name.trimEnd('/')}/" else entry.name,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                if (!entry.isDirectory) {
+                                    Text(
+                                        text = com.morphdrop.app.util.FileHelper.formatFileSize(entry.sizeBytes),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(start = 8.dp)
+                                    )
+                                }
+                            }
+                        }
+                        if (entries.size > shown.size) {
+                            Text(
+                                text = "and ${entries.size - shown.size} more",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Text(
+                            text = "${entries.size} ${if (entries.size == 1) "entry" else "entries"}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 

@@ -414,6 +414,7 @@ fun HomeScreenContent(
             HomeFilter.PDF_TOOLS -> type.category == ConversionType.CATEGORY_PDF_TOOLS
             HomeFilter.IMAGE_TOOLS -> type.category == ConversionType.CATEGORY_IMAGE_TOOLS
             HomeFilter.AUDIO -> type.category == ConversionType.CATEGORY_AUDIO
+            HomeFilter.ARCHIVES -> type.category == ConversionType.CATEGORY_ARCHIVES
         }
         val searching = searchQuery.isNotBlank()
         // Search always covers every tool: a query typed while a category
@@ -516,7 +517,8 @@ fun HomeScreenContent(
                                 HomeFilter.CONVERSIONS to ConversionType.CATEGORY_CONVERSIONS,
                                 HomeFilter.PDF_TOOLS to ConversionType.CATEGORY_PDF_TOOLS,
                                 HomeFilter.IMAGE_TOOLS to ConversionType.CATEGORY_IMAGE_TOOLS,
-                                HomeFilter.AUDIO to ConversionType.CATEGORY_AUDIO
+                                HomeFilter.AUDIO to ConversionType.CATEGORY_AUDIO,
+                                HomeFilter.ARCHIVES to ConversionType.CATEGORY_ARCHIVES
                             )
                             categoryFilters.forEach { (filter, categoryName) ->
                                 val count = ConversionType.defaultList.count { it.category == categoryName }
@@ -630,6 +632,7 @@ fun HomeScreenContent(
                         HomeFilter.CONVERSIONS -> ConversionType.CATEGORY_CONVERSIONS
                         HomeFilter.PDF_TOOLS -> ConversionType.CATEGORY_PDF_TOOLS
                         HomeFilter.AUDIO -> ConversionType.CATEGORY_AUDIO
+                        HomeFilter.ARCHIVES -> ConversionType.CATEGORY_ARCHIVES
                         else -> ConversionType.CATEGORY_IMAGE_TOOLS
                     }
                     item(key = "filter-header", span = { GridItemSpan(maxLineSpan) }) {
@@ -715,7 +718,8 @@ fun HomeScreenContent(
                         ConversionType.CATEGORY_CONVERSIONS,
                         ConversionType.CATEGORY_PDF_TOOLS,
                         ConversionType.CATEGORY_IMAGE_TOOLS,
-                        ConversionType.CATEGORY_AUDIO
+                        ConversionType.CATEGORY_AUDIO,
+                        ConversionType.CATEGORY_ARCHIVES
                     )
                     categories.forEach { categoryName ->
                         val itemsInCategory = visibleTypes.filter { it.category == categoryName }
@@ -751,7 +755,7 @@ fun HomeScreenContent(
 
 /** Home grid filter: everything, favorites, or one tool category. */
 private enum class HomeFilter {
-    ALL, FAVORITES, CONVERSIONS, PDF_TOOLS, IMAGE_TOOLS, AUDIO
+    ALL, FAVORITES, CONVERSIONS, PDF_TOOLS, IMAGE_TOOLS, AUDIO, ARCHIVES
 }
 
 /** Dashed drop-zone card that opens the system file picker. */

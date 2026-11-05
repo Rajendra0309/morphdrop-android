@@ -114,7 +114,12 @@ data class ConversionConfigState(
     val trimEndSeconds: String = "",
     val audioDurationMs: Long = 0,
     /** User-readable trim problem, shown under the End field; null = range OK. */
-    val trimErrorMessage: String? = null
+    val trimErrorMessage: String? = null,
+    // Archive preview (extract tools): the archive's contents, listed
+    // before extracting. Null until a file is staged and listed.
+    val archiveEntries: List<com.morphdrop.app.data.archive.ArchiveEntryInfo>? = null,
+    val isArchivePreviewLoading: Boolean = false,
+    val archivePreviewError: String? = null
 ) {
     val selectedFileUri: Uri?
         get() = selectedFileUris.firstOrNull()
@@ -132,7 +137,8 @@ class ConversionConfigViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     @param:ApplicationContext private val context: Context,
     private val settingsRepository: SettingsRepository,
-    private val metadataUseCase: com.morphdrop.app.domain.usecase.conversion.MetadataUseCase
+    private val metadataUseCase: com.morphdrop.app.domain.usecase.conversion.MetadataUseCase,
+    private val extractArchiveUseCase: com.morphdrop.app.domain.usecase.conversion.ExtractArchiveUseCase
 ) : ViewModel() {
 
     private val rawConversionTypeId: String = savedStateHandle["conversionTypeId"] ?: ""
@@ -409,7 +415,12 @@ class ConversionConfigViewModel @Inject constructor(
                 outputFileName = if (it.outputFileName.isBlank() || !append) outName else it.outputFileName,
                 isBatchMode = selectedUris.size > 1,
                 selectedPreviewUri = if (isFirstAnImage) firstSelectedUri else null,
-                errorMessage = null
+                errorMessage = null,
+                // A new file invalidates the previous archive preview;
+                // the loader below replaces it (or its error) for the
+                // new file.
+                archiveEntries = null,
+                archivePreviewError = null
             )
             s.copy(isConvertEnabled = isStateValid(s))
         }
@@ -499,7 +510,61 @@ class ConversionConfigViewModel @Inject constructor(
                 next.copy(isConvertEnabled = isStateValid(next))
             }
         }
+
+        if (type?.id in ARCHIVE_EXTRACT_TOOL_IDS && selectedUris.isNotEmpty()) {
+            if (currentGeneration != fileSelectionGeneration) return@launch
+            loadArchivePreview(context, selectedUris.first())
         }
+        }
+    }
+
+    /**
+     * Lists an archive's contents for the preview section on the config
+     * screen. A stale listing is never shown: the generation guard and
+     * the uri check both drop results that arrive after a newer file.
+     */
+    fun loadArchivePreview(context: Context, uri: Uri) {
+        val fileName = FileHelper.getFileName(context, uri)
+        val format = com.morphdrop.app.data.archive.ArchiveFormat.detect(fileName)
+        if (format == null) {
+            _state.update {
+                it.copy(
+                    archiveEntries = null,
+                    isArchivePreviewLoading = false,
+                    archivePreviewError = "This file isn't a supported archive."
+                )
+            }
+            return
+        }
+        _state.update { it.copy(isArchivePreviewLoading = true, archivePreviewError = null) }
+        viewModelScope.launch {
+            val entries = runCatching { extractArchiveUseCase.listEntries(uri, format) }
+            _state.update { current ->
+                if (current.selectedFileUris.firstOrNull() != uri) return@update current
+                entries.fold(
+                    onSuccess = {
+                        current.copy(
+                            archiveEntries = it,
+                            isArchivePreviewLoading = false,
+                            archivePreviewError = null
+                        )
+                    },
+                    onFailure = { e ->
+                        current.copy(
+                            archiveEntries = null,
+                            isArchivePreviewLoading = false,
+                            archivePreviewError = e.localizedMessage
+                                ?: "Couldn't read this archive — it may be corrupt or incomplete."
+                        )
+                    }
+                )
+            }
+        }
+    }
+
+    companion object {
+        /** Tools whose config screen shows an archive-contents preview. */
+        val ARCHIVE_EXTRACT_TOOL_IDS = setOf("zip_extract", "tar_extract", "sevenz_extract")
     }
 
     fun loadMetadata(context: Context, uri: Uri) {

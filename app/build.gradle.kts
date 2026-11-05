@@ -9,7 +9,7 @@ plugins {
 
 android {
     namespace = "com.morphdrop.app"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.morphdrop.app"
