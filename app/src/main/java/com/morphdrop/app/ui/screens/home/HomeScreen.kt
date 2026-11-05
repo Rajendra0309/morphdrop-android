@@ -5,6 +5,7 @@ import android.content.res.Configuration
 import android.net.Uri
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -79,6 +80,9 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Brush
@@ -274,51 +278,57 @@ fun HomeScreenContent(
     // down, and shown again on any upward scroll — not only when the
     // grid reaches the very top.
     //
-    // The old version flipped on ANY direction change, so the natural
-    // micro-reversals of a finger drag flickered the header in and out
-    // and the list jumped under the finger. Now a flip needs real
-    // travel in one direction first (48dp down to hide, 24dp up to
-    // show), and the very top always shows the header.
-    var headerVisible by remember { mutableStateOf(true) }
+    // The header follows the finger, not the list. The connection below
+    // sees the real scroll deltas (drag and fling) before the grid
+    // consumes them, and a flip needs real travel in one direction
+    // first (48dp down to hide, 24dp up to show). The previous version
+    // instead watched the list's first-visible offset — but the grid's
+    // own top-padding animation moves that offset, so the header's
+    // motion fed back into the decision and the list jiggled. Input
+    // deltas can't do that: a layout change never produces a
+    // nested-scroll event.
+    val headerVisibleState = remember { mutableStateOf(true) }
+    val headerVisible by headerVisibleState
     val headerDensity = LocalDensity.current
     val hideAfterPx = with(headerDensity) { 48.dp.toPx() }
     val showAfterPx = with(headerDensity) { 24.dp.toPx() }
+    val headerScrollConnection = remember(headerDensity) {
+        object : NestedScrollConnection {
+            // Travel in the current direction, in pixels. A direction
+            // reversal restarts the count, so the micro-reversals of a
+            // finger drag can't flicker the header.
+            var travelPx = 0f
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                val dy = available.y
+                if (dy == 0f) return Offset.Zero
+                // Downward scroll moves content up, so dy is negative;
+                // flip the sign so downward travel is positive.
+                val deltaPx = -dy
+                if (travelPx == 0f || (travelPx > 0) == (deltaPx > 0)) {
+                    travelPx += deltaPx
+                } else {
+                    travelPx = deltaPx
+                }
+                if (headerVisibleState.value && travelPx > hideAfterPx) {
+                    headerVisibleState.value = false
+                    travelPx = 0f
+                } else if (!headerVisibleState.value && travelPx < -showAfterPx) {
+                    headerVisibleState.value = true
+                    travelPx = 0f
+                }
+                // Consume nothing: the grid still scrolls normally.
+                return Offset.Zero
+            }
+        }
+    }
+    // The very top always shows the header. This only ever shows it —
+    // never hides — so a programmatic jump to the top (filter change,
+    // search shortcut) restores the header without any feedback path.
     LaunchedEffect(gridState) {
-        var previousIndex = 0
-        var previousOffset = 0
-        // Distance travelled in the current direction, in pixels. An
-        // item-index step counts as one row of travel, since the offset
-        // resets to 0 on the new item.
-        var travelPx = 0f
         snapshotFlow {
             gridState.firstVisibleItemIndex to gridState.firstVisibleItemScrollOffset
         }.collect { (index, offset) ->
-            val deltaPx = if (index != previousIndex) {
-                (index - previousIndex) * 100f
-            } else {
-                (offset - previousOffset).toFloat()
-            }
-            previousIndex = index
-            previousOffset = offset
-            if (index == 0 && offset == 0) {
-                headerVisible = true
-                travelPx = 0f
-                return@collect
-            }
-            if (deltaPx == 0f) return@collect
-            if (travelPx == 0f || (travelPx > 0) == (deltaPx > 0)) {
-                travelPx += deltaPx
-            } else {
-                // Direction reversed: start counting the new direction.
-                travelPx = deltaPx
-            }
-            if (headerVisible && travelPx > hideAfterPx) {
-                headerVisible = false
-                travelPx = 0f
-            } else if (!headerVisible && travelPx < -showAfterPx) {
-                headerVisible = true
-                travelPx = 0f
-            }
+            if (index == 0 && offset == 0) headerVisibleState.value = true
         }
     }
 
@@ -486,6 +496,14 @@ fun HomeScreenContent(
         // animates with it, so the list glides instead of jumping. The
         // header stays OUTSIDE the grid, so the search-focus fix is
         // untouched.
+        //
+        // One motion for both: the padding and the header slide/fade
+        // share the same duration and easing. They used to run on
+        // different specs (200ms tween vs the slide's default spring),
+        // so they finished at different times and the gap between the
+        // header's bottom edge and the first card opened and closed on
+        // every hide/show — the rubber-band jiggle.
+        val headerMotionMillis = 250
         val density = LocalDensity.current
         var headerHeightPx by remember {
             mutableStateOf(with(density) { 216.dp.roundToPx() })
@@ -493,7 +511,10 @@ fun HomeScreenContent(
         val headerHeightDp = with(density) { headerHeightPx.toDp() }
         val gridTopPadding by animateDpAsState(
             targetValue = if (headerVisible) headerHeightDp + 8.dp else 8.dp,
-            animationSpec = tween(durationMillis = 200),
+            animationSpec = tween(
+                durationMillis = headerMotionMillis,
+                easing = FastOutSlowInEasing
+            ),
             label = "gridTopPadding"
         )
         // The chip row keeps its scroll position when the header hides
@@ -513,7 +534,9 @@ fun HomeScreenContent(
                 ),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier
+                    .fillMaxSize()
+                    .nestedScroll(headerScrollConnection)
             ) {
                 if (searching) {
                     item(key = "search-count", span = { GridItemSpan(maxLineSpan) }) {
@@ -699,8 +722,30 @@ fun HomeScreenContent(
             AnimatedVisibility(
                 visible = headerVisible,
                 modifier = Modifier.align(Alignment.TopCenter),
-                enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
-                exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut()
+                enter = slideInVertically(
+                    initialOffsetY = { -it },
+                    animationSpec = tween(
+                        durationMillis = headerMotionMillis,
+                        easing = FastOutSlowInEasing
+                    )
+                ) + fadeIn(
+                    animationSpec = tween(
+                        durationMillis = headerMotionMillis,
+                        easing = FastOutSlowInEasing
+                    )
+                ),
+                exit = slideOutVertically(
+                    targetOffsetY = { -it },
+                    animationSpec = tween(
+                        durationMillis = headerMotionMillis,
+                        easing = FastOutSlowInEasing
+                    )
+                ) + fadeOut(
+                    animationSpec = tween(
+                        durationMillis = headerMotionMillis,
+                        easing = FastOutSlowInEasing
+                    )
+                )
             ) {
                 Column(
                     modifier = Modifier
