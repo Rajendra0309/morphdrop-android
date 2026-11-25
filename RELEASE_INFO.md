@@ -1,20 +1,19 @@
-# MorphDrop v1.6.0 - Studio Tools, Searchable PDFs and a Cleaner Home
+# MorphDrop v1.7.0 - Audio Tools, Archives and a Smoother Home
 
 ## New Features
-- **13 New Tools (34 in Total):** PDF to Text, PDF to Word, PDF to Excel, PDF to CSV, Excel to CSV, CSV to Excel, CSV to PDF, OCR to Searchable PDF, Sign PDF, Photo & Signature Studio, QR Code Studio, HEIC to Image, and Resize Images.
-- **Searchable PDFs, Including Devanagari:** Turn scans into PDFs with a real, selectable text layer in English and Hindi/Marathi, readable by any PDF reader.
-- **Sign PDFs on Device:** Draw a signature or pick one from photos and stamp it on one page or every page, with a live preview before applying.
-- **Photo & Signature Studio:** Exam-ready photo and signature sizing with exact KB targets (e.g. 100 KB) for application forms.
-- **QR Code Studio:** Create QR codes and scan them from the camera or an image, fully offline.
+- **8 New Tools (42 in Total):** Audio Converter, Audio Trimmer, Video to Audio, Create ZIP, Extract ZIP, Create TAR.GZ, Extract TAR.GZ, and Extract 7z.
+- **Audio Tools (WAV & M4A):** Convert audio files, extract audio from video, or trim tracks with start and end markers. Outputs are produced in WAV or M4A (AAC) formats, fully offline.
+- **Archive Creation & Extraction:** Create ZIP and TAR.GZ archives from single or multiple files, and safely extract ZIP, TAR.GZ, and 7z archives into Downloads with zip-slip protection.
 
 ## Improvements
-- **Cleaner Home:** A decluttered Home with a quick-return header, search that keeps focus while typing, and your scroll position and filter kept when you come back from a tool.
-- **History Convert Again:** Re-run any past conversion from History with the same file and settings, including saved Compress presets.
-- **Consistent Tool Screens:** Every PDF tool now shares the same file picker, sticky action button, and spacing as the rest of the app.
-- **Batch Output Naming:** Name converted files in bulk with patterns like {name}, {n}, {nn}, and {date}.
+- **Share Picker:** Shared files now open the Home conversion picker with quick viewer actions (View PDF / View Markdown) on top; sharing multiple files automatically displays multi-file tools.
+- **Multi-File Selection:** The Add More button on the configuration screen allows combining multiple files for tools like Create ZIP.
+- **Archive Preview:** Inspect an archive's contents directly on the configuration screen before extracting.
+- **Truncated Archive Warning:** The Result screen warns when an incomplete or truncated archive was only partially recovered.
+- **Smoother Home:** Collapsing header driven by finger scroll deltas for smooth, jiggle-free navigation.
 
 ## Bug Fixes
-- **Home Search Focus:** Fixed search losing focus after the first character on the All view, and the navbar search shortcut now focuses the field and opens the keyboard.
-- **PDF to Excel/CSV Tables:** Fixed columns shifting on right-aligned numbers and tight table layouts, so values land under the correct headers.
-- **Signature Preview:** Fixed the Sign PDF preview shrinking at small sizes; it now shows at true size.
-- **Searchable PDF Text:** Fixed mixed English and Devanagari pages writing replacement characters and merging words.
+- **TAR.GZ Output Name:** Fixed doubled `.tar.tar.gz` output filenames on Create TAR.GZ.
+- **Archive Preview Sizes:** Fixed archive preview listing 0 B entry sizes for app-created ZIP archives.
+- **Result Archive Chips:** Fixed Result screen displaying a GZ chip for `.tar.gz` files and fixed config-screen badges showing ZIP → ZIP.
+- **File Format Labels:** Fixed `.tar.gz` compound extension files being labelled as GZ.

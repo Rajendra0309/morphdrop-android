@@ -71,7 +71,18 @@
 
 ## Features
 
-### Latest Updates (v1.6.0)
+### Latest Updates (v1.7.0)
+
+> - **8 New Tools, 42 in Total** — Audio Converter, Audio Trimmer, Video to Audio, Create ZIP, Extract ZIP, Create TAR.GZ, Extract TAR.GZ, and Extract 7z.
+> - **Audio Conversion & Trimming** — Convert audio formats, extract audio tracks from video (WAV/M4A output), or trim audio clips offline with millisecond precision.
+> - **Archive Creation & Extraction** — Create ZIP and TAR.GZ archives with multi-file support, and extract ZIP, TAR.GZ, and 7z archives with content previews and safety limits.
+> - **Share Picker & Multi-File Selection** — Shared files open directly in the Home tool picker with viewer shortcuts; add multiple files on config screens.
+> - **Smoother Home Navigation** — Fluid header collapse driven by finger scroll deltas for a seamless browsing experience.
+
+<br>
+<details>
+<summary><b>Previous updates (v1.6.0)</b></summary>
+<br>
 
 > - **13 New Tools, 34 in Total** — PDF to Text, PDF to Word, PDF to Excel, PDF to CSV, Excel to CSV, CSV to Excel, CSV to PDF, OCR to Searchable PDF, Sign PDF, Photo & Signature Studio, QR Code Studio, HEIC to Image, and Resize Images.
 > - **Searchable PDFs, Including Devanagari** — Turn scans into PDFs with a real, selectable text layer in English and Hindi/Marathi, readable by any PDF reader.
@@ -81,6 +92,8 @@
 > - **Cleaner Home** — A decluttered Home with a quick-return header (hides on scroll down, returns on any scroll up), search that keeps focus, and your scroll position and filter kept when you come back from a tool.
 > - **History Convert Again** — Re-run any past conversion from History with the same file and settings, including saved Compress presets.
 > - **Consistent Tool Screens** — Every PDF tool now shares the same file picker, sticky action button, and spacing as the rest of the app.
+
+</details>
 
 <br>
 <details>
