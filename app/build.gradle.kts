@@ -163,6 +163,11 @@ dependencies {
     
     // PDF Processing
     implementation(libs.com.tomroush.pdfbox.android)
+
+    // Archives (Week 3): Apache Commons Compress, pure Java, Apache 2.0
+    implementation(libs.org.apache.commons.compress)
+    // XZ for Java: required at runtime for 7z LZMA/LZMA2 (see libs.versions.toml)
+    implementation(libs.org.tukaani.xz)
     
     // ML Kit Text Recognition (Latin & Devanagari offline models)
     implementation("com.google.mlkit:text-recognition:16.0.1")

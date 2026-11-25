@@ -151,6 +151,14 @@ private fun ProgressContent(
     val scheme = MaterialTheme.colorScheme
     val conversionType = state.conversionType
     val chipType = conversionType?.outputType ?: conversionType?.inputType
+    // Real formats when the worker reported them; otherwise the tool
+    // definition (the old behaviour) so non-worker screens are unchanged.
+    val displayInputFormat = state.inputFormat ?: conversionType?.inputType?.displayName
+    val displayOutputFormat = state.outputFormat ?: conversionType?.outputType?.displayName
+    val inputFileType = state.inputFormat?.lowercase()?.let { ext ->
+        com.morphdrop.app.domain.model.FileType.values()
+            .firstOrNull { it.extension == ext }
+    } ?: conversionType?.inputType
 
     Column(
         modifier = modifier.padding(24.dp),
@@ -168,7 +176,7 @@ private fun ProgressContent(
                     modifier = Modifier.padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    val (badgeContainer, badgeContent) = conversionType.inputType.chipColors()
+                    val (badgeContainer, badgeContent) = (inputFileType ?: conversionType.inputType).chipColors()
                     Surface(
                         shape = RoundedCornerShape(14.dp),
                         color = badgeContainer,
@@ -192,10 +200,18 @@ private fun ProgressContent(
                             color = scheme.onSurface
                         )
                         Spacer(modifier = Modifier.height(6.dp))
-                        TransformIndicator(
-                            conversionType = conversionType,
-                            compact = true
-                        )
+                        if (displayInputFormat != null && displayOutputFormat != null) {
+                            TransformIndicator(
+                                inputFormat = displayInputFormat,
+                                outputFormat = displayOutputFormat,
+                                compact = true
+                            )
+                        } else {
+                            TransformIndicator(
+                                conversionType = conversionType,
+                                compact = true
+                            )
+                        }
                     }
                 }
             }
@@ -229,6 +245,17 @@ private fun ProgressContent(
                             modifier = Modifier.size(44.dp)
                         )
                     }
+                }
+            } else if (displayOutputFormat != null) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    FormatChip(format = displayOutputFormat)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "${state.progress.toInt()}%",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = scheme.onSurface
+                    )
                 }
             } else if (chipType != null) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -272,7 +299,7 @@ private fun ProgressContent(
 
         // Output chip appears on completion, before navigation.
         AnimatedVisibility(
-            visible = state.isCompleted && chipType != null,
+            visible = state.isCompleted && (displayOutputFormat != null || chipType != null),
             enter = fadeIn() + scaleIn()
         ) {
             Row(
@@ -286,7 +313,8 @@ private fun ProgressContent(
                     color = scheme.onSurfaceVariant
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                if (chipType != null) FormatChip(fileType = chipType)
+                if (displayOutputFormat != null) FormatChip(format = displayOutputFormat)
+                else if (chipType != null) FormatChip(fileType = chipType)
             }
         }
 

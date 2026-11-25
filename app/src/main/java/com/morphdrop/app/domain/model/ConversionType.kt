@@ -6,6 +6,10 @@ import androidx.compose.material.icons.automirrored.outlined.CallSplit
 import androidx.compose.material.icons.automirrored.outlined.MergeType
 import androidx.compose.material.icons.automirrored.outlined.RotateRight
 import androidx.compose.material.icons.outlined.Article
+import androidx.compose.material.icons.outlined.Archive
+import androidx.compose.material.icons.outlined.AudioFile
+import androidx.compose.material.icons.outlined.Unarchive
+import androidx.compose.material.icons.outlined.ContentCut
 import androidx.compose.material.icons.outlined.Badge
 import androidx.compose.material.icons.outlined.Collections
 import androidx.compose.material.icons.outlined.QrCode2
@@ -19,6 +23,7 @@ import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.DocumentScanner
 import androidx.compose.material.icons.outlined.Draw
 import androidx.compose.material.icons.outlined.Layers
+import androidx.compose.material.icons.outlined.Movie
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.PictureAsPdf
 import androidx.compose.material.icons.outlined.Slideshow
@@ -45,6 +50,8 @@ data class ConversionType(
         const val CATEGORY_CONVERSIONS = "Conversions"
         const val CATEGORY_PDF_TOOLS = "PDF Tools"
         const val CATEGORY_IMAGE_TOOLS = "Image Tools"
+        const val CATEGORY_AUDIO = "Audio"
+        const val CATEGORY_ARCHIVES = "Archives"
 
         val defaultList = listOf(
             // Conversions
@@ -390,6 +397,90 @@ data class ConversionType(
                 outputType = FileType.PNG,
                 icon = Icons.Outlined.QrCode2,
                 category = CATEGORY_IMAGE_TOOLS,
+                isMultiFileAllowed = false
+            ),
+
+            // Audio Tools
+            ConversionType(
+                id = "audio_converter",
+                name = "Audio Converter",
+                description = "Convert audio between MP3, M4A, WAV, OGG, Opus and FLAC (Offline)",
+                inputType = FileType.MP3,
+                outputType = FileType.WAV,
+                icon = Icons.Outlined.AudioFile,
+                category = CATEGORY_AUDIO,
+                isMultiFileAllowed = false
+            ),
+            ConversionType(
+                id = "audio_trimmer",
+                name = "Audio Trimmer",
+                description = "Cut a segment out of an audio file",
+                inputType = FileType.MP3,
+                outputType = FileType.M4A,
+                icon = Icons.Outlined.ContentCut,
+                category = CATEGORY_AUDIO,
+                isMultiFileAllowed = false
+            ),
+            ConversionType(
+                id = "video_to_audio",
+                name = "Video to Audio",
+                description = "Extract the audio track from a video",
+                inputType = FileType.MP4,
+                outputType = FileType.M4A,
+                icon = Icons.Outlined.Movie,
+                category = CATEGORY_AUDIO,
+                isMultiFileAllowed = false
+            ),
+            // Archives (Week 3) — RAR is deliberately absent: the archive
+            // library cannot read it at all, so no RAR tool is offered.
+            ConversionType(
+                id = "zip_create",
+                name = "Create ZIP",
+                description = "Combine files into a ZIP archive",
+                inputType = FileType.ZIP,
+                outputType = FileType.ZIP,
+                icon = Icons.Outlined.Archive,
+                category = CATEGORY_ARCHIVES,
+                isMultiFileAllowed = true
+            ),
+            ConversionType(
+                id = "zip_extract",
+                name = "Extract ZIP",
+                description = "Unpack a ZIP archive into a folder",
+                inputType = FileType.ZIP,
+                outputType = FileType.ZIP,
+                icon = Icons.Outlined.Unarchive,
+                category = CATEGORY_ARCHIVES,
+                isMultiFileAllowed = false
+            ),
+            ConversionType(
+                id = "tar_create",
+                name = "Create TAR.GZ",
+                description = "Combine files into a TAR.GZ archive",
+                inputType = FileType.TAR,
+                outputType = FileType.TAR,
+                icon = Icons.Outlined.Archive,
+                category = CATEGORY_ARCHIVES,
+                isMultiFileAllowed = true
+            ),
+            ConversionType(
+                id = "tar_extract",
+                name = "Extract TAR.GZ",
+                description = "Unpack a TAR or TAR.GZ archive into a folder",
+                inputType = FileType.TAR,
+                outputType = FileType.TAR,
+                icon = Icons.Outlined.Unarchive,
+                category = CATEGORY_ARCHIVES,
+                isMultiFileAllowed = false
+            ),
+            ConversionType(
+                id = "sevenz_extract",
+                name = "Extract 7z",
+                description = "Unpack a 7z archive into a folder",
+                inputType = FileType.SEVENZ,
+                outputType = FileType.SEVENZ,
+                icon = Icons.Outlined.Unarchive,
+                category = CATEGORY_ARCHIVES,
                 isMultiFileAllowed = false
             )
         )

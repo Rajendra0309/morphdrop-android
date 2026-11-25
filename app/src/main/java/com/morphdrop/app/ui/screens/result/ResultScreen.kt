@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -211,6 +212,39 @@ private fun ResultBody(
             color = scheme.onSurfaceVariant,
             textAlign = TextAlign.Center
         )
+
+        // Partial recovery: the files listed below are real and kept,
+        // but the archive gave up only some of its entries — say so
+        // plainly instead of leaving "Conversion Complete!" unqualified.
+        if (state.warning != null) {
+            Spacer(modifier = Modifier.height(16.dp))
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = scheme.tertiaryContainer.copy(alpha = 0.6f)
+                ),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.WarningAmber,
+                        contentDescription = null,
+                        tint = scheme.onTertiaryContainer
+                    )
+                    Text(
+                        text = state.warning,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = scheme.onTertiaryContainer
+                    )
+                }
+            }
+        }
 
         Spacer(modifier = Modifier.height(20.dp))
 

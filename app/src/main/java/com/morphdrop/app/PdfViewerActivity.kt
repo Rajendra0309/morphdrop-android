@@ -147,7 +147,10 @@ class PdfViewerActivity : ComponentActivity() {
             return uri
         }
         return runCatching {
-            val destDir = java.io.File(cacheDir, "shared_incoming").apply { mkdirs() }
+            // Viewer copies live apart from share copies: one directory
+            // used to carry two lifecycles (loose viewer files in the
+            // shared_incoming root, per-share subfolders for shares).
+            val destDir = java.io.File(cacheDir, "viewer_incoming").apply { mkdirs() }
             // Preserve the sender's filename so the viewer's filename chain
             // (provider DISPLAY_NAME → path segment → fallback) shows the real name.
             val sourceName = queryDisplayName(uri)
@@ -156,24 +159,34 @@ class PdfViewerActivity : ComponentActivity() {
                 }
             val safeName = sanitizeFileName(sourceName) ?: "document"
             val uriHash = uri.toString().hashCode().toUInt().toString(16)
-            val dest = java.io.File(destDir, "${safeName}_$uriHash.pdf")
-            val temp = java.io.File(destDir, "${safeName}_${uriHash}.tmp")
+            // The viewer title comes from this file's name, so keep the
+            // cache filename clean: a hash suffix here used to show up as
+            // "SI-14_bb094950.pdf" in the title bar. Collisions are handled
+            // by uniqueFile() ("name (2).pdf") instead of a hash.
+            val dest = uniqueFile(destDir, "$safeName.pdf")
+            var committed = false
             try {
-                contentResolver.openInputStream(uri)?.use { input ->
-                    temp.outputStream().use { output -> input.copyTo(output) }
-                } ?: return null
-                if (!temp.renameTo(dest)) {
-                    temp.copyTo(dest, overwrite = true)
-                    temp.delete()
+                val temp = java.io.File(destDir, "${safeName}_${uriHash}.tmp")
+                try {
+                    contentResolver.openInputStream(uri)?.use { input ->
+                        temp.outputStream().use { output -> input.copyTo(output) }
+                    } ?: return null
+                    if (!temp.renameTo(dest)) {
+                        temp.copyTo(dest, overwrite = true)
+                        temp.delete()
+                    }
+                    committed = true
+                } finally {
+                    if (temp.exists()) temp.delete()
                 }
+                androidx.core.content.FileProvider.getUriForFile(
+                    this,
+                    "${packageName}.fileprovider",
+                    dest
+                )
             } finally {
-                if (temp.exists()) temp.delete()
+                if (!committed && dest.exists()) dest.delete()
             }
-            androidx.core.content.FileProvider.getUriForFile(
-                this,
-                "${packageName}.fileprovider",
-                dest
-            )
         }.getOrNull()
     }
 
@@ -187,25 +200,28 @@ class PdfViewerActivity : ComponentActivity() {
             }
     }.getOrNull()
 
-    /** Keeps alphanumerics, dots, dashes and underscores; drops everything else. */
+    /** Viewer cache name: the app's one shared filename rule (FileHelper),
+     *  so "table (1).pdf" keeps its spaces and parens instead of becoming
+     *  "table__1__.pdf" in the title bar. The old stricter rule lived only
+     *  here and disagreed with the share copy's rule. */
     private fun sanitizeFileName(name: String?): String? {
         val cleaned = name
             ?.substringBeforeLast('.')
-            ?.replace(Regex("[^A-Za-z0-9._-]"), "_")
-            ?.trim('_', '.', ' ')
+            ?.let { com.morphdrop.app.util.FileHelper.sanitizeFileName(it) }
             ?.take(80)
         return cleaned?.takeIf { it.isNotBlank() }
     }
 
     /** Returns a non-colliding file for [fileName] inside [dir]. */
     private fun uniqueFile(dir: java.io.File, fileName: String): java.io.File {
-        var candidate = java.io.File(dir, fileName)
-        var n = 1
         val stem = fileName.substringBeforeLast('.')
-        while (candidate.exists()) {
-            n++
+        var candidate = java.io.File(dir, fileName)
+        if (candidate.createNewFile()) return candidate
+        var n = 2
+        while (true) {
             candidate = java.io.File(dir, "$stem ($n).pdf")
+            if (candidate.createNewFile()) return candidate
+            n++
         }
-        return candidate
     }
 }

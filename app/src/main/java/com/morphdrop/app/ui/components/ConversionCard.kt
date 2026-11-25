@@ -35,6 +35,15 @@ import com.morphdrop.app.ui.theme.chipColors
 /** Tools whose output format is chosen per conversion, so no single "to X" label is honest. */
 private val MULTI_FORMAT_TOOL_IDS = setOf("image_converter", "image_resize", "heic_to_image", "pdf_to_images")
 
+/**
+ * Tools that don't convert one format into another: their input and
+ * output types are the same ("ZIP to ZIP"), so a screen reader should
+ * announce the name and description instead.
+ */
+private val DESCRIPTION_TOOL_IDS = setOf(
+    "zip_create", "zip_extract", "tar_create", "tar_extract", "sevenz_extract"
+)
+
 @Composable
 fun ConversionCard(
     conversionType: ConversionType,
@@ -69,7 +78,8 @@ fun ConversionCard(
             .semantics {
                 contentDescription =
                     if (conversionType.id == "photo_studio" || conversionType.id == "qr_studio" ||
-                        conversionType.id in MULTI_FORMAT_TOOL_IDS
+                        conversionType.id in MULTI_FORMAT_TOOL_IDS ||
+                        conversionType.id in DESCRIPTION_TOOL_IDS
                     ) {
                         // Studios are not "X to Y" conversions, and
                         // multi-format tools have no single output type.
@@ -151,6 +161,39 @@ fun ConversionCard(
             if (conversionType.id == "metadata_editor") {
                 FormatChip(
                     format = "ALL FORMATS",
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            } else if (conversionType.id == "zip_create") {
+                // Create ZIP takes any file in: a ZIP -> ZIP badge would lie
+                // the same way Metadata Editor's JPG -> JPG badge did.
+                FormatChip(
+                    format = "ALL → ZIP",
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            } else if (conversionType.id == "zip_extract") {
+                // Extract produces a folder of files, not another ZIP.
+                FormatChip(
+                    format = "ZIP → FOLDER",
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            } else if (conversionType.id == "tar_create") {
+                FormatChip(
+                    format = "ALL → TAR.GZ",
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            } else if (conversionType.id == "tar_extract") {
+                FormatChip(
+                    format = "TAR / TAR.GZ → FOLDER",
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            } else if (conversionType.id == "sevenz_extract") {
+                FormatChip(
+                    format = "7Z → FOLDER",
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                     contentColor = MaterialTheme.colorScheme.onPrimaryContainer
                 )

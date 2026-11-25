@@ -38,6 +38,19 @@ object FileHelper {
         }
     }
 
+    /**
+     * The one filename rule for the whole app: replace only what can break
+     * a path — separators and control characters. Spaces, parentheses,
+     * leading underscores and other ordinary filename characters survive,
+     * so a shared "table (1).pdf" keeps its name instead of becoming
+     * "table__1_.pdf". Used by both the share copy and the PDF viewer
+     * cache, which used to have two different (and conflicting) rules.
+     */
+    fun sanitizeFileName(name: String): String =
+        name
+            .replace('/', '_').replace('\\', '_')
+            .replace(Regex("[\\u0000-\\u001F\\u007F]"), "_")
+
     fun sanitizeForPdfBox(text: String): String {
         if (text.isEmpty()) return text
         val sb = StringBuilder(text.length)
@@ -104,25 +117,149 @@ object FileHelper {
             val collection = android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI
             val uri = resolver.insert(collection, contentValues) ?: throw FileNotFoundException("Could not create MediaStore entry")
             
-            resolver.openOutputStream(uri)?.use { it.write(data) }
-
             try {
+                val out = resolver.openOutputStream(uri)
+                    ?: throw FileNotFoundException("Could not open MediaStore output stream for $uri")
+                out.use { it.write(data) }
+
                 val updateValues = android.content.ContentValues().apply {
                     put(android.provider.MediaStore.MediaColumns.IS_PENDING, 0)
                     put(android.provider.MediaStore.MediaColumns.SIZE, data.size.toLong())
                 }
-                resolver.update(uri, updateValues, null, null)
-            } catch (_: Exception) {}
+                val updated = resolver.update(uri, updateValues, null, null)
+                if (updated <= 0) {
+                    throw FileNotFoundException("Failed to publish MediaStore entry (row update affected $updated rows)")
+                }
+            } catch (e: Throwable) {
+                try {
+                    resolver.delete(uri, null, null)
+                } catch (cleanupEx: Throwable) {
+                    e.addSuppressed(cleanupEx)
+                }
+                throw e
+            }
 
             return uri
         } else {
             @Suppress("DEPRECATION")
             val dir = File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), folderName)
             if (!dir.exists()) dir.mkdirs()
-            val file = File(dir, fileName)
-            file.writeBytes(data)
-            
-            return Uri.fromFile(file)
+            val finalFile = getUniqueLegacyFile(dir, fileName)
+            val tempFile = File.createTempFile("morphdrop_", ".tmp", dir)
+            try {
+                tempFile.writeBytes(data)
+                if (finalFile.exists()) {
+                    finalFile.delete()
+                }
+                if (!tempFile.renameTo(finalFile)) {
+                    tempFile.inputStream().use { input ->
+                        finalFile.outputStream().use { output -> input.copyTo(output) }
+                    }
+                    tempFile.delete()
+                }
+                return Uri.fromFile(finalFile)
+            } catch (e: Throwable) {
+                runCatching { tempFile.delete() }
+                throw e
+            }
+        }
+    }
+
+    private fun getUniqueLegacyFile(dir: File, fileName: String): File {
+        var candidate = File(dir, fileName)
+        if (!candidate.exists()) return candidate
+        val dotIndex = fileName.lastIndexOf('.')
+        val baseName = if (dotIndex > 0) fileName.substring(0, dotIndex) else fileName
+        val ext = if (dotIndex > 0) fileName.substring(dotIndex) else ""
+        var counter = 1
+        while (candidate.exists()) {
+            candidate = File(dir, "$baseName ($counter)$ext")
+            counter++
+        }
+        return candidate
+    }
+
+    /**
+     * Stream variant of [saveToFile] for outputs too large to hold as a
+     * byte array (audio/video transcoding). Same destination, same
+     * MediaStore pending pattern, but copied in 8 KB chunks.
+     */
+    suspend fun saveStreamToFile(
+        context: Context,
+        settingsRepository: SettingsRepository,
+        fileName: String,
+        sourceFile: File
+    ): Uri {
+        val folderName = settingsRepository.outputFolderName.first()
+        return saveStreamToFile(context, folderName, fileName, sourceFile)
+    }
+
+    fun saveStreamToFile(context: Context, folderName: String, fileName: String, sourceFile: File): Uri {
+        val resolver = context.contentResolver
+        val mimeType = MimeTypeMap.getSingleton().getMimeTypeFromExtension(getFileExtension(fileName)) ?: "application/octet-stream"
+
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            val contentValues = android.content.ContentValues().apply {
+                put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                put(android.provider.MediaStore.MediaColumns.MIME_TYPE, mimeType)
+                put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS + "/" + folderName)
+                put(android.provider.MediaStore.MediaColumns.IS_PENDING, 1)
+            }
+
+            val collection = android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI
+            val uri = resolver.insert(collection, contentValues) ?: throw FileNotFoundException("Could not create MediaStore entry")
+
+            try {
+                val out = resolver.openOutputStream(uri)
+                    ?: throw FileNotFoundException("Could not open MediaStore output stream for $uri")
+                out.use { output ->
+                    sourceFile.inputStream().use { input ->
+                        input.copyTo(output, DEFAULT_BUFFER_SIZE)
+                    }
+                }
+
+                val updateValues = android.content.ContentValues().apply {
+                    put(android.provider.MediaStore.MediaColumns.IS_PENDING, 0)
+                    put(android.provider.MediaStore.MediaColumns.SIZE, sourceFile.length())
+                }
+                val updated = resolver.update(uri, updateValues, null, null)
+                if (updated <= 0) {
+                    throw FileNotFoundException("Failed to publish MediaStore entry (row update affected $updated rows)")
+                }
+            } catch (e: Throwable) {
+                try {
+                    resolver.delete(uri, null, null)
+                } catch (cleanupEx: Throwable) {
+                    e.addSuppressed(cleanupEx)
+                }
+                throw e
+            }
+
+            return uri
+        } else {
+            @Suppress("DEPRECATION")
+            val dir = File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), folderName)
+            if (!dir.exists()) dir.mkdirs()
+            val finalFile = getUniqueLegacyFile(dir, fileName)
+            val tempFile = File.createTempFile("morphdrop_", ".tmp", dir)
+            try {
+                sourceFile.inputStream().use { input ->
+                    tempFile.outputStream().use { output -> input.copyTo(output, DEFAULT_BUFFER_SIZE) }
+                }
+                if (finalFile.exists()) {
+                    finalFile.delete()
+                }
+                if (!tempFile.renameTo(finalFile)) {
+                    tempFile.inputStream().use { input ->
+                        finalFile.outputStream().use { output -> input.copyTo(output, DEFAULT_BUFFER_SIZE) }
+                    }
+                    tempFile.delete()
+                }
+                return Uri.fromFile(finalFile)
+            } catch (e: Throwable) {
+                runCatching { tempFile.delete() }
+                throw e
+            }
         }
     }
 
@@ -263,6 +400,35 @@ object FileHelper {
     }
 
     private fun getFileExtension(fileName: String): String = fileName.substringAfterLast('.', "").lowercase(Locale.ROOT)
+
+    /**
+     * The format label for a filename, compound extensions included: a
+     * plain substringAfterLast('.') calls "packed.tar.gz" a GZ file, and
+     * the config card and the file preview both showed that. The worker
+     * already knew better (its formatOfFileName is tar.gz-aware); this
+     * is the same rule for the UI side.
+     */
+    fun displayFormatOfFileName(fileName: String): String {
+        val lower = fileName.lowercase(Locale.ROOT)
+        return when {
+            lower.endsWith(".tar.gz") || lower.endsWith(".tgz") -> "tar.gz"
+            else -> fileName.substringAfterLast('.', "")
+        }
+    }
+
+    /**
+     * A filename with its archive extension removed, compound ones
+     * included: "packed.tar.gz" -> "packed", not "packed.tar". Used for
+     * the "_extracted" output folder name.
+     */
+    fun stripArchiveExtension(fileName: String): String {
+        val lower = fileName.lowercase(Locale.ROOT)
+        return when {
+            lower.endsWith(".tar.gz") -> fileName.dropLast(".tar.gz".length)
+            lower.endsWith(".tgz") -> fileName.dropLast(".tgz".length)
+            else -> fileName.substringBeforeLast('.', fileName)
+        }
+    }
 
     fun getFileNameWithoutExtension(fileName: String): String = fileName.substringBeforeLast('.')
 

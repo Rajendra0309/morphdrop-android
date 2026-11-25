@@ -5,10 +5,13 @@ import android.content.res.Configuration
 import android.net.Uri
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -45,6 +48,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.SearchOff
+import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -76,11 +80,16 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.Role
@@ -128,6 +137,82 @@ fun HomeScreen(
     val lastOpenedPdf by mainViewModel.lastOpenedPdf.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val homeScope = rememberCoroutineScope()
+
+    // File shared from another app: the SAME picker as the drop zone,
+    // never an auto-picked tool. Always shown, even for one candidate.
+    val pendingShared by mainViewModel.pendingSharedFile.collectAsStateWithLifecycle()
+    var sharedCandidates by remember { mutableStateOf<List<ConversionType>>(emptyList()) }
+    var sharedViewOption by remember { mutableStateOf<PickerViewOption?>(null) }
+    var showSharedPicker by remember { mutableStateOf(false) }
+    androidx.compose.runtime.LaunchedEffect(pendingShared) {
+        val shared = pendingShared
+        if (shared != null && shared.uris.isNotEmpty()) {
+            val first = shared.uris.first()
+            val candidates = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                candidateToolsForUri(context, first)
+            }
+            if (shared.uris.size > 1) {
+                // Multi-file share: only tools that accept several files.
+                val multi = candidates.filter { it.isMultiFileAllowed }
+                if (multi.isEmpty()) {
+                    android.widget.Toast.makeText(
+                        context,
+                        "These files can't be converted together — share them one at a time.",
+                        android.widget.Toast.LENGTH_LONG
+                    ).show()
+                    // The rejected share did the full copy already; delete
+                    // it instead of leaking it into the cache.
+                    com.morphdrop.app.util.SharedFileCleanup.deleteShareCopies(context, shared.uris)
+                    mainViewModel.clearPendingSharedFile()
+                } else {
+                    sharedCandidates = multi
+                    sharedViewOption = null
+                    showSharedPicker = true
+                }
+            } else {
+                val viewOption = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    viewOptionForUri(context, first)
+                }
+                sharedCandidates = candidates
+                sharedViewOption = viewOption
+                showSharedPicker = true
+            }
+        }
+    }
+    if (showSharedPicker && pendingShared != null) {
+        ToolPickerDialog(
+            // A multi-file share is a batch, not the first file: the old
+            // code only showed "N files" when the name was blank, and the
+            // name is never blank for shares, so it always showed file 1.
+            fileName = if (pendingShared!!.uris.size > 1) {
+                "${pendingShared!!.uris.size} files"
+            } else {
+                pendingShared!!.fileName.ifBlank { "Shared file" }
+            },
+            candidates = sharedCandidates,
+            onDismiss = {
+                showSharedPicker = false
+                // A dismissed share leaves nothing behind: delete the
+                // cache copies (sender originals are never touched).
+                com.morphdrop.app.util.SharedFileCleanup.deleteShareCopies(context, pendingShared!!.uris)
+                mainViewModel.clearPendingSharedFile()
+            },
+            onPick = { tool ->
+                val uris = pendingShared!!.uris
+                showSharedPicker = false
+                mainViewModel.clearPendingSharedFile()
+                onOpenRoute(routeForToolWithUris(tool.id, uris))
+            },
+            viewOption = sharedViewOption,
+            onViewPicked = {
+                val uri = pendingShared!!.uris.first()
+                val kind = sharedViewOption?.kind
+                showSharedPicker = false
+                mainViewModel.clearPendingSharedFile()
+                if (kind != null) openViewOption(context, kind, uri, onOpenRoute)
+            }
+        )
+    }
 
     HomeScreenContent(
         searchQuery = searchQuery,
@@ -192,21 +277,59 @@ fun HomeScreenContent(
     // Quick-return header: visible at the top, hidden while scrolling
     // down, and shown again on any upward scroll — not only when the
     // grid reaches the very top.
-    var headerVisible by remember { mutableStateOf(true) }
+    //
+    // The header follows the finger, not the list. The connection below
+    // sees the real scroll deltas (drag and fling) before the grid
+    // consumes them, and a flip needs real travel in one direction
+    // first (48dp down to hide, 24dp up to show). The previous version
+    // instead watched the list's first-visible offset — but the grid's
+    // own top-padding animation moves that offset, so the header's
+    // motion fed back into the decision and the list jiggled. Input
+    // deltas can't do that: a layout change never produces a
+    // nested-scroll event.
+    val headerVisibleState = remember { mutableStateOf(true) }
+    val headerVisible by headerVisibleState
+    val headerDensity = LocalDensity.current
+    val hideAfterPx = with(headerDensity) { 48.dp.toPx() }
+    val showAfterPx = with(headerDensity) { 24.dp.toPx() }
+    val headerScrollConnection = remember(headerDensity) {
+        object : NestedScrollConnection {
+            // Travel in the current direction, in pixels. A direction
+            // reversal restarts the count, so the micro-reversals of a
+            // finger drag can't flicker the header.
+            var travelPx = 0f
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                val dy = available.y
+                if (dy == 0f) return Offset.Zero
+                // Downward scroll moves content up, so dy is negative;
+                // flip the sign so downward travel is positive.
+                val deltaPx = -dy
+                if (travelPx == 0f || (travelPx > 0) == (deltaPx > 0)) {
+                    travelPx += deltaPx
+                } else {
+                    travelPx = deltaPx
+                }
+                val atTop = gridState.firstVisibleItemIndex == 0 && gridState.firstVisibleItemScrollOffset == 0
+                if (headerVisibleState.value && travelPx > hideAfterPx && !atTop) {
+                    headerVisibleState.value = false
+                    travelPx = 0f
+                } else if (!headerVisibleState.value && travelPx < -showAfterPx) {
+                    headerVisibleState.value = true
+                    travelPx = 0f
+                }
+                // Consume nothing: the grid still scrolls normally.
+                return Offset.Zero
+            }
+        }
+    }
+    // The very top always shows the header. This only ever shows it —
+    // never hides — so a programmatic jump to the top (filter change,
+    // search shortcut) restores the header without any feedback path.
     LaunchedEffect(gridState) {
-        var previousIndex = 0
-        var previousOffset = 0
         snapshotFlow {
             gridState.firstVisibleItemIndex to gridState.firstVisibleItemScrollOffset
         }.collect { (index, offset) ->
-            headerVisible = when {
-                index == 0 && offset == 0 -> true
-                index > previousIndex ||
-                    (index == previousIndex && offset > previousOffset) -> false
-                else -> true
-            }
-            previousIndex = index
-            previousOffset = offset
+            if (index == 0 && offset == 0) headerVisibleState.value = true
         }
     }
 
@@ -256,6 +379,7 @@ fun HomeScreenContent(
     var pendingUri by remember { mutableStateOf<Uri?>(null) }
     var pendingFileName by remember { mutableStateOf("") }
     var toolCandidates by remember { mutableStateOf<List<ConversionType>>(emptyList()) }
+    var pendingViewOption by remember { mutableStateOf<PickerViewOption?>(null) }
     var showToolPicker by remember { mutableStateOf(false) }
 
     val dropZonePicker = rememberLauncherForActivityResult(
@@ -275,12 +399,16 @@ fun HomeScreenContent(
                 val name = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                     FileHelper.getFileName(context, uri)
                 }
-                if (candidates.size == 1) {
+                val viewOption = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    viewOptionForUri(context, uri)
+                }
+                if (candidates.size == 1 && viewOption == null) {
                     onOpenRoute(routeForToolWithUri(candidates.first().id, uri))
                 } else {
                     pendingUri = uri
                     pendingFileName = name
                     toolCandidates = candidates
+                    pendingViewOption = viewOption
                     showToolPicker = true
                 }
             }
@@ -295,6 +423,13 @@ fun HomeScreenContent(
             onPick = { tool ->
                 showToolPicker = false
                 onOpenRoute(routeForToolWithUri(tool.id, pendingUri!!))
+            },
+            viewOption = pendingViewOption,
+            onViewPicked = {
+                showToolPicker = false
+                val uri = pendingUri!!
+                val kind = pendingViewOption?.kind
+                if (kind != null) openViewOption(context, kind, uri, onOpenRoute)
             }
         )
     }
@@ -324,6 +459,8 @@ fun HomeScreenContent(
             HomeFilter.CONVERSIONS -> type.category == ConversionType.CATEGORY_CONVERSIONS
             HomeFilter.PDF_TOOLS -> type.category == ConversionType.CATEGORY_PDF_TOOLS
             HomeFilter.IMAGE_TOOLS -> type.category == ConversionType.CATEGORY_IMAGE_TOOLS
+            HomeFilter.AUDIO -> type.category == ConversionType.CATEGORY_AUDIO
+            HomeFilter.ARCHIVES -> type.category == ConversionType.CATEGORY_ARCHIVES
         }
         val searching = searchQuery.isNotBlank()
         // Search always covers every tool: a query typed while a category
@@ -352,128 +489,55 @@ fun HomeScreenContent(
             }
         }
 
-        Column(modifier = Modifier.fillMaxSize()) {
-            AnimatedVisibility(
-                visible = headerVisible,
-                enter = expandVertically() + fadeIn(),
-                exit = shrinkVertically() + fadeOut()
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(
-                            top = innerPadding.calculateTopPadding(),
-                            start = 16.dp,
-                            end = 16.dp
-                        )
-                ) {
-                    Text(
-                        text = "MorphDrop",
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Black,
-                        color = MaterialTheme.colorScheme.onBackground
-                    )
-                    Text(
-                        text = "Drop. Transform. Done.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    MorphDropSearchBar(
-                        query = searchQuery,
-                        onQueryChange = onSearchQueryChange,
-                        active = false,
-                        onActiveChange = { },
-                        focusRequester = focusRequester,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp, bottom = 4.dp)
-                    )
-                    Box(modifier = Modifier.fillMaxWidth()) {
-                        LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            contentPadding = PaddingValues(end = 32.dp, top = 4.dp, bottom = 4.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            item {
-                                FilterChip(
-                                    selected = selectedFilter == HomeFilter.ALL,
-                                    onClick = { selectedFilter = HomeFilter.ALL },
-                                    label = { Text("All ${ConversionType.defaultList.size}") },
-                                    modifier = Modifier.semantics {
-                                        contentDescription = "Show all ${ConversionType.defaultList.size} tools"
-                                    }
-                                )
-                            }
-                            item {
-                                FilterChip(
-                                    selected = selectedFilter == HomeFilter.FAVORITES,
-                                    onClick = { selectedFilter = HomeFilter.FAVORITES },
-                                    label = { Text("Favorites") },
-                                    leadingIcon = {
-                                        Icon(
-                                            imageVector = Icons.Default.Favorite,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                    },
-                                    modifier = Modifier.semantics {
-                                        contentDescription = "Show favorite tools, ${favoriteTypes.size} pinned"
-                                    }
-                                )
-                            }
-                            val categoryFilters = listOf(
-                                HomeFilter.CONVERSIONS to ConversionType.CATEGORY_CONVERSIONS,
-                                HomeFilter.PDF_TOOLS to ConversionType.CATEGORY_PDF_TOOLS,
-                                HomeFilter.IMAGE_TOOLS to ConversionType.CATEGORY_IMAGE_TOOLS
-                            )
-                            categoryFilters.forEach { (filter, categoryName) ->
-                                val count = ConversionType.defaultList.count { it.category == categoryName }
-                                item {
-                                    FilterChip(
-                                        selected = selectedFilter == filter,
-                                        onClick = { selectedFilter = filter },
-                                        label = { Text("$categoryName $count") },
-                                        modifier = Modifier.semantics {
-                                            contentDescription = "Filter by $categoryName, $count tools"
-                                        }
-                                    )
-                                }
-                            }
-                        }
-                        // Fade at the right edge: a hint the chip row
-                        // scrolls. The 32dp end padding keeps the last
-                        // chip out from under it, so it is never clipped.
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.CenterEnd)
-                                .width(28.dp)
-                                .height(40.dp)
-                                .background(
-                                    Brush.horizontalGradient(
-                                        listOf(
-                                            Color.Transparent,
-                                            MaterialTheme.colorScheme.background
-                                        )
-                                    )
-                                )
-                        )
-                    }
-                }
-            }
+        // Header overlays the grid instead of sitting above it: the
+        // old expand/shrink AnimatedVisibility resized the grid on
+        // every flip, so the cards shifted under the finger mid-scroll
+        // (and the search bar clipped half-way through the animation).
+        // Now the header slides away intact and the grid's top padding
+        // animates with it, so the list glides instead of jumping. The
+        // header stays OUTSIDE the grid, so the search-focus fix is
+        // untouched.
+        //
+        // One motion for both: the padding and the header slide/fade
+        // share the same duration and easing. They used to run on
+        // different specs (200ms tween vs the slide's default spring),
+        // so they finished at different times and the gap between the
+        // header's bottom edge and the first card opened and closed on
+        // every hide/show — the rubber-band jiggle.
+        val headerMotionMillis = 250
+        val density = LocalDensity.current
+        var headerHeightPx by remember {
+            mutableStateOf(with(density) { 216.dp.roundToPx() })
+        }
+        val headerHeightDp = with(density) { headerHeightPx.toDp() }
+        val gridTopPadding by animateDpAsState(
+            targetValue = if (headerVisible) headerHeightDp + 8.dp else 8.dp,
+            animationSpec = tween(
+                durationMillis = headerMotionMillis,
+                easing = FastOutSlowInEasing
+            ),
+            label = "gridTopPadding"
+        )
+        // The chip row keeps its scroll position when the header hides
+        // and comes back: its state lives outside the AnimatedVisibility,
+        // so leaving composition doesn't reset it to "All 42".
+        val chipsListState = rememberLazyListState()
 
+        Box(modifier = Modifier.fillMaxSize()) {
             LazyVerticalGrid(
                 state = gridState,
                 columns = GridCells.Fixed(gridColumns),
                 contentPadding = PaddingValues(
                     start = 16.dp,
                     end = 16.dp,
-                    top = 8.dp,
+                    top = gridTopPadding,
                     bottom = innerPadding.calculateBottomPadding() + 48.dp
                 ),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier.weight(1f)
+                modifier = Modifier
+                    .fillMaxSize()
+                    .nestedScroll(headerScrollConnection)
             ) {
                 if (searching) {
                     item(key = "search-count", span = { GridItemSpan(maxLineSpan) }) {
@@ -538,6 +602,8 @@ fun HomeScreenContent(
                     val categoryName = when (selectedFilter) {
                         HomeFilter.CONVERSIONS -> ConversionType.CATEGORY_CONVERSIONS
                         HomeFilter.PDF_TOOLS -> ConversionType.CATEGORY_PDF_TOOLS
+                        HomeFilter.AUDIO -> ConversionType.CATEGORY_AUDIO
+                        HomeFilter.ARCHIVES -> ConversionType.CATEGORY_ARCHIVES
                         else -> ConversionType.CATEGORY_IMAGE_TOOLS
                     }
                     item(key = "filter-header", span = { GridItemSpan(maxLineSpan) }) {
@@ -622,7 +688,9 @@ fun HomeScreenContent(
                     val categories = listOf(
                         ConversionType.CATEGORY_CONVERSIONS,
                         ConversionType.CATEGORY_PDF_TOOLS,
-                        ConversionType.CATEGORY_IMAGE_TOOLS
+                        ConversionType.CATEGORY_IMAGE_TOOLS,
+                        ConversionType.CATEGORY_AUDIO,
+                        ConversionType.CATEGORY_ARCHIVES
                     )
                     categories.forEach { categoryName ->
                         val itemsInCategory = visibleTypes.filter { it.category == categoryName }
@@ -652,13 +720,150 @@ fun HomeScreenContent(
                     }
                 }
             }
+            AnimatedVisibility(
+                visible = headerVisible,
+                modifier = Modifier.align(Alignment.TopCenter),
+                enter = slideInVertically(
+                    initialOffsetY = { -it },
+                    animationSpec = tween(
+                        durationMillis = headerMotionMillis,
+                        easing = FastOutSlowInEasing
+                    )
+                ) + fadeIn(
+                    animationSpec = tween(
+                        durationMillis = headerMotionMillis,
+                        easing = FastOutSlowInEasing
+                    )
+                ),
+                exit = slideOutVertically(
+                    targetOffsetY = { -it },
+                    animationSpec = tween(
+                        durationMillis = headerMotionMillis,
+                        easing = FastOutSlowInEasing
+                    )
+                ) + fadeOut(
+                    animationSpec = tween(
+                        durationMillis = headerMotionMillis,
+                        easing = FastOutSlowInEasing
+                    )
+                )
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.background)
+                        .onGloballyPositioned { headerHeightPx = it.size.height }
+                        .padding(
+                            top = innerPadding.calculateTopPadding(),
+                            start = 16.dp,
+                            end = 16.dp,
+                            bottom = 8.dp
+                        )
+                ) {
+                    Text(
+                        text = "MorphDrop",
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Black,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                    Text(
+                        text = "Drop. Transform. Done.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    MorphDropSearchBar(
+                        query = searchQuery,
+                        onQueryChange = onSearchQueryChange,
+                        active = false,
+                        onActiveChange = { },
+                        focusRequester = focusRequester,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp, bottom = 4.dp)
+                    )
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        LazyRow(
+                            state = chipsListState,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            contentPadding = PaddingValues(end = 32.dp, top = 4.dp, bottom = 4.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            item {
+                                FilterChip(
+                                    selected = selectedFilter == HomeFilter.ALL,
+                                    onClick = { selectedFilter = HomeFilter.ALL },
+                                    label = { Text("All ${ConversionType.defaultList.size}") },
+                                    modifier = Modifier.semantics {
+                                        contentDescription = "Show all ${ConversionType.defaultList.size} tools"
+                                    }
+                                )
+                            }
+                            item {
+                                FilterChip(
+                                    selected = selectedFilter == HomeFilter.FAVORITES,
+                                    onClick = { selectedFilter = HomeFilter.FAVORITES },
+                                    label = { Text("Favorites") },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.Favorite,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    },
+                                    modifier = Modifier.semantics {
+                                        contentDescription = "Show favorite tools, ${favoriteTypes.size} pinned"
+                                    }
+                                )
+                            }
+                            val categoryFilters = listOf(
+                                HomeFilter.CONVERSIONS to ConversionType.CATEGORY_CONVERSIONS,
+                                HomeFilter.PDF_TOOLS to ConversionType.CATEGORY_PDF_TOOLS,
+                                HomeFilter.IMAGE_TOOLS to ConversionType.CATEGORY_IMAGE_TOOLS,
+                                HomeFilter.AUDIO to ConversionType.CATEGORY_AUDIO,
+                                HomeFilter.ARCHIVES to ConversionType.CATEGORY_ARCHIVES
+                            )
+                            categoryFilters.forEach { (filter, categoryName) ->
+                                val count = ConversionType.defaultList.count { it.category == categoryName }
+                                item {
+                                    FilterChip(
+                                        selected = selectedFilter == filter,
+                                        onClick = { selectedFilter = filter },
+                                        label = { Text("$categoryName $count") },
+                                        modifier = Modifier.semantics {
+                                            contentDescription = "Filter by $categoryName, $count tools"
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                        // Fade at the right edge: a hint the chip row
+                        // scrolls. The 32dp end padding keeps the last
+                        // chip out from under it, so it is never clipped.
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.CenterEnd)
+                                .width(28.dp)
+                                .height(40.dp)
+                                .background(
+                                    Brush.horizontalGradient(
+                                        listOf(
+                                            Color.Transparent,
+                                            MaterialTheme.colorScheme.background
+                                        )
+                                    )
+                                )
+                        )
+                    }
+                }
+            }
         }
     }
 }
 
 /** Home grid filter: everything, favorites, or one tool category. */
 private enum class HomeFilter {
-    ALL, FAVORITES, CONVERSIONS, PDF_TOOLS, IMAGE_TOOLS
+    ALL, FAVORITES, CONVERSIONS, PDF_TOOLS, IMAGE_TOOLS, AUDIO, ARCHIVES
 }
 
 /** Dashed drop-zone card that opens the system file picker. */
@@ -743,7 +948,10 @@ private fun ToolPickerDialog(
     fileName: String,
     candidates: List<ConversionType>,
     onDismiss: () -> Unit,
-    onPick: (ConversionType) -> Unit
+    onPick: (ConversionType) -> Unit,
+    /** First row when the file has an in-app viewer (PDF/Markdown). */
+    viewOption: PickerViewOption? = null,
+    onViewPicked: (() -> Unit)? = null
 ) {
     Dialog(onDismissRequest = onDismiss) {
         Surface(
@@ -805,6 +1013,41 @@ private fun ToolPickerDialog(
                         // never covers the last row's content.
                         contentPadding = PaddingValues(bottom = 48.dp)
                     ) {
+                    if (viewOption != null) {
+                        item(key = "view_option") {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable(role = Role.Button, onClick = { onViewPicked?.invoke() })
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = viewOption.icon,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = viewOption.label,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = viewOption.description,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
                     items(candidates, key = { it.id }) { tool ->
                         Row(
                             modifier = Modifier
@@ -830,7 +1073,22 @@ private fun ToolPickerDialog(
                                     overflow = TextOverflow.Ellipsis
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
-                                TransformIndicator(conversionType = tool, compact = true)
+                                if (tool.id == "metadata_editor" || tool.id in ARCHIVE_EXTRACT_TOOL_IDS) {
+                                    // No format badge here: Metadata Editor
+                                    // works on any input and keeps it, so
+                                    // its static JPG -> JPG badge lies for
+                                    // MP4, PDF, CSV and Markdown alike; and
+                                    // an extract tool's output is a folder,
+                                    // not another archive, so its ZIP -> ZIP
+                                    // (or TAR.GZ -> TAR.GZ) badge lies too.
+                                    Text(
+                                        text = tool.description,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                } else {
+                                    TransformIndicator(conversionType = tool, compact = true)
+                                }
                             }
                         }
                     }
@@ -889,15 +1147,104 @@ private fun candidateToolsForUri(context: android.content.Context, uri: Uri): Li
         ext == "xls" -> listOf("excel_to_pdf", "metadata_editor")
         ext == "txt" -> listOf("txt_to_pdf", "metadata_editor")
         ext in listOf("md", "markdown") -> listOf("md_to_pdf", "metadata_editor")
+        ext in listOf("mp3", "m4a", "aac", "wav", "ogg", "oga", "opus", "flac") ->
+            listOf("audio_converter", "audio_trimmer", "metadata_editor")
+        ext in listOf("mp4", "mkv", "mov", "webm", "3gp") ->
+            listOf("video_to_audio", "metadata_editor")
+        ext == "zip" -> listOf("zip_extract", "metadata_editor")
+        com.morphdrop.app.data.archive.ArchiveFormat.detect(name) == com.morphdrop.app.data.archive.ArchiveFormat.TAR ||
+            com.morphdrop.app.data.archive.ArchiveFormat.detect(name) == com.morphdrop.app.data.archive.ArchiveFormat.TAR_GZ ->
+            listOf("tar_extract", "metadata_editor")
+        ext == "7z" -> listOf("sevenz_extract", "metadata_editor")
         // Fallback for unknown extensions: sniff the MIME type.
         mime.startsWith("image/") ->
             listOf("images_to_pdf", "image_converter", "compress_images", "metadata_editor")
         mime == "application/pdf" -> listOf("pdf_to_text", "pdf_to_docx", "pdf_to_images", "merge_pdf", "compress_pdf", "metadata_editor")
+        mime.startsWith("audio/") ->
+            listOf("audio_converter", "audio_trimmer", "metadata_editor")
+        mime.startsWith("video/") ->
+            listOf("video_to_audio", "metadata_editor")
         mime.startsWith("text/") -> listOf("txt_to_pdf", "metadata_editor")
         else -> listOf("metadata_editor")
     }
     val byId = ConversionType.defaultList.associateBy { it.id }
     return ids.mapNotNull { byId[it] }
+}
+
+/** Archive extract tools: their output is a folder, not another archive. */
+private val ARCHIVE_EXTRACT_TOOL_IDS = setOf("zip_extract", "tar_extract", "sevenz_extract")
+
+/** What the picker's "View in the app" row does. Matched on this, never on
+ *  the display label, so renaming a label can't silently break the action. */
+enum class PickerViewKind { VIEW_PDF, VIEW_MARKDOWN }
+
+/** "View in the app" row for the picker, when the file has a viewer. */
+data class PickerViewOption(
+    val label: String,
+    val description: String,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector,
+    val kind: PickerViewKind
+)
+
+/**
+ * Opens a picker view option. One shared implementation for the share dialog
+ * and the drop-zone dialog, so the two can never drift apart again.
+ * Returns false (with a toast) when the viewer can't be opened.
+ */
+private fun openViewOption(
+    context: android.content.Context,
+    kind: PickerViewKind,
+    uri: Uri,
+    onOpenRoute: (String) -> Unit
+) {
+    when (kind) {
+        PickerViewKind.VIEW_PDF -> {
+            val pdfIntent = android.content.Intent(context, com.morphdrop.app.PdfViewerActivity::class.java).apply {
+                action = android.content.Intent.ACTION_VIEW
+                data = uri
+                putExtra("pdf_uri", uri)
+                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            // Never crash on an un-grantable URI: a grant can die between
+            // share and tap even when the copy guard did its job.
+            val opened = runCatching { context.startActivity(pdfIntent) }.isSuccess
+            if (!opened) {
+                android.widget.Toast.makeText(
+                    context,
+                    "Couldn't open this file — it may no longer be available.",
+                    android.widget.Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+        PickerViewKind.VIEW_MARKDOWN -> onOpenRoute(
+            Screen.MarkdownViewer.createRoute(uri.toString())
+        )
+    }
+}
+
+/**
+ * View option for a picked/shared file, by extension first, then MIME.
+ * Only PDF and Markdown have in-app viewers; everything else converts.
+ */
+private fun viewOptionForUri(context: android.content.Context, uri: Uri): PickerViewOption? {
+    val name = FileHelper.getFileName(context, uri)
+    val ext = name.substringAfterLast('.', "").lowercase()
+    val mime = context.contentResolver.getType(uri)?.lowercase().orEmpty()
+    return when {
+        ext == "pdf" || mime == "application/pdf" -> PickerViewOption(
+            label = "View PDF",
+            description = "Open in the PDF viewer",
+            icon = Icons.Filled.PictureAsPdf,
+            kind = PickerViewKind.VIEW_PDF
+        )
+        ext in listOf("md", "markdown") || mime.contains("markdown") -> PickerViewOption(
+            label = "View Markdown",
+            description = "Open in the Markdown viewer",
+            icon = Icons.Outlined.EditNote,
+            kind = PickerViewKind.VIEW_MARKDOWN
+        )
+        else -> null
+    }
 }
 
 /** Route that carries the picked URI into the right screen for [toolId]. */
@@ -913,6 +1260,16 @@ private fun routeForToolWithUri(toolId: String, uri: Uri): String {
     }
 }
 
+
+/**
+ * Multi-file route: the config screen splits the uri argument on "|",
+ * so multi-file tools get every shared URI. Only tools with
+ * [ConversionType.isMultiFileAllowed] are ever offered this route.
+ */
+private fun routeForToolWithUris(toolId: String, uris: List<Uri>): String {
+    if (uris.size == 1) return routeForToolWithUri(toolId, uris.first())
+    return Screen.ConversionConfig.createRoute(toolId, uris.joinToString("|") { it.toString() })
+}
 
 /**
  * "Pick up where you left off" card: reopens the last-viewed PDF at the

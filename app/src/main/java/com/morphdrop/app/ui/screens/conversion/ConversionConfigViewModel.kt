@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
+import android.media.MediaMetadataRetriever
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.morphdrop.app.domain.model.ConversionType
@@ -107,7 +108,18 @@ data class ConversionConfigState(
     val editCameraMake: String = "",
     val editCameraModel: String = "",
     val gpsError: String? = null,
-    val metadataAction: String = "scrub"
+    val metadataAction: String = "scrub",
+    // Audio Trimmer State
+    val trimStartSeconds: String = "",
+    val trimEndSeconds: String = "",
+    val audioDurationMs: Long = 0,
+    /** User-readable trim problem, shown under the End field; null = range OK. */
+    val trimErrorMessage: String? = null,
+    // Archive preview (extract tools): the archive's contents, listed
+    // before extracting. Null until a file is staged and listed.
+    val archiveEntries: List<com.morphdrop.app.data.archive.ArchiveEntryInfo>? = null,
+    val isArchivePreviewLoading: Boolean = false,
+    val archivePreviewError: String? = null
 ) {
     val selectedFileUri: Uri?
         get() = selectedFileUris.firstOrNull()
@@ -125,7 +137,9 @@ class ConversionConfigViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     @param:ApplicationContext private val context: Context,
     private val settingsRepository: SettingsRepository,
-    private val metadataUseCase: com.morphdrop.app.domain.usecase.conversion.MetadataUseCase
+    private val metadataUseCase: com.morphdrop.app.domain.usecase.conversion.MetadataUseCase,
+    private val extractArchiveUseCase: com.morphdrop.app.domain.usecase.conversion.ExtractArchiveUseCase,
+    private val audioCapabilities: com.morphdrop.app.data.audio.AudioCapabilities
 ) : ViewModel() {
 
     private val rawConversionTypeId: String = savedStateHandle["conversionTypeId"] ?: ""
@@ -156,6 +170,7 @@ class ConversionConfigViewModel @Inject constructor(
     val hasPreset: StateFlow<Boolean> = _hasPreset.asStateFlow()
 
     private var pdfLoadingJob: kotlinx.coroutines.Job? = null
+    private var archivePreviewJob: kotlinx.coroutines.Job? = null
     private var fileSelectionGeneration = 0L
 
     init {
@@ -169,21 +184,26 @@ class ConversionConfigViewModel @Inject constructor(
                 val preset = settingsRepository.toolPreset(type.id).first()
 
                 _state.update { current ->
+                    val availableFormats = getFormatsForType(type)
+                    val rawFormat = if (isImageOutput(type)) savedFormat else type.outputType.extension
+                    val resolvedInitialFormat = if (rawFormat in availableFormats) rawFormat else availableFormats.firstOrNull() ?: rawFormat
                     var next = current.copy(
-                        outputFormat = if (isImageOutput(type)) savedFormat else type.outputType.extension,
+                        outputFormat = resolvedInitialFormat,
                         quality = if (isImageOutput(type)) savedQuality else if (type.id == "compress_pdf") 60 else current.quality,
                         resizeOption = savedResize,
                         stripMetadata = savedStrip,
                         showQualitySlider = isImageOutput(type) || type.id == "compress_pdf",
                         showPageRange = type.id in listOf("split_pdf", "pdf_to_images", "organize_pdf"),
-                        availableOutputFormats = getFormatsForType(type),
+                        availableOutputFormats = availableFormats,
                         compressionPreset = if (type.id == "compress_pdf") "Recommended" else current.compressionPreset
                     )
                     // Per-tool preset (last-used settings) wins over the globals above.
                     if (preset != null) {
                         _hasPreset.value = true
+                        val presetFmt = preset.outputFormat.ifBlank { next.outputFormat }
+                        val safePresetFmt = if (presetFmt in availableFormats) presetFmt else availableFormats.firstOrNull() ?: presetFmt
                         next = next.copy(
-                            outputFormat = preset.outputFormat.ifBlank { next.outputFormat },
+                            outputFormat = safePresetFmt,
                             quality = preset.quality,
                             resizeOption = preset.resizeOption.ifBlank { next.resizeOption },
                             stripMetadata = preset.stripMetadata,
@@ -213,6 +233,20 @@ class ConversionConfigViewModel @Inject constructor(
                     if (type.id == "compress_images" && preset == null) {
                         next = next.copy(outputFormat = "jpg")
                     }
+                    // A file staged before this settings load finished got
+                    // its output name from the fallback format (e.g. a
+                    // Video to Audio file named .m4a while the loaded preset
+                    // is WAV). The chip and the filename must agree, so
+                    // re-derive the staged name's extension from the format
+                    // that actually won. Folder-output tools have no
+                    // extension in their name and are left alone.
+                    if (current.selectedFileNames.isNotEmpty()
+                        && current.outputFileName.contains('.')
+                        && !isFolderOutput(type)
+                    ) {
+                        val base = FileHelper.stripArchiveExtension(current.outputFileName)
+                        next = next.copy(outputFileName = "$base.${next.outputFormat}")
+                    }
                     next.copy(isConvertEnabled = isStateValid(next))
                 }
             }
@@ -241,6 +275,14 @@ class ConversionConfigViewModel @Inject constructor(
             "xlsx_to_csv" -> listOf("xlsx")
             "csv_to_xlsx", "csv_to_pdf" -> listOf("csv")
             "heic_to_image" -> listOf("heic", "heif")
+            "audio_converter" -> listOf("mp3", "m4a", "aac", "wav", "ogg", "opus", "flac")
+            "audio_trimmer" -> listOf("mp3", "m4a", "aac", "wav", "ogg", "opus", "flac")
+            "video_to_audio" -> listOf("mp4", "mkv", "mov", "webm", "3gp")
+            "zip_create" -> emptyList() // Empty list = ALL file types allowed!
+            "zip_extract" -> listOf("zip")
+            "tar_create" -> emptyList() // Empty list = ALL file types allowed!
+            "tar_extract" -> listOf("tar", "tar.gz", "tgz", "gz")
+            "sevenz_extract" -> listOf("7z")
             "txt_to_pdf", "text_to_pdf" -> listOf("txt")
             "md_to_pdf" -> listOf("md", "markdown")
             "pdf_to_images", "pdf_to_text", "pdf_to_docx", "pdf_to_csv", "pdf_to_excel", "ocr_searchable_pdf", "split_pdf", "compress_pdf", "protect_pdf", "unlock_pdf", "organize_pdf", "merge_pdf" -> listOf("pdf")
@@ -330,10 +372,10 @@ class ConversionConfigViewModel @Inject constructor(
             val allowedText = allowedExts.joinToString(", ") { ".$it" }
             _state.update {
                 it.copy(
-                    selectedFileUris = selectedUris,
-                    selectedFileNames = names,
-                    selectedFileSize = totalSize,
-                    isBatchMode = selectedUris.size > 1,
+                    selectedFileUris = emptyList(),
+                    selectedFileNames = emptyList(),
+                    selectedFileSize = 0L,
+                    isBatchMode = false,
                     selectedPreviewUri = null,
                     isConvertEnabled = false,
                     errorMessage = "Invalid file type: '$invalidFileName'. ${type?.name ?: "This tool"} only accepts $allowedText files."
@@ -343,23 +385,11 @@ class ConversionConfigViewModel @Inject constructor(
         }
 
         val firstFileName = names.firstOrNull() ?: "file"
-        val baseName = firstFileName.substringBeforeLast('.')
-        val outputExt = _state.value.outputFormat.ifBlank {
-            _state.value.conversionType?.outputType?.extension ?: "pdf"
-        }
+        // Compound extensions included: "packed.tar.gz" extracts to
+        // "packed_extracted", not "packed.tar_extracted".
+        val baseName = FileHelper.stripArchiveExtension(firstFileName)
 
         val isMultipleImages = selectedUris.size > 1
-        val outName = if (isMultipleImages && type?.id != "merge_pdf") {
-            val timestamp = java.text.SimpleDateFormat("yyyy-MM-dd_HH-mm", java.util.Locale.US).format(java.util.Date())
-            "Batch_$timestamp"
-        } else if (isFolderOutput(type)) {
-            "${baseName}_extracted"
-        } else if (type?.id == "merge_pdf" && isMultipleImages) {
-            "${baseName}_merged.$outputExt"
-        } else {
-            "${baseName}_converted.$outputExt"
-        }
-
         val allImageItems = currentImageItems + newImageItems
         val firstSelectedUri = selectedUris.firstOrNull()
         val firstSelectedMime = firstSelectedUri?.let { FileHelper.getMimeType(context, it) } ?: ""
@@ -368,8 +398,22 @@ class ConversionConfigViewModel @Inject constructor(
 
         if (currentGeneration != fileSelectionGeneration) return@launch
 
-        _state.update {
-            val s = it.copy(
+        _state.update { current ->
+            val outputExt = current.outputFormat.ifBlank {
+                current.conversionType?.outputType?.extension ?: "pdf"
+            }
+            val outName = if (isMultipleImages && type?.id != "merge_pdf") {
+                val timestamp = java.text.SimpleDateFormat("yyyy-MM-dd_HH-mm", java.util.Locale.US).format(java.util.Date())
+                "Batch_$timestamp"
+            } else if (isFolderOutput(type)) {
+                "${baseName}_extracted"
+            } else if (type?.id == "merge_pdf" && isMultipleImages) {
+                "${baseName}_merged.$outputExt"
+            } else {
+                "${baseName}_converted.$outputExt"
+            }
+
+            val s = current.copy(
                 selectedFileUris = selectedUris,
                 selectedFileNames = names,
                 selectedFileSize = totalSize,
@@ -377,10 +421,15 @@ class ConversionConfigViewModel @Inject constructor(
                 mergeItems = selectedUris.mapIndexed { idx, uri ->
                     MergeItem(uri, names.getOrElse(idx) { "File" })
                 },
-                outputFileName = if (it.outputFileName.isBlank() || !append) outName else it.outputFileName,
+                outputFileName = if (current.outputFileName.isBlank() || !append) outName else current.outputFileName,
                 isBatchMode = selectedUris.size > 1,
                 selectedPreviewUri = if (isFirstAnImage) firstSelectedUri else null,
-                errorMessage = null
+                errorMessage = null,
+                // A new file invalidates the previous archive preview;
+                // the loader below replaces it (or its error) for the
+                // new file.
+                archiveEntries = null,
+                archivePreviewError = null
             )
             s.copy(isConvertEnabled = isStateValid(s))
         }
@@ -460,7 +509,81 @@ class ConversionConfigViewModel @Inject constructor(
             if (currentGeneration != fileSelectionGeneration) return@launch
             loadMetadata(context, selectedUris.first())
         }
+
+        if (type?.id == "audio_trimmer" && selectedUris.isNotEmpty()) {
+            if (currentGeneration != fileSelectionGeneration) return@launch
+            val duration = probeAudioDurationMs(context, selectedUris.first())
+            if (currentGeneration != fileSelectionGeneration) return@launch
+            _state.update { s ->
+                val withDuration = s.copy(audioDurationMs = duration ?: 0L)
+                val trimError = trimErrorMessageFor(withDuration)
+                withDuration.copy(
+                    trimErrorMessage = trimError,
+                    isConvertEnabled = trimError == null && isStateValid(withDuration)
+                )
+            }
         }
+
+        if (type?.id in ARCHIVE_EXTRACT_TOOL_IDS && selectedUris.isNotEmpty()) {
+            if (currentGeneration != fileSelectionGeneration) return@launch
+            loadArchivePreview(context, selectedUris.first(), currentGeneration)
+        }
+        }
+    }
+
+    /**
+     * Lists an archive's contents for the preview section on the config
+     * screen. A stale listing is never shown: the generation guard and
+     * the uri check both drop results that arrive after a newer file.
+     */
+    fun loadArchivePreview(context: Context, uri: Uri, generation: Long = fileSelectionGeneration) {
+        archivePreviewJob?.cancel()
+        val fileName = FileHelper.getFileName(context, uri)
+        val format = com.morphdrop.app.data.archive.ArchiveFormat.detect(fileName)
+        if (format == null) {
+            _state.update {
+                it.copy(
+                    archiveEntries = null,
+                    isArchivePreviewLoading = false,
+                    archivePreviewError = "This file isn't a supported archive.",
+                    isConvertEnabled = false
+                )
+            }
+            return
+        }
+        _state.update { it.copy(isArchivePreviewLoading = true, archivePreviewError = null) }
+        archivePreviewJob = viewModelScope.launch {
+            val entries = runCatching { extractArchiveUseCase.listEntries(uri, format) }
+            if (generation != fileSelectionGeneration) return@launch
+            _state.update { current ->
+                if (current.selectedFileUris.firstOrNull() != uri) return@update current
+                entries.fold(
+                    onSuccess = {
+                        current.copy(
+                            archiveEntries = it,
+                            isArchivePreviewLoading = false,
+                            archivePreviewError = null
+                        )
+                    },
+                    onFailure = { e ->
+                        current.copy(
+                            archiveEntries = null,
+                            isArchivePreviewLoading = false,
+                            archivePreviewError = e.localizedMessage
+                                ?: "Couldn't read this archive — it may be corrupt or incomplete."
+                        )
+                    }
+                )
+            }
+        }
+    }
+
+    companion object {
+        /** Tools whose config screen shows an archive-contents preview. */
+        val ARCHIVE_EXTRACT_TOOL_IDS = setOf("zip_extract", "tar_extract", "sevenz_extract")
+
+        /** Tools that pack files into an archive (output is a folder's worth of files, not a conversion). */
+        val ARCHIVE_CREATE_TOOL_IDS = setOf("zip_create", "tar_create")
     }
 
     fun loadMetadata(context: Context, uri: Uri) {
@@ -613,13 +736,17 @@ class ConversionConfigViewModel @Inject constructor(
 
     /** Dismiss the inline error banner. */
     fun clearError() {
-        _state.update { it.copy(errorMessage = null) }
+        _state.update {
+            val cleared = it.copy(errorMessage = null)
+            cleared.copy(isConvertEnabled = isStateValid(cleared))
+        }
     }
 
     /** Remove the selected input file(s) and reset dependent state. */
     fun removeSelectedFiles() {
         fileSelectionGeneration++
         pdfLoadingJob?.cancel()
+        archivePreviewJob?.cancel()
         _state.update {
             it.copy(
                 selectedFileUris = emptyList(),
@@ -639,6 +766,11 @@ class ConversionConfigViewModel @Inject constructor(
                 isBatchMode = false,
                 showOrganizerDialog = false,
                 fileMetadata = null,
+                audioDurationMs = 0L,
+                trimErrorMessage = null,
+                archiveEntries = null,
+                isArchivePreviewLoading = false,
+                archivePreviewError = null,
                 errorMessage = null,
                 isConvertEnabled = false
             )
@@ -1005,7 +1137,83 @@ class ConversionConfigViewModel @Inject constructor(
         }
         if (start != null && end != null && start > end) return false
         if ((s.conversionType?.id == "protect_pdf" || s.conversionType?.id == "unlock_pdf") && s.pdfPassword.isEmpty()) return false
+        if (s.conversionType?.id == "audio_trimmer") {
+            val start = when {
+                s.trimStartSeconds.isBlank() -> 0L
+                else -> s.trimStartSeconds.toLongOrNull() ?: return false
+            }
+            if (start > Long.MAX_VALUE / 1000L) return false
+            val end = s.trimEndSeconds.toLongOrNull()
+            if (s.trimEndSeconds.isNotBlank()) {
+                if (end == null || end > Long.MAX_VALUE / 1000L) return false
+            }
+            // Seconds vs milliseconds: never compare seconds against
+            // audioDurationMs directly — AudioMatrix converts first.
+            if (com.morphdrop.app.domain.model.AudioMatrix.trimErrorForSeconds(
+                    startSeconds = start,
+                    endSeconds = end,
+                    durationMs = s.audioDurationMs
+                ) != null
+            ) return false
+        }
         return true
+    }
+
+    /** Trim message for [s], or null when the typed range is usable. */
+    private fun trimErrorMessageFor(s: ConversionConfigState): String? {
+        if (s.conversionType?.id != "audio_trimmer") return null
+        val start = when {
+            s.trimStartSeconds.isBlank() -> 0L
+            else -> s.trimStartSeconds.toLongOrNull() ?: return "Trim times must be whole seconds."
+        }
+        if (start > Long.MAX_VALUE / 1000L) return "Start time is too large."
+        val end = s.trimEndSeconds.toLongOrNull()
+        if (s.trimEndSeconds.isNotBlank()) {
+            if (end == null) return "Trim times must be whole seconds."
+            if (end > Long.MAX_VALUE / 1000L) return "End time is too large."
+        }
+        return com.morphdrop.app.domain.model.AudioMatrix.trimErrorForSeconds(
+            startSeconds = start,
+            endSeconds = end,
+            durationMs = s.audioDurationMs
+        )
+    }
+
+    fun onTrimStartChanged(value: String) {
+        _state.update { s ->
+            val next = s.copy(trimStartSeconds = value)
+            val trimError = trimErrorMessageFor(next)
+            next.copy(
+                trimErrorMessage = trimError,
+                isConvertEnabled = trimError == null && isStateValid(next)
+            )
+        }
+    }
+
+    fun onTrimEndChanged(value: String) {
+        _state.update { s ->
+            val next = s.copy(trimEndSeconds = value)
+            val trimError = trimErrorMessageFor(next)
+            next.copy(
+                trimErrorMessage = trimError,
+                isConvertEnabled = trimError == null && isStateValid(next)
+            )
+        }
+    }
+
+    private fun probeAudioDurationMs(context: Context, uri: Uri): Long? {
+        val retriever = MediaMetadataRetriever()
+        return try {
+            retriever.setDataSource(context, uri)
+            retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()
+        } catch (_: Exception) {
+            null
+        } finally {
+            try {
+                retriever.release()
+            } catch (_: Exception) {
+            }
+        }
     }
 
     fun startConversion(context: Context): UUID? {
@@ -1028,15 +1236,44 @@ class ConversionConfigViewModel @Inject constructor(
 
         return try {
             val uriStrings: Array<String?> = Array(uris.size) { uris[it].toString() }
+            val totalUriBytes = uriStrings.sumOf { it?.toByteArray(Charsets.UTF_8)?.size ?: 0 }
             val dataBuilder = androidx.work.Data.Builder()
                 .putString(com.morphdrop.app.worker.ConversionWorker.KEY_CONVERSION_TYPE, type.id)
                 .putString(com.morphdrop.app.worker.ConversionWorker.KEY_INPUT_URI, uris.first().toString())
-                .putStringArray(com.morphdrop.app.worker.ConversionWorker.KEY_INPUT_URIS, uriStrings)
+
+            if (totalUriBytes > 7 * 1024) {
+                try {
+                    val tempUrisFile = File(context.cacheDir, "input_uris_${java.util.UUID.randomUUID()}.txt")
+                    tempUrisFile.writeText(uris.joinToString("\n") { it.toString() })
+                    val fileUri = androidx.core.content.FileProvider.getUriForFile(
+                        context,
+                        "${context.packageName}.fileprovider",
+                        tempUrisFile
+                    )
+                    dataBuilder.putString(com.morphdrop.app.worker.ConversionWorker.KEY_INPUT_URIS_FILE, fileUri.toString())
+                } catch (e: Exception) {
+                    _state.update { it.copy(errorMessage = "Failed to stage input files: ${e.message}") }
+                    return null
+                }
+            } else {
+                dataBuilder.putStringArray(com.morphdrop.app.worker.ConversionWorker.KEY_INPUT_URIS, uriStrings)
+            }
+
+            dataBuilder
                 .putString(com.morphdrop.app.worker.ConversionWorker.KEY_OUTPUT_FILE_NAME, currentState.outputFileName)
                 .putString(com.morphdrop.app.worker.ConversionWorker.KEY_TARGET_FORMAT, currentState.outputFormat)
                 .putInt(com.morphdrop.app.worker.ConversionWorker.KEY_QUALITY, currentState.quality)
                 .putString(com.morphdrop.app.worker.ConversionWorker.KEY_OCR_SCRIPT, currentState.ocrScript)
                 .putBoolean(com.morphdrop.app.worker.ConversionWorker.KEY_STRIP_METADATA, currentState.stripMetadata)
+
+            if (type.id == "audio_trimmer") {
+                val startSec = currentState.trimStartSeconds.toLongOrNull() ?: 0L
+                val endSec = currentState.trimEndSeconds.toLongOrNull()
+                val startMs = if (startSec <= Long.MAX_VALUE / 1000L) startSec * 1000L else Long.MAX_VALUE
+                val endMs = if (endSec != null && endSec <= Long.MAX_VALUE / 1000L) endSec * 1000L else 0L
+                dataBuilder.putLong(com.morphdrop.app.worker.ConversionWorker.KEY_TRIM_START_MS, startMs)
+                dataBuilder.putLong(com.morphdrop.app.worker.ConversionWorker.KEY_TRIM_END_MS, endMs)
+            }
 
             if (currentState.outputNamePattern.isNotBlank()) {
                 dataBuilder.putString(
@@ -1177,6 +1414,7 @@ class ConversionConfigViewModel @Inject constructor(
             recordSuccessfulEnqueue(uniqueWorkName)
             workRequest.id
         } catch (e: Exception) {
+            _state.update { it.copy(errorMessage = "Failed to start conversion: ${e.message}") }
             null
         }
     }
@@ -1199,11 +1437,15 @@ class ConversionConfigViewModel @Inject constructor(
 
     fun isFolderOutput(type: ConversionType?): Boolean {
         val t = type ?: return false
+        // Archive creation takes many files in and produces ONE archive
+        // file out, so it is never a folder output, however many files
+        // are selected.
+        if (t.id in listOf("zip_create", "tar_create")) return false
         val isMultipleSelected = _state.value.selectedFileUris.size > 1 || _state.value.workbenchImageItems.count { it.isSelected } > 1
         if (isMultipleSelected && t.id != "merge_pdf" && t.id != "images_to_pdf") {
             return true
         }
-        return t.id in listOf("split_pdf", "compress_images", "organize_pdf") || 
+        return t.id in listOf("split_pdf", "compress_images", "organize_pdf", "zip_extract", "tar_extract", "sevenz_extract") ||
                (t.id == "pdf_to_images" && (_state.value.pageRangeEnd.toIntOrNull() ?: 2) - (_state.value.pageRangeStart.toIntOrNull() ?: 1) > 0)
     }
 
@@ -1219,11 +1461,15 @@ class ConversionConfigViewModel @Inject constructor(
     }
 
     private fun getFormatsForType(type: ConversionType): List<String> {
+        val hasAac = runCatching { audioCapabilities.hasAacEncoder() }.getOrDefault(false)
         return when (type.id) {
             "pdf_to_images" -> listOf("png", "jpg")
             "image_converter" -> listOf("png", "jpg", "webp", "bmp")
             "image_resize" -> listOf("png", "jpg", "webp", "bmp")
             "heic_to_image" -> listOf("jpg", "png")
+            "audio_converter" -> if (hasAac) listOf("wav", "m4a") else listOf("wav")
+            "audio_trimmer" -> if (hasAac) listOf("wav", "m4a") else listOf("wav")
+            "video_to_audio" -> if (hasAac) listOf("m4a", "wav") else listOf("wav")
             "compress_images" -> listOf("png", "jpg", "webp", "bmp")
             else -> listOf(type.outputType.extension)
         }

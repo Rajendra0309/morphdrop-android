@@ -38,6 +38,13 @@ splashscreen = "1.0.1"
 # PDFBox
 pdfboxAndroid = "2.0.27.0"
 
+# Archives (Week 3): Apache Commons Compress, pure Java, Apache 2.0
+commonsCompress = "1.28.0"
+# XZ for Java: Commons Compress lists it as optional, but 7z LZMA/LZMA2
+# (how most 7z files are compressed) needs it at runtime — without it,
+# 7z extraction crashes with NoClassDefFoundError.
+xzJava = "1.10"
+
 # Kotlin Coroutines
 kotlinxCoroutinesCore = "1.11.0"
 
@@ -105,6 +112,10 @@ google-gson = { group = "com.google.code.gson", name = "gson", version.ref = "gs
 
 # PDF Processing
 com-tomroush-pdfbox-android = { group = "com.tom-roush", name = "pdfbox-android", version.ref = "pdfboxAndroid" }
+
+# Archives
+org-apache-commons-compress = { group = "org.apache.commons", name = "commons-compress", version.ref = "commonsCompress" }
+org-tukaani-xz = { group = "org.tukaani", name = "xz", version.ref = "xzJava" }
 
 # AppCompat
 androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }

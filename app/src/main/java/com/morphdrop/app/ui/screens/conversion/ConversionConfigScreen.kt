@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.AudioFile
 import androidx.compose.material.icons.outlined.Movie
 import androidx.compose.material.icons.outlined.PictureAsPdf
@@ -43,6 +44,7 @@ import androidx.compose.material.icons.outlined.TableChart
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -76,6 +78,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -86,6 +89,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import com.morphdrop.app.domain.model.AudioMatrix
 import com.morphdrop.app.domain.model.ConversionType
 import com.morphdrop.app.domain.model.FileMetadata
 import com.morphdrop.app.domain.model.FileType
@@ -136,6 +140,14 @@ fun ConversionConfigScreen(
         "md_to_pdf" -> arrayOf("text/markdown", "text/x-markdown", "text/plain")
         "pdf_to_images", "pdf_to_text", "pdf_to_docx", "pdf_to_csv", "pdf_to_excel", "ocr_searchable_pdf", "split_pdf", "compress_pdf", "protect_pdf", "unlock_pdf", "organize_pdf", "merge_pdf" -> arrayOf("application/pdf")
         "images_to_pdf", "compress_images", "image_converter", "image_resize" -> arrayOf("image/*")
+        "audio_converter" -> arrayOf("audio/*")
+        "audio_trimmer" -> arrayOf("audio/*")
+        "video_to_audio" -> arrayOf("video/*")
+        "zip_create" -> arrayOf("*/*")
+        "zip_extract" -> arrayOf("application/zip", "application/x-zip-compressed")
+        "tar_create" -> arrayOf("*/*")
+        "tar_extract" -> arrayOf("application/x-tar", "application/gzip", "application/x-gzip", "application/octet-stream")
+        "sevenz_extract" -> arrayOf("application/x-7z-compressed", "application/octet-stream")
         else -> arrayOf("*/*")
     }
 
@@ -144,7 +156,7 @@ fun ConversionConfigScreen(
         else -> false
     }
 
-    var isAppendingFiles by remember { mutableStateOf(false) }
+    var isAppendingFiles by rememberSaveable { mutableStateOf(false) }
     var activeCropItem by remember { mutableStateOf<WorkbenchImageItem?>(null) }
 
     val filePicker = rememberLauncherForActivityResult(
@@ -242,6 +254,8 @@ fun ConversionConfigScreen(
         onPaddingColorChanged = viewModel::onPaddingColorChanged,
         onOcrScriptChanged = viewModel::onOcrScriptChanged,
         onTargetSizeKbChanged = viewModel::onTargetSizeKbChanged,
+        onTrimStartChanged = viewModel::onTrimStartChanged,
+        onTrimEndChanged = viewModel::onTrimEndChanged,
         onCompressionPresetSelected = viewModel::onCompressionPresetSelected,
         onPdfCompressionPresetSelected = viewModel::onPdfCompressionPresetSelected,
         onAspectRatioPresetSelected = viewModel::onAspectRatioPresetSelected,
@@ -443,6 +457,8 @@ fun ConversionConfigScreenContent(
     onClearError: () -> Unit = {},
     onRemoveFiles: () -> Unit = {},
     onReloadMetadata: (Context, Uri) -> Unit = { _, _ -> },
+    onTrimStartChanged: (String) -> Unit = {},
+    onTrimEndChanged: (String) -> Unit = {},
     onConvert: () -> Unit
 ) {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
@@ -556,6 +572,13 @@ fun ConversionConfigScreenContent(
                     onDismiss = { locationBannerDismissed = true }
                 )
             }
+            if (state.conversionType?.id in ConversionConfigViewModel.ARCHIVE_EXTRACT_TOOL_IDS && state.selectedFileUri != null) {
+                ArchivePreviewView(
+                    entries = state.archiveEntries,
+                    isLoading = state.isArchivePreviewLoading,
+                    error = state.archivePreviewError
+                )
+            }
             if (state.conversionType?.id == "metadata_editor" && state.selectedFileUri != null) {
                 MetadataInspectorView(
                     metadata = state.fileMetadata,
@@ -634,6 +657,72 @@ fun ConversionConfigScreenContent(
                         Text(
                             text = "Pick the script the scan is written in. The text layer " +
                                 "uses a matching font when the device provides one.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                // Audio Converter: state its output limits up front, so a
+                // user picking an MP3 is never surprised by the result.
+                if (state.conversionType?.id == "audio_converter") {
+                    ConfigSection(title = "About Audio Converter") {
+                        Text(
+                            text = "Converts MP3, M4A, WAV, OGG, Opus and FLAC audio to " +
+                                "WAV or M4A, on-device. MP3 output is not available: " +
+                                "Android has no MP3 encoder, so an MP3 converts to " +
+                                "M4A or WAV instead.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                // Audio Trimmer: start/end in seconds, with the probed
+                // duration shown so the user is not trimming blind.
+                if (state.conversionType?.id == "audio_trimmer") {
+                    ConfigSection(title = "Trim Range") {
+                        if (state.audioDurationMs > 0) {
+                            Text(
+                                text = "Duration: " + AudioMatrix.formatDuration(state.audioDurationMs),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        OutlinedTextField(
+                            value = state.trimStartSeconds,
+                            onValueChange = onTrimStartChanged,
+                            label = { Text("Start (seconds)") },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Number,
+                                imeAction = ImeAction.Next
+                            )
+                        )
+                        OutlinedTextField(
+                            value = state.trimEndSeconds,
+                            onValueChange = onTrimEndChanged,
+                            label = { Text("End (seconds, empty = end of file)") },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Number,
+                                imeAction = ImeAction.Done
+                            )
+                        )
+                        if (state.trimErrorMessage != null) {
+                            Text(
+                                text = state.trimErrorMessage,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                        Text(
+                            text = "Cuts land on the nearest frame at or after the start " +
+                                "time. Trimmed audio is saved as WAV or M4A — never MP3.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -910,6 +999,15 @@ fun ConversionConfigScreenContent(
                 // produced when the tool offers a choice (e.g. "Convert to
                 // WEBP"); single-format tools keep the plain label, and the
                 // accessibility description always names the target.
+                // Archive tools don't convert anything, so they name the
+                // action instead: "Extract", "Create ZIP", "Create TAR.GZ".
+                val toolId = state.conversionType?.id
+                val archiveLabel = when (toolId) {
+                    in ConversionConfigViewModel.ARCHIVE_EXTRACT_TOOL_IDS -> "Extract"
+                    "zip_create" -> "Create ZIP"
+                    "tar_create" -> "Create TAR.GZ"
+                    else -> null
+                }
                 val convertTarget = state.conversionType?.let {
                     if (state.availableOutputFormats.size > 1) {
                         state.outputFormat.uppercase()
@@ -918,18 +1016,20 @@ fun ConversionConfigScreenContent(
                     }
                 }
                 MorphButton(
-                    text = if (state.availableOutputFormats.size > 1 && convertTarget != null) {
-                        "Convert to $convertTarget"
-                    } else {
-                        "Convert"
-                    },
+                    text = archiveLabel
+                        ?: if (state.availableOutputFormats.size > 1 && convertTarget != null) {
+                            "Convert to $convertTarget"
+                        } else {
+                            "Convert"
+                        },
                     onClick = onConvert,
                     enabled = state.isConvertEnabled,
                     variant = MorphButtonVariant.Primary,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 12.dp),
-                    contentDescription = convertTarget?.let { "Convert to $it" }
+                    contentDescription = archiveLabel
+                        ?: convertTarget?.let { "Convert to $it" }
                 )
             }
         }
@@ -993,6 +1093,7 @@ private fun FileDropZone(
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             text = if (isExcel) "Select Excel Spreadsheet (.xlsx, .xls, .csv)"
+                            else if (state.conversionType?.isMultiFileAllowed == true) "Tap to choose files"
                             else "Tap to choose a file",
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.SemiBold,
@@ -1037,15 +1138,22 @@ private fun FileDropZone(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.Center
                         ) {
+                            // Several files staged (e.g. Create ZIP): the
+                            // name field reads "N files selected", which
+                            // is not a filename — don't run it through
+                            // the per-file icon/label helpers.
+                            val fileCount = state.selectedFileUris.size
                             Icon(
-                                imageVector = getContentIconForFileName(state.selectedFileName),
+                                imageVector = if (fileCount > 1) Icons.AutoMirrored.Filled.InsertDriveFile
+                                else getContentIconForFileName(state.selectedFileName),
                                 contentDescription = null,
                                 modifier = Modifier.size(56.dp),
                                 tint = scheme.primary
                             )
                             Spacer(modifier = Modifier.height(10.dp))
                             Text(
-                                text = getContentLabelForFileName(state.selectedFileName),
+                                text = if (fileCount > 1) "$fileCount files"
+                                else getContentLabelForFileName(state.selectedFileName),
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = scheme.onSurface
@@ -1084,10 +1192,36 @@ private fun FileDropZone(
                             )
                         }
                     } else if (state.conversionType != null) {
-                        TransformIndicator(
-                            conversionType = state.conversionType!!,
-                            compact = true
-                        )
+                        // Real formats, not the tool definition: the
+                        // definition says MP3 -> WAV for every audio job,
+                        // even when the file is M4A and the user picked M4A.
+                        // Compound extensions included: "packed.tar.gz"
+                        // is TAR.GZ, not GZ. The filename is the
+                        // authority here — the metadata extension is a
+                        // plain substringAfterLast('.'), so it says "gz".
+                        val realInput = FileHelper.displayFormatOfFileName(state.selectedFileName)
+                            .takeIf { it.isNotBlank() }
+                            ?: state.fileMetadata?.fileExtension?.takeIf { it.isNotBlank() }
+                            ?: state.conversionType!!.inputType.displayName
+                        val realOutput = state.outputFormat
+                            .takeIf { it.isNotBlank() }
+                            ?: state.conversionType!!.outputType.displayName
+                        // Archive tools don't convert one format into
+                        // another, so "ZIP -> ZIP" is a lie the picker
+                        // fix never reached: show what the tool does.
+                        when (state.conversionType!!.id) {
+                            in ConversionConfigViewModel.ARCHIVE_EXTRACT_TOOL_IDS -> FormatChip(
+                                format = "$realInput → FOLDER"
+                            )
+                            in ConversionConfigViewModel.ARCHIVE_CREATE_TOOL_IDS -> FormatChip(
+                                format = "ALL → $realOutput"
+                            )
+                            else -> TransformIndicator(
+                                inputFormat = realInput,
+                                outputFormat = realOutput,
+                                compact = true
+                            )
+                        }
                     }
                 }
 
@@ -1104,7 +1238,15 @@ private fun FileDropZone(
                         modifier = Modifier.weight(1f),
                         leadingIcon = Icons.Default.UploadFile
                     )
-                    if (state.conversionType?.id == "merge_pdf" && hasFile) {
+                    // Add More is for every multi-file tool, not just
+                    // Merge PDF: without it, Create ZIP / Create TAR.GZ
+                    // (and Batch OCR, Compress Images) could only ever
+                    // hold the one file the picker returned, even though
+                    // the ViewModel and the worker both handle a list.
+                    // The picker itself may return one file on some
+                    // devices, so accumulating one tap at a time is the
+                    // path that works everywhere.
+                    if (state.conversionType?.isMultiFileAllowed == true && hasFile) {
                         MorphButton(
                             text = "Add More",
                             onClick = { onPickFile(true) },
@@ -1120,6 +1262,30 @@ private fun FileDropZone(
                             variant = MorphButtonVariant.Ghost,
                             contentDescription = "Remove selected file"
                         )
+                    }
+                }
+
+                // Staged files, so the user can see what will actually
+                // go into the archive (including same-name collisions).
+                if (state.selectedFileUris.size > 1) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        state.selectedFileNames.take(5).forEach { name ->
+                            Text(
+                                text = name,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = scheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        if (state.selectedFileNames.size > 5) {
+                            Text(
+                                text = "and ${state.selectedFileNames.size - 5} more",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = scheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
             }
@@ -1199,6 +1365,88 @@ private fun ConfigSection(title: String, content: @Composable () -> Unit) {
             fontWeight = FontWeight.Bold
         )
         content()
+    }
+}
+
+/**
+ * Archive contents, listed before extracting: entry names and sizes,
+ * the first 10 with a "+ N more" line. Folders show as a trailing "/"
+ * and no size. A corrupt or unsupported archive shows its plain
+ * message here instead of a list.
+ */
+@Composable
+private fun ArchivePreviewView(
+    entries: List<com.morphdrop.app.data.archive.ArchiveEntryInfo>?,
+    isLoading: Boolean,
+    error: String?
+) {
+    ConfigSection(title = "Contents") {
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                when {
+                    isLoading -> {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp))
+                            Text(
+                                text = "Reading archive…",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    error != null -> {
+                        Text(
+                            text = error,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                    entries != null -> {
+                        val shown = entries.take(10)
+                        shown.forEach { entry ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = if (entry.isDirectory) "${entry.name.trimEnd('/')}/" else entry.name,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                if (!entry.isDirectory) {
+                                    Text(
+                                        text = com.morphdrop.app.util.FileHelper.formatFileSize(entry.sizeBytes),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(start = 8.dp)
+                                    )
+                                }
+                            }
+                        }
+                        if (entries.size > shown.size) {
+                            Text(
+                                text = "and ${entries.size - shown.size} more",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Text(
+                            text = "${entries.size} ${if (entries.size == 1) "entry" else "entries"}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -1455,25 +1703,29 @@ private fun ExcelPreviewCard(
 }
 
 private fun getContentIconForFileName(fileName: String): androidx.compose.ui.graphics.vector.ImageVector {
-    val ext = fileName.substringAfterLast('.', "").lowercase()
+    val ext = FileHelper.displayFormatOfFileName(fileName).lowercase()
     return when (ext) {
         "pdf" -> Icons.Outlined.PictureAsPdf
         "mp4", "mkv", "avi", "mov", "3gp", "webm", "m4v" -> Icons.Outlined.Movie
-        "mp3", "flac", "wav", "aac", "ogg", "m4a" -> Icons.Outlined.AudioFile
+        "mp3", "flac", "wav", "aac", "ogg", "m4a", "opus", "oga" -> Icons.Outlined.AudioFile
         "xlsx", "xls", "csv" -> Icons.Outlined.TableChart
         "txt", "md", "markdown" -> Icons.AutoMirrored.Outlined.Article
+        "zip", "tar.gz", "7z" -> Icons.Outlined.Archive
         else -> Icons.AutoMirrored.Filled.InsertDriveFile
     }
 }
 
 private fun getContentLabelForFileName(fileName: String): String {
-    val ext = fileName.substringAfterLast('.', "").lowercase()
+    val ext = FileHelper.displayFormatOfFileName(fileName).lowercase()
     return when (ext) {
         "pdf" -> "PDF Document"
         "mp4", "mkv", "avi", "mov", "3gp", "webm", "m4v" -> "Video File"
-        "mp3", "flac", "wav", "aac", "ogg", "m4a" -> "Audio File"
+        "mp3", "flac", "wav", "aac", "ogg", "m4a", "opus", "oga" -> "Audio File"
         "xlsx", "xls", "csv" -> "Spreadsheet"
         "txt", "md", "markdown" -> "Text Document"
+        "zip" -> "ZIP Archive"
+        "tar.gz" -> "TAR.GZ Archive"
+        "7z" -> "7z Archive"
         "" -> "File"
         else -> "${ext.uppercase()} File"
     }

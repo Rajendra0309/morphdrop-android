@@ -90,6 +90,67 @@ class MainActivity : ComponentActivity() {
             return
         }
 
+        // Share (ACTION_SEND / SEND_MULTIPLE) is NOT auto-routed: the
+        // file goes to Home, which shows the same "Convert this file"
+        // picker as its drop zone. ACTION_VIEW ("Open with") keeps the
+        // direct behaviour below, so opening a PDF still opens it.
+        if (intent.action == Intent.ACTION_SEND || intent.action == Intent.ACTION_SEND_MULTIPLE) {
+            val sharedUris = extractIncomingUris(intent)
+            if (sharedUris.isEmpty()) {
+                val sharedText = intent.getStringExtra(Intent.EXTRA_TEXT)
+                if (!sharedText.isNullOrBlank()) {
+                    lifecycleScope.launch(Dispatchers.IO) {
+                        runCatching {
+                            val fileUri = createSharedTextFile(sharedText)
+                            withContext(Dispatchers.Main) {
+                                if (isFinishing || isDestroyed) return@withContext
+                                viewModel.setPendingSharedFile(listOf(fileUri), "Shared text.md")
+                                pendingShortcutRoute.value = Screen.Home.route
+                            }
+                        }
+                    }
+                }
+                return
+            }
+            lifecycleScope.launch(Dispatchers.IO) {
+                val hasPersistableGrant =
+                    (intent.flags and Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION) != 0
+                val finalUris = if (hasPersistableGrant) {
+                    sharedUris.forEach { u ->
+                        runCatching {
+                            contentResolver.takePersistableUriPermission(u, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                    }
+                    sharedUris
+                } else {
+                    // Senders almost never grant a persistable URI, so
+                    // copy into app-private cache like the old route did.
+                    // A copy that fails is DROPPED, never passed on: the
+                    // raw URI is un-grantable and crashed the viewer.
+                    sharedUris.mapNotNull { uri -> copySharedUriToCache(uri, intent?.type) }
+                }
+                if (finalUris.isEmpty()) {
+                    withContext(Dispatchers.Main) {
+                        if (isFinishing || isDestroyed) return@withContext
+                        android.widget.Toast.makeText(
+                            this@MainActivity,
+                            "Couldn't open the shared file — it may have been deleted, or the other app didn't share it with access.",
+                            android.widget.Toast.LENGTH_LONG
+                        ).show()
+                        pendingShortcutRoute.value = Screen.Home.route
+                    }
+                    return@launch
+                }
+                val firstSharedName = getUriFileName(finalUris.first())
+                withContext(Dispatchers.Main) {
+                    if (isFinishing || isDestroyed) return@withContext
+                    viewModel.setPendingSharedFile(finalUris, firstSharedName)
+                    pendingShortcutRoute.value = Screen.Home.route
+                }
+            }
+            return
+        }
+
         val incomingUris = extractIncomingUris(intent)
         if ((intent.flags and Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION) != 0) {
             incomingUris.forEach { u ->
@@ -195,10 +256,25 @@ class MainActivity : ComponentActivity() {
         return name ?: uri.lastPathSegment ?: ""
     }
 
-    private fun copySharedUriToCache(uri: Uri): Uri? {
+    private fun copySharedUriToCache(uri: Uri, requestMimeType: String? = null): Uri? {
         return runCatching {
             val rawName = getUriFileName(uri).substringAfterLast('/').substringAfterLast('\\')
-            val safeName = rawName.replace(Regex("[^a-zA-Z0-9._-]"), "_").ifBlank { "shared_file" }
+            // One shared filename rule for the whole app (FileHelper):
+            // only path-breaking characters are replaced, so a shared
+            // "test (5).m4a" keeps its name (and its output name) instead
+            // of becoming "test__5_.m4a".
+            var safeName = com.morphdrop.app.util.FileHelper.sanitizeFileName(rawName)
+                .ifBlank { "shared_file" }
+            if (!safeName.contains('.')) {
+                val mime = contentResolver.getType(uri) ?: requestMimeType ?: intent?.type
+                val ext = mime?.let { android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(it) }
+                if (!ext.isNullOrBlank()) {
+                    safeName = "$safeName.$ext"
+                }
+            }
+            // Open the stream FIRST: a failed open must not leave an
+            // empty cache subfolder behind (orphan dirs on every failure).
+            val input = contentResolver.openInputStream(uri) ?: return null
             val uniqueSubdir = java.io.File(
                 cacheDir,
                 "shared_incoming/${System.currentTimeMillis()}_${java.util.UUID.randomUUID().toString().take(8)}"
@@ -206,11 +282,12 @@ class MainActivity : ComponentActivity() {
             val dest = java.io.File(uniqueSubdir, safeName)
             val allowedPrefix = uniqueSubdir.canonicalPath.let { if (it.endsWith(java.io.File.separator)) it else it + java.io.File.separator }
             if (!dest.canonicalPath.startsWith(allowedPrefix)) {
+                runCatching { input.close() }
                 return null
             }
-            contentResolver.openInputStream(uri)?.use { input ->
-                dest.outputStream().use { output -> input.copyTo(output) }
-            } ?: return null
+            input.use { stream ->
+                dest.outputStream().use { output -> stream.copyTo(output) }
+            }
             androidx.core.content.FileProvider.getUriForFile(
                 this,
                 "${packageName}.fileprovider",
@@ -219,19 +296,29 @@ class MainActivity : ComponentActivity() {
         }.getOrNull()
     }
 
+    /**
+     * Writes shared plain text to a file whose display name is "Shared
+     * text.md" — the name the picker shows — instead of a timestamped temp
+     * name that used to leak into the viewer header. Uniqueness comes from
+     * the per-share subfolder, not from mangling the filename.
+     */
+    private fun createSharedTextFile(sharedText: String): Uri {
+        val sharedDir = java.io.File(filesDir, "shared_text/${System.currentTimeMillis()}").apply { mkdirs() }
+        val sharedFile = java.io.File(sharedDir, "Shared text.md")
+        sharedFile.writeText(sharedText)
+        return androidx.core.content.FileProvider.getUriForFile(
+            this,
+            "${packageName}.fileprovider",
+            sharedFile
+        )
+    }
+
     private fun resolveIncomingFileRoute(intent: Intent?, incomingUris: List<Uri>): String? {
         if (incomingUris.isEmpty()) {
             val sharedText = intent?.getStringExtra(Intent.EXTRA_TEXT)
             if (!sharedText.isNullOrBlank()) {
-                val sharedDir = java.io.File(filesDir, "shared_text").apply { mkdirs() }
-                val sharedFile = java.io.File(sharedDir, "shared_text_${System.currentTimeMillis()}.md")
                 runCatching {
-                    sharedFile.writeText(sharedText)
-                    val fileUri = androidx.core.content.FileProvider.getUriForFile(
-                        this,
-                        "${packageName}.fileprovider",
-                        sharedFile
-                    )
+                    val fileUri = createSharedTextFile(sharedText)
                     return Screen.MarkdownViewer.createRoute(fileUri.toString())
                 }
             }
@@ -292,7 +379,7 @@ class MainActivity : ComponentActivity() {
             }
             incomingUris
         } else {
-            incomingUris.map { uri -> copySharedUriToCache(uri) ?: uri }
+            incomingUris.map { uri -> copySharedUriToCache(uri, intent?.type) ?: uri }
         }
 
         val firstUri = uris.first()
@@ -353,6 +440,7 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch(Dispatchers.IO) {
             com.morphdrop.app.ui.widget.WidgetUpdateHelper.updateAllWidgets(applicationContext)
             cleanCacheIfOverLimit()
+            com.morphdrop.app.util.SharedFileCleanup.pruneOldSharedFiles(applicationContext)
         }
         
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {

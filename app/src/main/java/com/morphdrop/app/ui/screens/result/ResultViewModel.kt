@@ -50,7 +50,13 @@ data class ResultUiState(
      * Savings summary, e.g. "75% smaller". Null when not meaningful
      * (unknown input size, or output larger/equal — shown as neutral text).
      */
-    val savingsText: String? = null
+    val savingsText: String? = null,
+    /**
+     * A partial-recovery note, e.g. a truncated ZIP that yielded only
+     * some of its entries. The recovered files are real, so this is a
+     * warning on a successful result — never an error.
+     */
+    val warning: String? = null
 )
 
 @HiltViewModel
@@ -90,15 +96,42 @@ class ResultViewModel @Inject constructor(
                 when (workInfo.state) {
                     WorkInfo.State.SUCCEEDED -> {
                         val outputUriStr = workInfo.outputData.getString(ConversionWorker.KEY_OUTPUT_URI)
-                        val outputUrisStr = workInfo.outputData.getString(ConversionWorker.KEY_OUTPUT_URIS)
-                            ?: outputUriStr
+                        val outputUrisFileStr = workInfo.outputData.getString(ConversionWorker.KEY_OUTPUT_URIS_FILE)
+                        var readManifestError: String? = null
+                        val uriList = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            val outputUrisStr = if (!outputUrisFileStr.isNullOrBlank()) {
+                                try {
+                                    context.contentResolver.openInputStream(Uri.parse(outputUrisFileStr))?.bufferedReader()?.use {
+                                        it.readText()
+                                    } ?: throw java.io.FileNotFoundException("Could not open output URIs file at $outputUrisFileStr")
+                                } catch (e: Exception) {
+                                    android.util.Log.e("ResultViewModel", "Failed to read output URIs file", e)
+                                    readManifestError = "Failed to load conversion outputs: ${e.message}"
+                                    null
+                                }
+                            } else {
+                                workInfo.outputData.getString(ConversionWorker.KEY_OUTPUT_URIS)
+                            } ?: outputUriStr
 
-                        val uriList = outputUrisStr
-                            ?.split(",")
-                            ?.map { it.trim() }
-                            ?.filter { it.isNotBlank() }
-                            ?.mapNotNull { runCatching { Uri.parse(it) }.getOrNull() }
-                            ?: emptyList()
+                            outputUrisStr
+                                ?.split(",")
+                                ?.map { it.trim() }
+                                ?.filter { it.isNotBlank() }
+                                ?.mapNotNull { runCatching { Uri.parse(it) }.getOrNull() }
+                                ?: emptyList()
+                        }
+
+                        if (readManifestError != null) {
+                            _uiState.update {
+                                it.copy(
+                                    title = "Conversion Failed",
+                                    subtitle = "Error",
+                                    isLoading = false,
+                                    errorMessage = readManifestError
+                                )
+                            }
+                            return@collect
+                        }
 
                         if (uriList.isNotEmpty()) {
                             val outputItems = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
@@ -110,7 +143,9 @@ class ResultViewModel @Inject constructor(
                                         fileName = fileName,
                                         fileSizeFormatted = FileHelper.formatFileSize(fileSize),
                                         fileSizeBytes = fileSize,
-                                        extension = fileName.substringAfterLast('.', ""),
+                                        // Compound extensions included:
+                                        // "packed.tar.gz" is TAR.GZ, not GZ.
+                                        extension = FileHelper.displayFormatOfFileName(fileName),
                                         uri = uri
                                     )
                                 }
@@ -154,7 +189,10 @@ class ResultViewModel @Inject constructor(
                                 folderName = folderName,
                                 inputSizeFormatted = inputSizeFormatted,
                                 outputSizeFormatted = outputSizeFormatted,
-                                savingsText = savingsText
+                                savingsText = savingsText,
+                                warning = workInfo.outputData
+                                    .getString(ConversionWorker.KEY_PARTIAL_WARNING)
+                                    ?.takeIf { it.isNotBlank() }
                             )
                         } else {
                             _uiState.update {

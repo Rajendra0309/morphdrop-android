@@ -1,0 +1,98 @@
+package com.morphdrop.app.util
+
+import android.content.Context
+import android.net.Uri
+
+/**
+ * Lifecycle of files MorphDrop copies in for a share.
+ *
+ * A shared file is copied into `cache/shared_incoming/<unique>/` (MainActivity)
+ * or written to `files/shared_text/` (plain-text shares). Copies are app-private
+ * and nobody else cleans them, so without pruning they grow forever — and a
+ * share that ends in a toast (incompatible multi-file share) used to do the
+ * full copy and then leak every file it had just copied.
+ *
+ * Rules:
+ * - A copy is deleted when its share is dismissed or rejected, so a dead
+ *   share leaves nothing behind.
+ * - Anything older than [MAX_AGE_MS] is pruned at app launch. A week is
+ *   generous for a share: the pending share itself lives only in memory, so
+ *   nothing still referenced by the UI can be that old, and a conversion
+ *   worker that still needs its input will have finished long before.
+ */
+object SharedFileCleanup {
+
+    private const val MAX_AGE_MS = 7L * 24 * 60 * 60 * 1000
+
+    /** True when [uri] is one of MorphDrop's own cache copies, never a sender's file. */
+    fun isOwnCacheCopy(context: Context, uri: Uri): Boolean {
+        if (uri.authority != "${context.packageName}.fileprovider") return false
+        val path = uri.path ?: return false
+        return path.contains("shared_incoming") || path.contains("shared_text")
+    }
+
+    /** Deletes [uri] only when it is one of MorphDrop's own cache copies. */
+    fun deleteIfOwnCacheCopy(context: Context, uri: Uri) {
+        if (!isOwnCacheCopy(context, uri)) return
+        runCatching {
+            val path = uri.path ?: return
+            val file = when {
+                path.contains("shared_incoming/") -> {
+                    val rel = path.substringAfter("shared_incoming/")
+                    val f = java.io.File(context.cacheDir, "shared_incoming/$rel")
+                    val base = java.io.File(context.cacheDir, "shared_incoming").canonicalPath.let {
+                        if (it.endsWith(java.io.File.separator)) it else it + java.io.File.separator
+                    }
+                    if (!f.canonicalPath.startsWith(base)) return
+                    f
+                }
+                path.contains("shared_text/") -> {
+                    val rel = path.substringAfter("shared_text/")
+                    val f = java.io.File(context.filesDir, "shared_text/$rel")
+                    val base = java.io.File(context.filesDir, "shared_text").canonicalPath.let {
+                        if (it.endsWith(java.io.File.separator)) it else it + java.io.File.separator
+                    }
+                    if (!f.canonicalPath.startsWith(base)) return
+                    f
+                }
+                else -> return
+            }
+            if (file.exists()) {
+                if (file.isDirectory) file.deleteRecursively() else file.delete()
+            }
+            // Each copy lives in its own subfolder; remove the folder too
+            // when it is left empty, so no orphan dirs accumulate.
+            file.parentFile?.takeIf { it.exists() && it.list()?.isEmpty() == true }?.delete()
+        }
+    }
+
+    /** Deletes the app's own cache copies for a whole share, if any. */
+    fun deleteShareCopies(context: Context, uris: List<Uri>) {
+        uris.forEach { deleteIfOwnCacheCopy(context, it) }
+    }
+
+    /** Prunes stale share copies, viewer copies and plain-text shares. Call off the main thread. */
+    fun pruneOldSharedFiles(context: Context) {
+        val cutoff = System.currentTimeMillis() - MAX_AGE_MS
+        runCatching {
+            context.cacheDir.resolve("shared_incoming").listFiles()
+                ?.forEach { dir ->
+                    if (dir.lastModified() < cutoff) dir.deleteRecursively()
+                }
+        }
+        runCatching {
+            context.cacheDir.resolve("viewer_incoming").listFiles()
+                ?.forEach { file ->
+                    if (file.lastModified() < cutoff) file.delete()
+                }
+        }
+        runCatching {
+            context.filesDir.resolve("shared_text").listFiles()
+                ?.forEach { file ->
+                    if (file.lastModified() < cutoff) {
+                        if (file.isDirectory) file.deleteRecursively() else file.delete()
+                    }
+                }
+        }
+    }
+}

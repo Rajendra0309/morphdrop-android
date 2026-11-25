@@ -2,6 +2,7 @@ package com.morphdrop.app.worker
 
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import androidx.hilt.work.HiltWorker
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
@@ -34,6 +35,12 @@ import com.morphdrop.app.domain.usecase.conversion.SignPdfUseCase
 import com.morphdrop.app.domain.usecase.conversion.WatermarkPdfUseCase
 import com.morphdrop.app.domain.usecase.conversion.XlsxToCsvUseCase
 import com.morphdrop.app.domain.usecase.conversion.AddPageNumbersUseCase
+import com.morphdrop.app.data.archive.ArchiveFormat
+import com.morphdrop.app.domain.usecase.conversion.AudioConverterUseCase
+import com.morphdrop.app.domain.usecase.conversion.AudioTrimmerUseCase
+import com.morphdrop.app.domain.usecase.conversion.CreateArchiveUseCase
+import com.morphdrop.app.domain.usecase.conversion.ExtractArchiveUseCase
+import com.morphdrop.app.domain.usecase.conversion.VideoToAudioUseCase
 import com.morphdrop.app.domain.model.WatermarkConfig
 import com.morphdrop.app.domain.model.PageNumberConfig
 import com.morphdrop.app.util.FileHelper
@@ -70,6 +77,11 @@ class ConversionWorker @AssistedInject constructor(
     private val rotatePdfPagesUseCase: RotatePdfPagesUseCase,
     private val watermarkPdfUseCase: WatermarkPdfUseCase,
     private val addPageNumbersUseCase: AddPageNumbersUseCase,
+    private val audioConverterUseCase: AudioConverterUseCase,
+    private val audioTrimmerUseCase: AudioTrimmerUseCase,
+    private val videoToAudioUseCase: VideoToAudioUseCase,
+    private val createArchiveUseCase: CreateArchiveUseCase,
+    private val extractArchiveUseCase: ExtractArchiveUseCase,
     private val reorderPdfPagesUseCase: ReorderPdfPagesUseCase,
     private val pdfPasswordUseCase: PdfPasswordUseCase,
     private val pdfPageEditorUseCase: PdfPageEditorUseCase,
@@ -82,6 +94,7 @@ class ConversionWorker @AssistedInject constructor(
         const val KEY_CONVERSION_TYPE = "conversion_type"
         const val KEY_INPUT_URI = "input_uri"
         const val KEY_INPUT_URIS = "input_uris"
+        const val KEY_INPUT_URIS_FILE = "input_uris_file"
         const val KEY_OUTPUT_FILE_NAME = "output_file_name"
         const val KEY_QUALITY = "quality"
         const val KEY_PAGE_RANGE = "page_range"
@@ -90,6 +103,8 @@ class ConversionWorker @AssistedInject constructor(
         const val KEY_PASSWORD = "password"
         const val KEY_ACTION = "action"
         const val KEY_TARGET_FORMAT = "target_format"
+        const val KEY_TRIM_START_MS = "trim_start_ms"
+        const val KEY_TRIM_END_MS = "trim_end_ms"
         const val KEY_SPLIT_MODE = "split_mode"
 
         const val KEY_ALLOW_PRINTING = "allow_printing"
@@ -98,7 +113,10 @@ class ConversionWorker @AssistedInject constructor(
 
         const val KEY_OUTPUT_URI = "output_uri"
         const val KEY_OUTPUT_URIS = "output_uris"
+        const val KEY_OUTPUT_URIS_FILE = "output_uris_file"
         const val KEY_ERROR = "error"
+        /** A partial-recovery note (e.g. a truncated ZIP): shown on Result, never a failure. */
+        const val KEY_PARTIAL_WARNING = "partial_warning"
         /** Total input size in bytes, for before/after size display on Result. */
         const val KEY_INPUT_SIZE_BYTES = "input_size_bytes"
         
@@ -155,7 +173,23 @@ class ConversionWorker @AssistedInject constructor(
         }
 
         val inputUriString = inputData.getString(KEY_INPUT_URI)
-        val inputUrisArray = inputData.getStringArray(KEY_INPUT_URIS)
+        val inputUrisFileString = inputData.getString(KEY_INPUT_URIS_FILE)
+        var manifestReadError: Exception? = null
+        val inputUrisArray = if (!inputUrisFileString.isNullOrBlank()) {
+            try {
+                val fileUri = Uri.parse(inputUrisFileString)
+                val lines = appContext.contentResolver.openInputStream(fileUri)?.bufferedReader()?.use { reader ->
+                    reader.readLines().filter { it.isNotBlank() }.toTypedArray()
+                } ?: throw java.io.FileNotFoundException("Could not open input URI manifest at $inputUrisFileString")
+                lines
+            } catch (e: Exception) {
+                Log.e("ConversionWorker", "Failed to read input URIs manifest file", e)
+                manifestReadError = IllegalArgumentException("Failed to read input files list: ${e.message}", e)
+                null
+            }
+        } else {
+            inputData.getStringArray(KEY_INPUT_URIS)
+        }
         val inputFileName = inputUriString?.let {
             FileHelper.getFileName(appContext, Uri.parse(it))
         } ?: if (!inputUrisArray.isNullOrEmpty()) {
@@ -188,6 +222,12 @@ class ConversionWorker @AssistedInject constructor(
                 "xlsx_to_csv" -> "csv"
                 "csv_to_xlsx" -> "xlsx"
                 "image_converter", "compress_images", "heic_to_image", "image_resize" -> inputData.getString(KEY_TARGET_FORMAT) ?: "jpg"
+                "audio_converter" -> inputData.getString(KEY_TARGET_FORMAT) ?: "wav"
+                "audio_trimmer" -> inputData.getString(KEY_TARGET_FORMAT) ?: "m4a"
+                "video_to_audio" -> inputData.getString(KEY_TARGET_FORMAT) ?: "m4a"
+                "zip_create" -> "zip"
+                "tar_create" -> "tar.gz"
+                "zip_extract", "tar_extract", "sevenz_extract" -> "" // Folder
                 "metadata_editor" -> inputExt
                 else -> if (inputExt.isNotBlank()) inputExt else "pdf"
             }
@@ -199,6 +239,7 @@ class ConversionWorker @AssistedInject constructor(
         val outputsToCleanup = mutableListOf<Uri>()
 
         try {
+            manifestReadError?.let { throw it }
             try {
                 val foregroundInfo = notificationHelper.createForegroundInfo(
                     notificationId,
@@ -220,10 +261,106 @@ class ConversionWorker @AssistedInject constructor(
                 5,
                 cancelPendingIntent
             )
-            setProgress(workDataOf(
-                "progress" to 5,
-                "output_name" to outputFileName
-            ))
+            // Real input/output formats for the Processing screen.
+            // WorkInfo (WorkManager 2.11) exposes no inputData, so the
+            // worker must surface them through progress data; the
+            // ProcessingViewModel caches them on first sight, since
+            // later progress updates replace the whole progress Data.
+            val inputFormatForProgress =
+                formatOfFileName(inputFileName)
+                    .takeIf { it.isNotBlank() }
+            val outputFormatForProgress =
+                outputFileName.substringAfterLast('.', "").lowercase()
+                    .takeIf { it.isNotBlank() && outputFileName.contains(".") }
+            // Data values may not be null, so only add formats we know.
+            val initialProgress = androidx.work.Data.Builder()
+                .putInt("progress", 5)
+                .putString("output_name", outputFileName)
+                .apply {
+                    if (inputFormatForProgress != null) putString("input_format", inputFormatForProgress)
+                    if (outputFormatForProgress != null) putString("output_format", outputFormatForProgress)
+                }
+                .build()
+            setProgress(initialProgress)
+
+            // Archive tools share one create and one extract path (ZIP,
+            // TAR.GZ, 7z differ only in format), so a new archive tool is
+            // one line in the when below instead of a copied branch.
+            // Set by the extract branch when an archive was recovered
+            // only in part; carried into the success data below.
+            var partialWarning: String? = null
+
+            suspend fun runCreateArchive(format: ArchiveFormat, outputExt: String): List<Uri> {
+                checkCancellation()
+                val uris = inputUrisArray?.map { Uri.parse(it) }
+                    ?: listOf(Uri.parse(requireNotNull(inputUriString)))
+                val firstExt = formatOfFileName(FileHelper.getFileName(appContext, uris.first()))
+                notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 30, cancelPendingIntent)
+                setProgress(workDataOf(
+                    "progress" to 30,
+                    "input_format" to firstExt,
+                    "output_format" to outputExt
+                ))
+                var lastMappedProgress = 30
+                val result = createArchiveUseCase(
+                    inputUris = uris,
+                    format = format,
+                    outputFileName = outputFileName,
+                    onProgress = { fraction ->
+                        val mapped = (30 + (fraction.coerceIn(0f, 1f) * 50)).toInt()
+                        if (mapped != lastMappedProgress) {
+                            lastMappedProgress = mapped
+                            notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), mapped, cancelPendingIntent)
+                            setProgressAsync(workDataOf(
+                                "progress" to mapped,
+                                "input_format" to firstExt,
+                                "output_format" to outputExt
+                            ))
+                        }
+                    },
+                    shouldContinue = { !isStopped }
+                )
+                outputsToCleanup.add(result)
+                checkCancellation()
+                notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 80, cancelPendingIntent)
+                setProgress(workDataOf("progress" to 80))
+                return listOf(result)
+            }
+
+            suspend fun runExtractArchive(format: ArchiveFormat): List<Uri> {
+                checkCancellation()
+                val uri = Uri.parse(requireNotNull(inputUriString))
+                val inputExt = formatOfFileName(inputFileName)
+                notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 30, cancelPendingIntent)
+                setProgress(workDataOf(
+                    "progress" to 30,
+                    "input_format" to inputExt
+                ))
+                var lastMappedProgress = 30
+                val result = extractArchiveUseCase(
+                    inputUri = uri,
+                    format = format,
+                    outputFolderName = outputFileName,
+                    onProgress = { fraction ->
+                        val mapped = (30 + (fraction.coerceIn(0f, 1f) * 50)).toInt()
+                        if (mapped != lastMappedProgress) {
+                            lastMappedProgress = mapped
+                            notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), mapped, cancelPendingIntent)
+                            setProgressAsync(workDataOf(
+                                "progress" to mapped,
+                                "input_format" to inputExt
+                            ))
+                        }
+                    },
+                    shouldContinue = { !isStopped }
+                )
+                outputsToCleanup.addAll(result.uris)
+                partialWarning = result.warning
+                checkCancellation()
+                notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 80, cancelPendingIntent)
+                setProgress(workDataOf("progress" to 80))
+                return result.uris
+            }
 
             val resultUris: List<Uri> = when (conversionType) {
                 "pdf_to_images" -> {
@@ -535,6 +672,131 @@ class ConversionWorker @AssistedInject constructor(
                     runCatching { java.io.File(signaturePath).delete() }
                     result
                 }
+
+                "audio_converter" -> {
+                    checkCancellation()
+                    val uri = Uri.parse(requireNotNull(inputUriString))
+                    val targetFormat = (inputData.getString(KEY_TARGET_FORMAT) ?: "wav")
+                        .lowercase().takeIf { it == "wav" || it == "m4a" } ?: "wav"
+                    notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 30, cancelPendingIntent)
+                    setProgress(workDataOf(
+                        "progress" to 30,
+                        "input_format" to inputFileName.substringAfterLast('.', "").lowercase(),
+                        "output_format" to targetFormat
+                    ))
+                    var lastMappedProgress = 30
+                    val result = audioConverterUseCase(
+                        inputUri = uri,
+                        outputFormat = targetFormat,
+                        outputFileName = outputFileName,
+                        onProgress = { fraction ->
+                            val mapped = (30 + (fraction.coerceIn(0f, 1f) * 50)).toInt()
+                            if (mapped != lastMappedProgress) {
+                                lastMappedProgress = mapped
+                                notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), mapped, cancelPendingIntent)
+                                setProgressAsync(workDataOf(
+                                    "progress" to mapped,
+                                    "input_format" to inputFileName.substringAfterLast('.', "").lowercase(),
+                                    "output_format" to targetFormat
+                                ))
+                            }
+                        },
+                        shouldContinue = { !isStopped }
+                    )
+                    outputsToCleanup.add(result)
+                    checkCancellation()
+                    notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 80, cancelPendingIntent)
+                    setProgress(workDataOf("progress" to 80))
+                    listOf(result)
+                }
+
+                "audio_trimmer" -> {
+                    checkCancellation()
+                    val uri = Uri.parse(requireNotNull(inputUriString))
+                    val targetFormat = (inputData.getString(KEY_TARGET_FORMAT) ?: "m4a")
+                        .lowercase().takeIf { it == "wav" || it == "m4a" } ?: "m4a"
+                    notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 30, cancelPendingIntent)
+                    setProgress(workDataOf(
+                        "progress" to 30,
+                        "input_format" to inputFileName.substringAfterLast('.', "").lowercase(),
+                        "output_format" to targetFormat
+                    ))
+                    val startMs = inputData.getLong(KEY_TRIM_START_MS, 0L)
+                    val endMsRaw = inputData.getLong(KEY_TRIM_END_MS, 0L)
+                    var lastMappedProgress = 30
+                    val result = audioTrimmerUseCase(
+                        inputUri = uri,
+                        outputFormat = targetFormat,
+                        startMs = startMs,
+                        endMs = endMsRaw.takeIf { it > 0 },
+                        outputFileName = outputFileName,
+                        onProgress = { fraction ->
+                            val mapped = (30 + (fraction.coerceIn(0f, 1f) * 50)).toInt()
+                            if (mapped != lastMappedProgress) {
+                                lastMappedProgress = mapped
+                                notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), mapped, cancelPendingIntent)
+                                setProgressAsync(workDataOf(
+                                    "progress" to mapped,
+                                    "input_format" to inputFileName.substringAfterLast('.', "").lowercase(),
+                                    "output_format" to targetFormat
+                                ))
+                            }
+                        },
+                        shouldContinue = { !isStopped }
+                    )
+                    outputsToCleanup.add(result)
+                    checkCancellation()
+                    notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 80, cancelPendingIntent)
+                    setProgress(workDataOf("progress" to 80))
+                    listOf(result)
+                }
+
+                "video_to_audio" -> {
+                    checkCancellation()
+                    val uri = Uri.parse(requireNotNull(inputUriString))
+                    val targetFormat = (inputData.getString(KEY_TARGET_FORMAT) ?: "m4a")
+                        .lowercase().takeIf { it == "wav" || it == "m4a" } ?: "m4a"
+                    notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 30, cancelPendingIntent)
+                    setProgress(workDataOf(
+                        "progress" to 30,
+                        "input_format" to inputFileName.substringAfterLast('.', "").lowercase(),
+                        "output_format" to targetFormat
+                    ))
+                    var lastMappedProgress = 30
+                    val result = videoToAudioUseCase(
+                        inputUri = uri,
+                        outputFormat = targetFormat,
+                        outputFileName = outputFileName,
+                        onProgress = { fraction ->
+                            val mapped = (30 + (fraction.coerceIn(0f, 1f) * 50)).toInt()
+                            if (mapped != lastMappedProgress) {
+                                lastMappedProgress = mapped
+                                notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), mapped, cancelPendingIntent)
+                                setProgressAsync(workDataOf(
+                                    "progress" to mapped,
+                                    "input_format" to inputFileName.substringAfterLast('.', "").lowercase(),
+                                    "output_format" to targetFormat
+                                ))
+                            }
+                        },
+                        shouldContinue = { !isStopped }
+                    )
+                    outputsToCleanup.add(result)
+                    checkCancellation()
+                    notificationHelper.showProgressNotification(notificationId, mapIdToDisplayName(conversionType), 80, cancelPendingIntent)
+                    setProgress(workDataOf("progress" to 80))
+                    listOf(result)
+                }
+
+                "zip_create" -> runCreateArchive(ArchiveFormat.ZIP, "zip")
+                "tar_create" -> runCreateArchive(ArchiveFormat.TAR_GZ, "tar.gz")
+                "zip_extract" -> runExtractArchive(ArchiveFormat.ZIP)
+                "tar_extract" -> {
+                    val format = ArchiveFormat.detect(inputFileName)
+                        ?: throw IllegalArgumentException("Unsupported archive type: $inputFileName")
+                    runExtractArchive(format)
+                }
+                "sevenz_extract" -> runExtractArchive(ArchiveFormat.SEVENZ)
 
                 "heic_to_image" -> {
                     val uris = inputUrisArray?.map { Uri.parse(it) }
@@ -872,19 +1134,33 @@ class ConversionWorker @AssistedInject constructor(
             com.morphdrop.app.ui.widget.WidgetUpdateHelper.updateAllWidgets(appContext)
 
             val primaryOutputUri = resultUris.firstOrNull()
+            val outUrisBytes = outUrisString.toByteArray(Charsets.UTF_8)
+            val resultDataBuilder = androidx.work.Data.Builder()
+                .putString(KEY_OUTPUT_URI, primaryOutputUri.toString())
+                .putLong(KEY_INPUT_SIZE_BYTES, totalInputBytes)
+                .putString(KEY_PARTIAL_WARNING, partialWarning ?: "")
+
+            if (outUrisBytes.size > 7 * 1024) {
+                val outFile = java.io.File(appContext.cacheDir, "output_uris_${java.util.UUID.randomUUID()}.txt")
+                outFile.writeText(outUrisString)
+                val outUri = androidx.core.content.FileProvider.getUriForFile(
+                    appContext,
+                    "${appContext.packageName}.fileprovider",
+                    outFile
+                )
+                resultDataBuilder.putString(KEY_OUTPUT_URIS_FILE, outUri.toString())
+            } else {
+                resultDataBuilder.putString(KEY_OUTPUT_URIS, outUrisString)
+            }
+            val resultData = resultDataBuilder.build()
+
             notificationHelper.showCompletionNotification(
                 notificationId,
                 mapIdToDisplayName(conversionType),
                 primaryOutputUri
             )
 
-            Result.success(
-                workDataOf(
-                    KEY_OUTPUT_URI to primaryOutputUri.toString(),
-                    KEY_OUTPUT_URIS to outUrisString,
-                    KEY_INPUT_SIZE_BYTES to totalInputBytes
-                )
-            )
+            Result.success(resultData)
         } catch (e: Exception) {
             // Handle cancellation gracefully
             if (e is kotlinx.coroutines.CancellationException || isStopped) {
@@ -958,6 +1234,19 @@ class ConversionWorker @AssistedInject constructor(
         }
     }
 
+    /**
+     * The format label for a filename, for the Processing screen. A plain
+     * substringAfterLast('.') would call "backup.tar.gz" just "gz", so
+     * two-part archive extensions are handled here.
+     */
+    private fun formatOfFileName(name: String): String {
+        val lower = name.lowercase()
+        return when {
+            lower.endsWith(".tar.gz") || lower.endsWith(".tgz") -> "tar.gz"
+            else -> name.substringAfterLast('.', "").lowercase()
+        }
+    }
+
     private fun mapIdToDisplayName(id: String): String {
         return when (id) {
             "metadata_editor" -> "Metadata Inspector & Editor"
@@ -975,6 +1264,14 @@ class ConversionWorker @AssistedInject constructor(
             "csv_to_xlsx" -> "CSV to Excel"
             "csv_to_pdf" -> "CSV to PDF"
             "heic_to_image" -> "HEIC to Image"
+            "audio_converter" -> "Audio Converter"
+            "audio_trimmer" -> "Audio Trimmer"
+            "video_to_audio" -> "Video to Audio"
+            "zip_create" -> "Create ZIP"
+            "zip_extract" -> "Extract ZIP"
+            "tar_create" -> "Create TAR.GZ"
+            "tar_extract" -> "Extract TAR.GZ"
+            "sevenz_extract" -> "Extract 7z"
             "ocr_searchable_pdf" -> "OCR to Searchable PDF"
             "sign_pdf" -> "Sign PDF"
             "pdf_to_csv" -> "PDF to CSV"
