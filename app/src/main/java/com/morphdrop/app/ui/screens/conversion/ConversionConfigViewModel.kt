@@ -1232,14 +1232,19 @@ class ConversionConfigViewModel @Inject constructor(
                 .putString(com.morphdrop.app.worker.ConversionWorker.KEY_INPUT_URI, uris.first().toString())
 
             if (totalUriBytes > 7 * 1024) {
-                val tempUrisFile = File(context.cacheDir, "input_uris_${java.util.UUID.randomUUID()}.txt")
-                tempUrisFile.writeText(uris.joinToString("\n") { it.toString() })
-                val fileUri = androidx.core.content.FileProvider.getUriForFile(
-                    context,
-                    "${context.packageName}.fileprovider",
-                    tempUrisFile
-                )
-                dataBuilder.putString(com.morphdrop.app.worker.ConversionWorker.KEY_INPUT_URIS_FILE, fileUri.toString())
+                try {
+                    val tempUrisFile = File(context.cacheDir, "input_uris_${java.util.UUID.randomUUID()}.txt")
+                    tempUrisFile.writeText(uris.joinToString("\n") { it.toString() })
+                    val fileUri = androidx.core.content.FileProvider.getUriForFile(
+                        context,
+                        "${context.packageName}.fileprovider",
+                        tempUrisFile
+                    )
+                    dataBuilder.putString(com.morphdrop.app.worker.ConversionWorker.KEY_INPUT_URIS_FILE, fileUri.toString())
+                } catch (e: Exception) {
+                    _state.update { it.copy(errorMessage = "Failed to stage input files: ${e.message}") }
+                    return null
+                }
             } else {
                 dataBuilder.putStringArray(com.morphdrop.app.worker.ConversionWorker.KEY_INPUT_URIS, uriStrings)
             }
@@ -1399,6 +1404,7 @@ class ConversionConfigViewModel @Inject constructor(
             recordSuccessfulEnqueue(uniqueWorkName)
             workRequest.id
         } catch (e: Exception) {
+            _state.update { it.copy(errorMessage = "Failed to start conversion: ${e.message}") }
             null
         }
     }

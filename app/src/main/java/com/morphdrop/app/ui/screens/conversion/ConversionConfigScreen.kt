@@ -156,7 +156,7 @@ fun ConversionConfigScreen(
         else -> false
     }
 
-    var isAppendingFiles by remember { mutableStateOf(false) }
+    var isAppendingFiles by rememberSaveable { mutableStateOf(false) }
     var activeCropItem by remember { mutableStateOf<WorkbenchImageItem?>(null) }
 
     val filePicker = rememberLauncherForActivityResult(

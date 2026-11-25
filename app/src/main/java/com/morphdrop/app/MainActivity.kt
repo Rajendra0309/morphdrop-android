@@ -113,7 +113,6 @@ class MainActivity : ComponentActivity() {
                 return
             }
             lifecycleScope.launch(Dispatchers.IO) {
-                val firstSharedName = getUriFileName(sharedUris.first())
                 val hasPersistableGrant =
                     (intent.flags and Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION) != 0
                 val finalUris = if (hasPersistableGrant) {
@@ -142,6 +141,7 @@ class MainActivity : ComponentActivity() {
                     }
                     return@launch
                 }
+                val firstSharedName = getUriFileName(finalUris.first())
                 withContext(Dispatchers.Main) {
                     if (isFinishing || isDestroyed) return@withContext
                     viewModel.setPendingSharedFile(finalUris, firstSharedName)
@@ -263,8 +263,15 @@ class MainActivity : ComponentActivity() {
             // only path-breaking characters are replaced, so a shared
             // "test (5).m4a" keeps its name (and its output name) instead
             // of becoming "test__5_.m4a".
-            val safeName = com.morphdrop.app.util.FileHelper.sanitizeFileName(rawName)
+            var safeName = com.morphdrop.app.util.FileHelper.sanitizeFileName(rawName)
                 .ifBlank { "shared_file" }
+            if (!safeName.contains('.')) {
+                val mime = contentResolver.getType(uri) ?: intent.type
+                val ext = mime?.let { android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(it) }
+                if (!ext.isNullOrBlank()) {
+                    safeName = "$safeName.$ext"
+                }
+            }
             // Open the stream FIRST: a failed open must not leave an
             // empty cache subfolder behind (orphan dirs on every failure).
             val input = contentResolver.openInputStream(uri) ?: return null

@@ -50,32 +50,53 @@ class CreateArchiveUseCase @Inject constructor(
         val openedStreams = mutableListOf<java.io.InputStream>()
         try {
             var totalBytes = 0L
-            val entries = inputUris.map { uri ->
-                val name = FileHelper.getFileName(context, uri).ifBlank { "file" }
-                var size = runCatching {
-                    context.contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
-                        pfd.statSize.takeIf { it >= 0 }
+            val entries = try {
+                inputUris.map { uri ->
+                    if (shouldContinue?.invoke() == false) {
+                        throw kotlinx.coroutines.CancellationException("Archive creation cancelled")
                     }
-                }.getOrNull() ?: -1L
-
-                val stream: java.io.InputStream
-                if (format == ArchiveFormat.TAR_GZ && size < 0) {
-                    val stageTemp = File.createTempFile("stage_tar_", ".tmp", context.cacheDir)
-                    tempFilesToClean += stageTemp
-                    context.contentResolver.openInputStream(uri)?.use { inStream ->
-                        stageTemp.outputStream().use { outStream -> inStream.copyTo(outStream) }
-                    } ?: throw IllegalArgumentException("Could not open '$name'.")
-                    size = stageTemp.length()
-                    stream = stageTemp.inputStream()
-                } else {
-                    stream = context.contentResolver.openInputStream(uri)
-                        ?: throw IllegalArgumentException("Could not open '$name'.")
+                    val name = FileHelper.getFileName(context, uri).ifBlank { "file" }
+                    val stream: java.io.InputStream
+                    val validSize: Long
+                    if (format == ArchiveFormat.TAR || format == ArchiveFormat.TAR_GZ) {
+                        val stageTemp = File.createTempFile("stage_tar_", ".tmp", context.cacheDir)
+                        tempFilesToClean += stageTemp
+                        val inStream = context.contentResolver.openInputStream(uri)
+                            ?: throw IllegalArgumentException("Could not open '$name'.")
+                        inStream.use { input ->
+                            stageTemp.outputStream().use { output ->
+                                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                                var read: Int
+                                while (input.read(buffer).also { read = it } != -1) {
+                                    if (shouldContinue?.invoke() == false) {
+                                        throw kotlinx.coroutines.CancellationException("Archive creation cancelled")
+                                    }
+                                    output.write(buffer, 0, read)
+                                }
+                            }
+                        }
+                        validSize = stageTemp.length()
+                        stream = stageTemp.inputStream()
+                    } else {
+                        var size = runCatching {
+                            context.contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
+                                pfd.statSize.takeIf { it >= 0 }
+                            }
+                        }.getOrNull() ?: -1L
+                        val inStream = context.contentResolver.openInputStream(uri)
+                            ?: throw IllegalArgumentException("Could not open '$name'.")
+                        validSize = size.coerceAtLeast(0L)
+                        stream = inStream
+                    }
+                    openedStreams += stream
+                    totalBytes += validSize
+                    ArchiveEngine.SizedArchiveEntrySource(name, stream, validSize)
                 }
-                openedStreams += stream
-                val validSize = size.coerceAtLeast(0L)
-                totalBytes += validSize
-                ArchiveEngine.SizedArchiveEntrySource(name, stream, validSize)
+            } catch (t: Throwable) {
+                openedStreams.forEach { runCatching { it.close() } }
+                throw t
             }
+
             try {
                 // The engine closes each stream after its entry is written;
                 // the finally below also closes any stream it never reached
@@ -93,6 +114,7 @@ class CreateArchiveUseCase @Inject constructor(
             }
             FileHelper.saveStreamToFile(context, settingsRepository, "$baseName.$ext", tmp)
         } finally {
+            openedStreams.forEach { runCatching { it.close() } }
             tempFilesToClean.forEach { runCatching { it.delete() } }
             tmp.delete()
         }

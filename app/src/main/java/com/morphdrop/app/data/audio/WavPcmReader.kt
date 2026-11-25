@@ -119,7 +119,15 @@ class WavPcmReader(input: InputStream) {
         val sourceWanted = minOf(framesWanted.toLong() * sourceFrame, dataRemaining).toInt()
         val raw = ByteArray(sourceWanted)
         val read = readFully(raw)
-        if (read <= 0) return null
+        if (read <= 0) {
+            if (dataRemaining > 0) {
+                throw UnsupportedWavException("Unexpected end of WAV data: stream truncated ($dataRemaining bytes missing).")
+            }
+            return null
+        }
+        if (read < sourceWanted) {
+            throw UnsupportedWavException("Unexpected end of WAV data: stream truncated ($dataRemaining bytes missing).")
+        }
         dataRemaining -= read
         val wholeFrames = read / sourceFrame
         val usable = wholeFrames * sourceFrame

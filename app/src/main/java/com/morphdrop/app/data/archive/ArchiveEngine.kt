@@ -46,14 +46,19 @@ enum class ArchiveFormat {
     }
 }
 
-sealed class ArchiveException(message: String) : Exception(message) {
+sealed class ArchiveException(message: String, cause: Throwable? = null) : Exception(message, cause) {
     class UnsupportedFormat(message: String) : ArchiveException(message)
     class EmptyArchive(message: String) : ArchiveException(message)
     class UnsafeEntry(message: String) : ArchiveException(message)
     class TooLarge(message: String) : ArchiveException(message)
-    class CorruptArchive(message: String) : ArchiveException(message)
-    class OutputWriteException(message: String, cause: Throwable? = null) : ArchiveException(message)
+    class CorruptArchive(message: String, cause: Throwable? = null) : ArchiveException(message, cause)
+    class OutputWriteException(message: String, cause: Throwable? = null) : ArchiveException(message, cause)
 }
+
+data class ArchiveExtractResult(
+    val files: List<File>,
+    val hadReadFailure: Boolean = false
+) : List<File> by files
 
 /**
  * Archive engine, built on Apache Commons Compress 1.28.0 (pure Java,
@@ -313,12 +318,14 @@ class ArchiveEngine(
         totalInputBytes: Long = -1,
         onProgress: ((Float) -> Unit)? = null,
         shouldContinue: (() -> Boolean)? = null
-    ): List<File> {
+    ): ArchiveExtractResult {
         val counting = CountingInputStream(input)
         val extracted = mutableListOf<File>()
+        var hadReadFailure = false
         var totalWritten = 0L
         var entryCount = 0
         val seenDestPaths = mutableSetOf<String>()
+        val nextSuffixMap = mutableMapOf<String, Int>()
         val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
 
         fun resolveDestFile(name: String, isDirectory: Boolean): File {
@@ -337,14 +344,17 @@ class ArchiveEngine(
                 val fileName = dest.name
                 val stem = fileName.substringBeforeLast('.', fileName)
                 val ext = fileName.substringAfterLast('.', "").let { if (it.isNotEmpty() && fileName.contains('.')) ".$it" else "" }
-                var n = 2
+                val key = "${parent?.canonicalPath ?: ""}/$stem$ext"
+                var n = nextSuffixMap.getOrDefault(key, 2)
                 while (true) {
                     val candidate = File(parent, "$stem ($n)$ext")
-                    if (candidate.canonicalPath !in seenDestPaths) {
+                    val candidatePath = candidate.canonicalPath
+                    n++
+                    if (candidatePath !in seenDestPaths) {
                         dest = candidate
+                        nextSuffixMap[key] = n
                         break
                     }
-                    n++
                 }
             }
             seenDestPaths.add(dest.canonicalPath)
@@ -405,7 +415,10 @@ class ArchiveEngine(
                         } catch (e: LinkageError) {
                             throw ArchiveException.UnsupportedFormat("Unsupported compression algorithm in archive entry: ${e.message}")
                         } catch (e: Exception) {
-                            if (extracted.isNotEmpty()) null else throw e
+                            if (extracted.isNotEmpty()) {
+                                hadReadFailure = true
+                                null
+                            } else throw e
                         }
                         if (entry == null && extracted.isEmpty()) throw ArchiveException.EmptyArchive("This archive contains no files.")
                         while (entry != null) {
@@ -415,7 +428,10 @@ class ArchiveEngine(
                             } catch (e: LinkageError) {
                                 throw ArchiveException.UnsupportedFormat("Unsupported compression algorithm in archive entry: ${e.message}")
                             } catch (e: Exception) {
-                                if (extracted.isNotEmpty()) break
+                                if (extracted.isNotEmpty()) {
+                                    hadReadFailure = true
+                                    break
+                                }
                                 throw e
                             }
                         }
@@ -428,7 +444,10 @@ class ArchiveEngine(
                         } catch (e: LinkageError) {
                             throw ArchiveException.UnsupportedFormat("Unsupported compression algorithm in archive entry: ${e.message}")
                         } catch (e: Exception) {
-                            if (extracted.isNotEmpty()) null else throw e
+                            if (extracted.isNotEmpty()) {
+                                hadReadFailure = true
+                                null
+                            } else throw e
                         }
                         if (entry == null && extracted.isEmpty()) throw ArchiveException.EmptyArchive("This archive contains no files.")
                         while (entry != null) {
@@ -438,7 +457,10 @@ class ArchiveEngine(
                             } catch (e: LinkageError) {
                                 throw ArchiveException.UnsupportedFormat("Unsupported compression algorithm in archive entry: ${e.message}")
                             } catch (e: Exception) {
-                                if (extracted.isNotEmpty()) break
+                                if (extracted.isNotEmpty()) {
+                                    hadReadFailure = true
+                                    break
+                                }
                                 throw e
                             }
                         }
@@ -453,10 +475,10 @@ class ArchiveEngine(
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
-            throw ArchiveException.CorruptArchive("This file couldn't be read as an archive — it may be corrupt or incomplete.")
+            throw ArchiveException.CorruptArchive("This file couldn't be read as an archive — it may be corrupt or incomplete.", e)
         }
         if (extracted.isEmpty()) throw ArchiveException.EmptyArchive("This archive contains no files.")
-        return extracted
+        return ArchiveExtractResult(files = extracted, hadReadFailure = hadReadFailure)
     }
 
     /** Extracts a 7z archive from a seekable [file] into [outputDir]. Same guards as [extract]. */
@@ -465,11 +487,12 @@ class ArchiveEngine(
         outputDir: File,
         onProgress: ((Float) -> Unit)? = null,
         shouldContinue: (() -> Boolean)? = null
-    ): List<File> {
+    ): ArchiveExtractResult {
         val extracted = mutableListOf<File>()
         var totalWritten = 0L
         var entryCount = 0
         val seenDestPaths = mutableSetOf<String>()
+        val nextSuffixMap = mutableMapOf<String, Int>()
         val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
 
         fun resolveDestFile(name: String, isDirectory: Boolean): File {
@@ -488,14 +511,17 @@ class ArchiveEngine(
                 val fileName = dest.name
                 val stem = fileName.substringBeforeLast('.', fileName)
                 val ext = fileName.substringAfterLast('.', "").let { if (it.isNotEmpty() && fileName.contains('.')) ".$it" else "" }
-                var n = 2
+                val key = "${parent?.canonicalPath ?: ""}/$stem$ext"
+                var n = nextSuffixMap.getOrDefault(key, 2)
                 while (true) {
                     val candidate = File(parent, "$stem ($n)$ext")
-                    if (candidate.canonicalPath !in seenDestPaths) {
+                    val candidatePath = candidate.canonicalPath
+                    n++
+                    if (candidatePath !in seenDestPaths) {
                         dest = candidate
+                        nextSuffixMap[key] = n
                         break
                     }
-                    n++
                 }
             }
             seenDestPaths.add(dest.canonicalPath)
@@ -566,10 +592,10 @@ class ArchiveEngine(
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
-            throw ArchiveException.CorruptArchive("This file couldn't be read as a 7z archive — it may be corrupt or incomplete.")
+            throw ArchiveException.CorruptArchive("This file couldn't be read as a 7z archive — it may be corrupt or incomplete.", e)
         }
         if (extracted.isEmpty()) throw ArchiveException.EmptyArchive("This archive contains no files.")
-        return extracted
+        return ArchiveExtractResult(files = extracted, hadReadFailure = false)
     }
 
     private fun tarInputStream(input: InputStream, format: ArchiveFormat): TarArchiveInputStream {

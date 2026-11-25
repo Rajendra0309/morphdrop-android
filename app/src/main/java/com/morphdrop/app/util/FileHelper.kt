@@ -128,10 +128,14 @@ object FileHelper {
                 }
                 val updated = resolver.update(uri, updateValues, null, null)
                 if (updated <= 0) {
-                    android.util.Log.w("FileHelper", "Failed to clear IS_PENDING on MediaStore entry $uri")
+                    throw FileNotFoundException("Failed to publish MediaStore entry (row update affected $updated rows)")
                 }
             } catch (e: Throwable) {
-                resolver.delete(uri, null, null)
+                try {
+                    resolver.delete(uri, null, null)
+                } catch (cleanupEx: Throwable) {
+                    e.addSuppressed(cleanupEx)
+                }
                 throw e
             }
 
@@ -140,10 +144,24 @@ object FileHelper {
             @Suppress("DEPRECATION")
             val dir = File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), folderName)
             if (!dir.exists()) dir.mkdirs()
-            val file = File(dir, fileName)
-            file.writeBytes(data)
-            
-            return Uri.fromFile(file)
+            val finalFile = File(dir, fileName)
+            val tempFile = File(dir, ".tmp_${System.currentTimeMillis()}_${java.util.UUID.randomUUID().toString().take(8)}_$fileName")
+            try {
+                tempFile.writeBytes(data)
+                if (finalFile.exists()) {
+                    finalFile.delete()
+                }
+                if (!tempFile.renameTo(finalFile)) {
+                    tempFile.inputStream().use { input ->
+                        finalFile.outputStream().use { output -> input.copyTo(output) }
+                    }
+                    tempFile.delete()
+                }
+                return Uri.fromFile(finalFile)
+            } catch (e: Throwable) {
+                runCatching { tempFile.delete() }
+                throw e
+            }
         }
     }
 
@@ -192,10 +210,14 @@ object FileHelper {
                 }
                 val updated = resolver.update(uri, updateValues, null, null)
                 if (updated <= 0) {
-                    android.util.Log.w("FileHelper", "Failed to clear IS_PENDING on MediaStore entry $uri")
+                    throw FileNotFoundException("Failed to publish MediaStore entry (row update affected $updated rows)")
                 }
             } catch (e: Throwable) {
-                resolver.delete(uri, null, null)
+                try {
+                    resolver.delete(uri, null, null)
+                } catch (cleanupEx: Throwable) {
+                    e.addSuppressed(cleanupEx)
+                }
                 throw e
             }
 
@@ -204,12 +226,26 @@ object FileHelper {
             @Suppress("DEPRECATION")
             val dir = File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), folderName)
             if (!dir.exists()) dir.mkdirs()
-            val file = File(dir, fileName)
-            sourceFile.inputStream().use { input ->
-                file.outputStream().use { output -> input.copyTo(output, DEFAULT_BUFFER_SIZE) }
+            val finalFile = File(dir, fileName)
+            val tempFile = File(dir, ".tmp_${System.currentTimeMillis()}_${java.util.UUID.randomUUID().toString().take(8)}_$fileName")
+            try {
+                sourceFile.inputStream().use { input ->
+                    tempFile.outputStream().use { output -> input.copyTo(output, DEFAULT_BUFFER_SIZE) }
+                }
+                if (finalFile.exists()) {
+                    finalFile.delete()
+                }
+                if (!tempFile.renameTo(finalFile)) {
+                    tempFile.inputStream().use { input ->
+                        finalFile.outputStream().use { output -> input.copyTo(output, DEFAULT_BUFFER_SIZE) }
+                    }
+                    tempFile.delete()
+                }
+                return Uri.fromFile(finalFile)
+            } catch (e: Throwable) {
+                runCatching { tempFile.delete() }
+                throw e
             }
-
-            return Uri.fromFile(file)
         }
     }
 

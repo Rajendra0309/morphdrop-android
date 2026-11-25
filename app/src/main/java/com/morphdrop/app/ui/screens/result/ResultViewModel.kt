@@ -97,22 +97,41 @@ class ResultViewModel @Inject constructor(
                     WorkInfo.State.SUCCEEDED -> {
                         val outputUriStr = workInfo.outputData.getString(ConversionWorker.KEY_OUTPUT_URI)
                         val outputUrisFileStr = workInfo.outputData.getString(ConversionWorker.KEY_OUTPUT_URIS_FILE)
-                        val outputUrisStr = if (!outputUrisFileStr.isNullOrBlank()) {
-                            runCatching {
-                                context.contentResolver.openInputStream(Uri.parse(outputUrisFileStr))?.bufferedReader()?.use {
-                                    it.readText()
+                        var readManifestError: String? = null
+                        val uriList = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            val outputUrisStr = if (!outputUrisFileStr.isNullOrBlank()) {
+                                try {
+                                    context.contentResolver.openInputStream(Uri.parse(outputUrisFileStr))?.bufferedReader()?.use {
+                                        it.readText()
+                                    } ?: throw java.io.FileNotFoundException("Could not open output URIs file at $outputUrisFileStr")
+                                } catch (e: Exception) {
+                                    android.util.Log.e("ResultViewModel", "Failed to read output URIs file", e)
+                                    readManifestError = "Failed to load conversion outputs: ${e.message}"
+                                    null
                                 }
-                            }.getOrNull()
-                        } else {
-                            workInfo.outputData.getString(ConversionWorker.KEY_OUTPUT_URIS)
-                        } ?: outputUriStr
+                            } else {
+                                workInfo.outputData.getString(ConversionWorker.KEY_OUTPUT_URIS)
+                            } ?: outputUriStr
 
-                        val uriList = outputUrisStr
-                            ?.split(",")
-                            ?.map { it.trim() }
-                            ?.filter { it.isNotBlank() }
-                            ?.mapNotNull { runCatching { Uri.parse(it) }.getOrNull() }
-                            ?: emptyList()
+                            outputUrisStr
+                                ?.split(",")
+                                ?.map { it.trim() }
+                                ?.filter { it.isNotBlank() }
+                                ?.mapNotNull { runCatching { Uri.parse(it) }.getOrNull() }
+                                ?: emptyList()
+                        }
+
+                        if (readManifestError != null && uriList.isEmpty()) {
+                            _uiState.update {
+                                it.copy(
+                                    title = "Conversion Failed",
+                                    subtitle = "Error",
+                                    isLoading = false,
+                                    errorMessage = readManifestError
+                                )
+                            }
+                            return@collect
+                        }
 
                         if (uriList.isNotEmpty()) {
                             val outputItems = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {

@@ -2,6 +2,7 @@ package com.morphdrop.app.worker
 
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import androidx.hilt.work.HiltWorker
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
@@ -174,12 +175,16 @@ class ConversionWorker @AssistedInject constructor(
         val inputUriString = inputData.getString(KEY_INPUT_URI)
         val inputUrisFileString = inputData.getString(KEY_INPUT_URIS_FILE)
         val inputUrisArray = if (!inputUrisFileString.isNullOrBlank()) {
-            runCatching {
+            try {
                 val fileUri = Uri.parse(inputUrisFileString)
-                appContext.contentResolver.openInputStream(fileUri)?.bufferedReader()?.use { reader ->
+                val lines = appContext.contentResolver.openInputStream(fileUri)?.bufferedReader()?.use { reader ->
                     reader.readLines().filter { it.isNotBlank() }.toTypedArray()
-                }
-            }.getOrNull()
+                } ?: throw java.io.FileNotFoundException("Could not open input URI manifest at $inputUrisFileString")
+                lines
+            } catch (e: Exception) {
+                Log.e("ConversionWorker", "Failed to read input URIs manifest file", e)
+                throw IllegalArgumentException("Failed to read input files list: ${e.message}", e)
+            }
         } else {
             inputData.getStringArray(KEY_INPUT_URIS)
         }

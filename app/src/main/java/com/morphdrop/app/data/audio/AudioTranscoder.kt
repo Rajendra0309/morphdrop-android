@@ -7,6 +7,7 @@ import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaMuxer
 import android.net.Uri
+import android.os.SystemClock
 import android.util.Log
 import com.morphdrop.app.domain.model.AudioMatrix
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -144,6 +145,7 @@ class AudioTranscoder @Inject constructor(
                 }
                 "m4a" -> {
                     val encoder = AacEncoder(reader.sampleRate, reader.channels, request.outputFile)
+                    var isSuccess = false
                     try {
                         var written = 0L
                         while (true) {
@@ -160,14 +162,17 @@ class AudioTranscoder @Inject constructor(
                         }
                         totalWritten = written
                         reportProgress(effectiveTotal, effectiveTotal)
+                        isSuccess = true
                     } finally {
-                        encoder.finish()
+                        encoder.finish(isSuccess)
                     }
                 }
             }
             if (totalWritten == 0L) {
                 throw AudioTranscoderException("Trim range contains no audio.")
             }
+        } catch (e: WavPcmReader.UnsupportedWavException) {
+            throw AudioTranscoderException(e.message ?: "This WAV file is corrupt or truncated.", e)
         } finally {
             reader.close()
         }
@@ -184,32 +189,34 @@ class AudioTranscoder @Inject constructor(
         }
         val extractor = MediaExtractor()
         try {
-            if (afd != null && afd.declaredLength < 0 && afd.startOffset == 0L) {
-                extractor.setDataSource(afd.fileDescriptor)
-            } else if (afd != null && afd.declaredLength > 0) {
-                extractor.setDataSource(afd.fileDescriptor, afd.startOffset, afd.declaredLength)
+            if (afd != null && isSeekable(afd.fileDescriptor)) {
+                if (afd.declaredLength < 0 && afd.startOffset == 0L) {
+                    extractor.setDataSource(afd.fileDescriptor)
+                } else if (afd.declaredLength > 0) {
+                    extractor.setDataSource(afd.fileDescriptor, afd.startOffset, afd.declaredLength)
+                } else {
+                    extractor.setDataSource(afd.fileDescriptor)
+                }
             } else {
                 val temp = File.createTempFile("audio_stage_", ".tmp", context.cacheDir)
                 stagedFile = temp
                 context.contentResolver.openInputStream(request.inputUri)?.use { input ->
-                    temp.outputStream().use { output -> input.copyTo(output) }
+                    temp.outputStream().use { output ->
+                        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                        var read: Int
+                        while (input.read(buffer).also { read = it } != -1) {
+                            if (request.shouldContinue?.invoke() == false) {
+                                throw CancellationException("Audio conversion cancelled")
+                            }
+                            output.write(buffer, 0, read)
+                        }
+                    }
                 } ?: throw AudioTranscoderException("Could not open the input audio file.")
                 extractor.setDataSource(temp.absolutePath)
             }
-            var audioTrack = -1
-            var trackFormat: MediaFormat? = null
-            for (i in 0 until extractor.trackCount) {
-                val f = extractor.getTrackFormat(i)
-                val mime = f.getString(MediaFormat.KEY_MIME) ?: ""
-                if (mime.startsWith("audio/")) {
-                    audioTrack = i
-                    trackFormat = f
-                    break
-                }
-            }
-            if (audioTrack < 0 || trackFormat == null) {
-                throw AudioTranscoderException("This file has no audio track.")
-            }
+            val trackInfo = selectFirstAudioTrack(extractor)
+                ?: throw AudioTranscoderException("This file has no audio track.")
+            val (audioTrack, trackFormat) = trackInfo
             val mime = trackFormat.getString(MediaFormat.KEY_MIME) ?: ""
             if (!capabilities.hasDecoder(mime)) {
                 throw AudioTranscoderException(
@@ -231,33 +238,55 @@ class AudioTranscoder @Inject constructor(
             }.getOrNull()?.takeIf { it > 0 }
             when (format) {
                 "wav" -> {
-                    val writer = WavWriter(request.outputFile, sampleRate, channels)
+                    var writer: WavWriter? = null
                     try {
                         decodePcm(
-                            extractor, audioTrack, mime, sampleRate, channels, request.startUs, request.endUs,
+                            extractor = extractor,
+                            trackIndex = audioTrack,
+                            mime = mime,
+                            initialSampleRate = sampleRate,
+                            initialChannels = channels,
+                            startUs = request.startUs,
+                            endUs = request.endUs,
                             durationUs = durationUs,
                             onProgress = request.onProgress,
-                            shouldContinue = request.shouldContinue
-                        ) { bytes, _ ->
-                            writer.writePcm(bytes)
-                        }
+                            shouldContinue = request.shouldContinue,
+                            initSink = { actualRate, actualChannels ->
+                                writer = WavWriter(request.outputFile, actualRate, actualChannels)
+                            },
+                            onPcm = { bytes, _ ->
+                                writer?.writePcm(bytes)
+                            }
+                        )
                     } finally {
-                        writer.close()
+                        writer?.close()
                     }
                 }
                 "m4a" -> {
-                    val encoder = AacEncoder(sampleRate, channels, request.outputFile)
+                    var encoder: AacEncoder? = null
+                    var isSuccess = false
                     try {
                         decodePcm(
-                            extractor, audioTrack, mime, sampleRate, channels, request.startUs, request.endUs,
+                            extractor = extractor,
+                            trackIndex = audioTrack,
+                            mime = mime,
+                            initialSampleRate = sampleRate,
+                            initialChannels = channels,
+                            startUs = request.startUs,
+                            endUs = request.endUs,
                             durationUs = durationUs,
                             onProgress = request.onProgress,
-                            shouldContinue = request.shouldContinue
-                        ) { bytes, ptsUs ->
-                            encoder.writePcm(bytes, ptsUs)
-                        }
+                            shouldContinue = request.shouldContinue,
+                            initSink = { actualRate, actualChannels ->
+                                encoder = AacEncoder(actualRate, actualChannels, request.outputFile)
+                            },
+                            onPcm = { bytes, ptsUs ->
+                                encoder?.writePcm(bytes, ptsUs)
+                            }
+                        )
+                        isSuccess = true
                     } finally {
-                        encoder.finish()
+                        encoder?.finish(isSuccess)
                     }
                 }
             }
@@ -278,13 +307,14 @@ class AudioTranscoder @Inject constructor(
         extractor: MediaExtractor,
         trackIndex: Int,
         mime: String,
-        sampleRate: Int,
-        channels: Int,
+        initialSampleRate: Int,
+        initialChannels: Int,
         startUs: Long?,
         endUs: Long?,
         durationUs: Long? = null,
         onProgress: ((Float) -> Unit)? = null,
         shouldContinue: (() -> Boolean)? = null,
+        initSink: (actualSampleRate: Int, actualChannels: Int) -> Unit,
         onPcm: (bytes: ByteArray, ptsUs: Long) -> Unit
     ) {
         val decoder = try {
@@ -292,6 +322,9 @@ class AudioTranscoder @Inject constructor(
         } catch (e: Exception) {
             throw AudioTranscoderException("This device cannot decode $mime audio.", e)
         }
+        var sampleRate = initialSampleRate
+        var channels = initialChannels
+        var sinkInitialized = false
         try {
             decoder.configure(extractor.getTrackFormat(trackIndex), null, null, 0)
             decoder.start()
@@ -339,6 +372,15 @@ class AudioTranscoder @Inject constructor(
                         outputBufferCount++
                         val outBuffer = decoder.getOutputBuffer(outIndex)
                         if (bufferInfo.size > 0 && outBuffer != null) {
+                            if (!sinkInitialized) {
+                                val outFormat = decoder.outputFormat
+                                val detectedRate = runCatching { outFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE) }.getOrNull()
+                                if (detectedRate != null && detectedRate > 0) sampleRate = detectedRate
+                                val detectedChannels = runCatching { outFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT) }.getOrNull()
+                                if (detectedChannels != null && detectedChannels > 0) channels = detectedChannels
+                                initSink(sampleRate, channels)
+                                sinkInitialized = true
+                            }
                             val pts = bufferInfo.presentationTimeUs
                             val dup = outBuffer.duplicate()
                             dup.position(bufferInfo.offset)
@@ -401,10 +443,28 @@ class AudioTranscoder @Inject constructor(
                         }
                     }
                     outIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
+                        val newFormat = decoder.outputFormat
+                        val newSampleRate = runCatching { newFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE) }.getOrNull()
+                        val newChannels = runCatching { newFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT) }.getOrNull()
                         outputIsFloat = runCatching {
-                            decoder.outputFormat.getInteger(MediaFormat.KEY_PCM_ENCODING)
+                            newFormat.getInteger(MediaFormat.KEY_PCM_ENCODING)
                         }.getOrDefault(android.media.AudioFormat.ENCODING_PCM_16BIT) ==
                             android.media.AudioFormat.ENCODING_PCM_FLOAT
+
+                        if (sinkInitialized) {
+                            if ((newSampleRate != null && newSampleRate != sampleRate) ||
+                                (newChannels != null && newChannels != channels)
+                            ) {
+                                throw AudioTranscoderException(
+                                    "Audio output format changed mid-stream from ${sampleRate}Hz/${channels}ch to ${newSampleRate}Hz/${newChannels}ch."
+                                )
+                            }
+                        } else {
+                            if (newSampleRate != null && newSampleRate > 0) sampleRate = newSampleRate
+                            if (newChannels != null && newChannels > 0) channels = newChannels
+                            initSink(sampleRate, channels)
+                            sinkInitialized = true
+                        }
                     }
                 }
             }
@@ -479,14 +539,29 @@ class AudioTranscoder @Inject constructor(
             drain(encoderEndOfStream = false)
         }
 
-        fun finish() {
+        fun finish(isSuccess: Boolean = true) {
             if (finished) return
             finished = true
+            if (!isSuccess) {
+                try {
+                    if (muxerStarted) {
+                        runCatching { muxer.stop() }
+                    }
+                } finally {
+                    runCatching { muxer.release() }
+                    try {
+                        encoder.stop()
+                    } catch (_: Exception) {}
+                    runCatching { encoder.release() }
+                }
+                return
+            }
+
             var finalizeError: Throwable? = null
             try {
                 var eosQueued = false
-                val queueDeadline = System.currentTimeMillis() + 3000L
-                while (!eosQueued && System.currentTimeMillis() < queueDeadline) {
+                val queueDeadline = SystemClock.elapsedRealtime() + 3000L
+                while (!eosQueued && SystemClock.elapsedRealtime() < queueDeadline) {
                     val inIndex = encoder.dequeueInputBuffer(10_000)
                     if (inIndex >= 0) {
                         encoder.queueInputBuffer(
@@ -511,24 +586,36 @@ class AudioTranscoder @Inject constructor(
                         } catch (e: Exception) {
                             if (finalizeError == null) {
                                 finalizeError = AudioTranscoderException("Failed to stop media muxer: ${e.message}", e)
+                            } else {
+                                finalizeError.addSuppressed(e)
                             }
                         }
                     }
                 } finally {
-                    runCatching { muxer.release() }
+                    try {
+                        muxer.release()
+                    } catch (e: Exception) {
+                        finalizeError?.addSuppressed(e)
+                    }
                     try {
                         encoder.stop()
-                    } catch (_: Exception) {}
-                    runCatching { encoder.release() }
+                    } catch (e: Exception) {
+                        finalizeError?.addSuppressed(e)
+                    }
+                    try {
+                        encoder.release()
+                    } catch (e: Exception) {
+                        finalizeError?.addSuppressed(e)
+                    }
                 }
             }
             if (finalizeError != null) throw finalizeError
         }
 
         private fun drainUntilEos(timeoutMs: Long) {
-            val deadline = System.currentTimeMillis() + timeoutMs
+            val deadline = SystemClock.elapsedRealtime() + timeoutMs
             val bufferInfo = MediaCodec.BufferInfo()
-            while (System.currentTimeMillis() < deadline) {
+            while (SystemClock.elapsedRealtime() < deadline) {
                 val outIndex = encoder.dequeueOutputBuffer(bufferInfo, 10_000)
                 when {
                     outIndex >= 0 -> {
@@ -611,7 +698,26 @@ class AudioTranscoder @Inject constructor(
         return out
     }
 
-    private companion object {
+    companion object {
         const val CHUNK_BYTES = 64 * 1024
+
+        fun isSeekable(fd: java.io.FileDescriptor): Boolean {
+            return try {
+                android.system.Os.lseek(fd, 0, android.system.OsConstants.SEEK_CUR) >= 0
+            } catch (_: Throwable) {
+                false
+            }
+        }
+
+        fun selectFirstAudioTrack(extractor: MediaExtractor): Pair<Int, MediaFormat>? {
+            for (i in 0 until extractor.trackCount) {
+                val f = extractor.getTrackFormat(i)
+                val mime = f.getString(MediaFormat.KEY_MIME) ?: ""
+                if (mime.startsWith("audio/")) {
+                    return Pair(i, f)
+                }
+            }
+            return null
+        }
     }
 }

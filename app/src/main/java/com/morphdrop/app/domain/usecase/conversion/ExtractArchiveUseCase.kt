@@ -46,9 +46,11 @@ class ExtractArchiveUseCase @Inject constructor(
         shouldContinue: (() -> Boolean)? = null
     ): ExtractResult = withContext(Dispatchers.IO) {
         val inputName = FileHelper.getFileName(context, inputUri)
-        val totalInputBytes = context.contentResolver.openFileDescriptor(inputUri, "r")
-            ?.use { pfd -> pfd.statSize.takeIf { it >= 0 } ?: -1L }
-            ?: -1L
+        val totalInputBytes = runCatching {
+            context.contentResolver.openFileDescriptor(inputUri, "r")?.use { pfd ->
+                pfd.statSize.takeIf { it >= 0 } ?: -1L
+            }
+        }.getOrNull() ?: -1L
         // Compound extensions included: "packed.tar.gz" extracts to
         // "packed_extracted", not "packed.tar_extracted".
         val folderName = outputFolderName.ifBlank {
@@ -57,8 +59,9 @@ class ExtractArchiveUseCase @Inject constructor(
         val baseFolder = settingsRepository.outputFolderName.first()
         val workDir = File(context.cacheDir, "archive_extract_${java.util.UUID.randomUUID()}").apply { mkdirs() }
         val saved = mutableListOf<Uri>()
+        val createdFilePaths = mutableSetOf<String>()
         try {
-            val extractedFiles: List<File> = if (format == ArchiveFormat.SEVENZ) {
+            val extractResult = if (format == ArchiveFormat.SEVENZ) {
                 // SevenZFile needs a seekable file, not a stream.
                 val tmp = File.createTempFile("archive_input_", ".7z", context.cacheDir)
                 try {
@@ -74,6 +77,7 @@ class ExtractArchiveUseCase @Inject constructor(
                     engine.extract(input, format, workDir, totalInputBytes, onProgress, shouldContinue)
                 } ?: throw IllegalArgumentException("Could not open '$inputName'.")
             }
+            val extractedFiles = extractResult.files
             if (extractedFiles.isEmpty()) throw ArchiveException.EmptyArchive("This archive contains no files.")
             // Preserve subfolders inside the archive in Downloads.
             try {
@@ -83,22 +87,37 @@ class ExtractArchiveUseCase @Inject constructor(
                     val targetFolder = if (parent.isBlank()) "$baseFolder/$folderName" else "$baseFolder/$folderName/$parent"
                     val uri = FileHelper.saveStreamToFile(context, targetFolder, file.name, file)
                     saved += uri
+                    if (uri.scheme == "file") {
+                        uri.path?.let { createdFilePaths.add(it) }
+                    }
                 }
             } catch (e: Throwable) {
-                saved.forEach { uri -> runCatching { context.contentResolver.delete(uri, null, null) } }
+                for (uri in saved) {
+                    if (uri.scheme == "file") {
+                        val path = uri.path
+                        if (path != null && path in createdFilePaths) {
+                            runCatching {
+                                val f = File(path)
+                                if (f.exists()) f.delete()
+                            }
+                        }
+                    } else {
+                        runCatching { context.contentResolver.delete(uri, null, null) }
+                    }
+                }
                 throw e
             }
             // A truncated ZIP still yields its complete entries, so the
             // extract above succeeds — and without this check the Result
             // screen would call it "Complete" while files are missing.
             // The exact lost count is unknowable (the index is gone), so
-            // the note says what is known, not a number. TAR and 7z
-            // aren't checked: a truncated 7z fails loudly during the
-            // read instead of silently, and TAR has no equivalent cheap
-            // end-of-file marker.
-            val warning = if (format == ArchiveFormat.ZIP && zipLooksTruncated(inputUri)) {
+            // the note says what is known, not a number. Clean archives
+            // complete with warning = null.
+            val zipTruncated = format == ArchiveFormat.ZIP && zipLooksTruncated(inputUri)
+            val hadPartialFailure = extractResult.hadReadFailure || zipTruncated
+            val warning = if (hadPartialFailure) {
                 "Recovered ${saved.size} ${if (saved.size == 1) "entry" else "entries"} — " +
-                    "this archive looks truncated (its index is missing), so more files may have been lost."
+                    "this archive had read errors or is incomplete, so more files may have been lost."
             } else {
                 null
             }
@@ -111,7 +130,7 @@ class ExtractArchiveUseCase @Inject constructor(
     /**
      * True when the file's tail holds no End of Central Directory
      * record — the signature of a ZIP cut short. Reads at most the last
-     * 64 KiB through the file descriptor, so it costs almost nothing.
+     * 128 KiB through the file descriptor, so it costs almost nothing.
      * Any read failure returns false: an unreadable file is the
      * extractor's problem, not this check's.
      */
@@ -122,7 +141,7 @@ class ExtractArchiveUseCase @Inject constructor(
                 val size = pfd.statSize
                 if (size < 0) return false
                 if (size < 22) return true
-                val tailSize = minOf(size, 65_557L).toInt()
+                val tailSize = minOf(size, 131_072L).toInt()
                 val tail = ByteArray(tailSize)
                 // Positional read: no stream to close, no skipping.
                 val read = android.system.Os.pread(

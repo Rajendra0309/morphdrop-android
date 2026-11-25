@@ -88,29 +88,34 @@ class VideoToAudioUseCase @Inject constructor(
         var muxer: MediaMuxer? = null
         var muxerStarted = false
         try {
-            if (afd != null && afd.declaredLength < 0 && afd.startOffset == 0L) {
-                extractor.setDataSource(afd.fileDescriptor)
-            } else if (afd != null && afd.declaredLength > 0) {
-                extractor.setDataSource(afd.fileDescriptor, afd.startOffset, afd.declaredLength)
+            if (afd != null && AudioTranscoder.isSeekable(afd.fileDescriptor)) {
+                if (afd.declaredLength < 0 && afd.startOffset == 0L) {
+                    extractor.setDataSource(afd.fileDescriptor)
+                } else if (afd.declaredLength > 0) {
+                    extractor.setDataSource(afd.fileDescriptor, afd.startOffset, afd.declaredLength)
+                } else {
+                    extractor.setDataSource(afd.fileDescriptor)
+                }
             } else {
                 val temp = File.createTempFile("video_stage_", ".tmp", context.cacheDir)
                 stagedFile = temp
                 context.contentResolver.openInputStream(inputUri)?.use { input ->
-                    temp.outputStream().use { output -> input.copyTo(output) }
+                    temp.outputStream().use { output ->
+                        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                        var read: Int
+                        while (input.read(buffer).also { read = it } != -1) {
+                            if (shouldContinue?.invoke() == false) {
+                                throw kotlinx.coroutines.CancellationException("Video to audio cancelled")
+                            }
+                            output.write(buffer, 0, read)
+                        }
+                    }
                 } ?: return false
                 extractor.setDataSource(temp.absolutePath)
             }
-            var audioTrack = -1
-            var trackFormat: MediaFormat? = null
-            for (i in 0 until extractor.trackCount) {
-                val f = extractor.getTrackFormat(i)
-                if (f.getString(MediaFormat.KEY_MIME) == "audio/mp4a-latm") {
-                    audioTrack = i
-                    trackFormat = f
-                    break
-                }
-            }
-            if (audioTrack < 0 || trackFormat == null) return false
+            val trackInfo = AudioTranscoder.selectFirstAudioTrack(extractor) ?: return false
+            val (audioTrack, trackFormat) = trackInfo
+            if (trackFormat.getString(MediaFormat.KEY_MIME) != "audio/mp4a-latm") return false
             extractor.selectTrack(audioTrack)
             muxer = MediaMuxer(outputFile.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
             val outTrack = muxer.addTrack(trackFormat)
