@@ -30,64 +30,73 @@ class WavPcmReader(input: InputStream) {
     private var closed = false
 
     init {
-        val header = ByteArray(12)
-        if (readFully(header) != 12 || header.ascii(0, 4) != "RIFF" ||
-            header.ascii(8, 12) != "WAVE"
-        ) {
-            throw UnsupportedWavException("This file is not a WAV file.")
-        }
-        var parsedChannels = 0
-        var parsedSampleRate = 0
-        var parsedBits = 0
-        var parsedFormat = -1
-        var parsedDataSize = -1L
-        while (true) {
-            val chunkHeader = ByteArray(8)
-            if (readFully(chunkHeader) != 8) break
-            val chunkId = chunkHeader.ascii(0, 4)
-            val chunkSize = readIntLe(chunkHeader, 4)
-            if (chunkSize < 0) break
-            when (chunkId) {
-                "fmt " -> {
-                    val fmt = ByteArray(chunkSize)
-                    if (readFully(fmt) != chunkSize) {
-                        throw UnsupportedWavException("This WAV file has a truncated format header.")
-                    }
-                    parsedFormat = readShortLe(fmt, 0)
-                    parsedChannels = readShortLe(fmt, 2)
-                    parsedSampleRate = readIntLe(fmt, 4)
-                    parsedBits = readShortLe(fmt, 14)
-                }
-                "data" -> {
-                    parsedDataSize = chunkSize.toLong()
-                    break
-                }
-                else -> skipFully(chunkSize.toLong() + (chunkSize and 1))
+        try {
+            val header = ByteArray(12)
+            if (readFully(header) != 12 || header.ascii(0, 4) != "RIFF" ||
+                header.ascii(8, 12) != "WAVE"
+            ) {
+                throw UnsupportedWavException("This file is not a WAV file.")
             }
+            var parsedChannels = 0
+            var parsedSampleRate = 0
+            var parsedBits = 0
+            var parsedFormat = -1
+            var parsedDataSize = -1L
+            while (true) {
+                val chunkHeader = ByteArray(8)
+                if (readFully(chunkHeader) != 8) break
+                val chunkId = chunkHeader.ascii(0, 4)
+                val chunkSize = readUIntLe(chunkHeader, 4)
+                when (chunkId) {
+                    "fmt " -> {
+                        if (chunkSize < 16) {
+                            throw UnsupportedWavException("This WAV file has an invalid format header size: $chunkSize.")
+                        }
+                        val fmt = ByteArray(16)
+                        if (readFully(fmt) != 16) {
+                            throw UnsupportedWavException("This WAV file has a truncated format header.")
+                        }
+                        parsedFormat = readShortLe(fmt, 0)
+                        parsedChannels = readShortLe(fmt, 2)
+                        parsedSampleRate = readIntLe(fmt, 4)
+                        parsedBits = readShortLe(fmt, 14)
+                        val extraBytes = (chunkSize - 16) + (chunkSize and 1L)
+                        if (extraBytes > 0) skipFully(extraBytes)
+                    }
+                    "data" -> {
+                        parsedDataSize = chunkSize
+                        break
+                    }
+                    else -> skipFully(chunkSize + (chunkSize and 1L))
+                }
+            }
+            if (parsedDataSize < 0) {
+                throw UnsupportedWavException("This WAV file has no audio data.")
+            }
+            if (parsedChannels <= 0 || parsedSampleRate <= 0) {
+                throw UnsupportedWavException("This WAV file has an invalid format header.")
+            }
+            if (parsedFormat != 1 && parsedFormat != 3) {
+                throw UnsupportedWavException(
+                    "This WAV encoding (format $parsedFormat) is not supported. " +
+                        "Only PCM and float WAV files are supported."
+                )
+            }
+            if (parsedFormat == 3 && parsedBits != 32) {
+                throw UnsupportedWavException("Unsupported float WAV bit depth: $parsedBits.")
+            }
+            if (parsedFormat == 1 && parsedBits !in listOf(8, 16, 24, 32)) {
+                throw UnsupportedWavException("Unsupported WAV bit depth: $parsedBits.")
+            }
+            channels = parsedChannels
+            sampleRate = parsedSampleRate
+            sourceBits = parsedBits
+            sourceFormat = parsedFormat
+            dataRemaining = parsedDataSize
+        } catch (t: Throwable) {
+            runCatching { stream.close() }
+            throw t
         }
-        if (parsedDataSize < 0) {
-            throw UnsupportedWavException("This WAV file has no audio data.")
-        }
-        if (parsedChannels <= 0 || parsedSampleRate <= 0) {
-            throw UnsupportedWavException("This WAV file has an invalid format header.")
-        }
-        if (parsedFormat != 1 && parsedFormat != 3) {
-            throw UnsupportedWavException(
-                "This WAV encoding (format $parsedFormat) is not supported. " +
-                    "Only PCM and float WAV files are supported."
-            )
-        }
-        if (parsedFormat == 3 && parsedBits != 32) {
-            throw UnsupportedWavException("Unsupported float WAV bit depth: $parsedBits.")
-        }
-        if (parsedFormat == 1 && parsedBits !in listOf(8, 16, 24, 32)) {
-            throw UnsupportedWavException("Unsupported WAV bit depth: $parsedBits.")
-        }
-        channels = parsedChannels
-        sampleRate = parsedSampleRate
-        sourceBits = parsedBits
-        sourceFormat = parsedFormat
-        dataRemaining = parsedDataSize
     }
 
     /** Bytes of 16-bit PCM still unread. */
@@ -122,9 +131,12 @@ class WavPcmReader(input: InputStream) {
     }
 
     /** Discards [bytes] of converted PCM (used to reach a trim start). */
-    fun skipConvertedBytes(bytes: Long) {
+    fun skipConvertedBytes(bytes: Long, shouldContinue: (() -> Boolean)? = null) {
         var left = bytes
         while (left > 0) {
+            if (shouldContinue?.invoke() == false) {
+                throw kotlinx.coroutines.CancellationException("Audio conversion cancelled")
+            }
             val chunk = readConvertedChunk(minOf(left, 256 * 1024).toInt()) ?: return
             left -= chunk.size
         }
@@ -207,6 +219,12 @@ class WavPcmReader(input: InputStream) {
             ((bytes[pos + 1].toInt() and 0xFF) shl 8) or
             ((bytes[pos + 2].toInt() and 0xFF) shl 16) or
             (bytes[pos + 3].toInt() shl 24)
+
+    private fun readUIntLe(bytes: ByteArray, pos: Int): Long =
+        (bytes[pos].toLong() and 0xFF) or
+            ((bytes[pos + 1].toLong() and 0xFF) shl 8) or
+            ((bytes[pos + 2].toLong() and 0xFF) shl 16) or
+            ((bytes[pos + 3].toLong() and 0xFF) shl 24)
 
     private fun ByteArray.ascii(from: Int, to: Int): String =
         String(copyOfRange(from, to), Charsets.US_ASCII)

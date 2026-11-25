@@ -50,9 +50,9 @@ class VideoToAudioUseCase @Inject constructor(
         val format = outputFormat.lowercase()
         AudioMatrix.validateOutput(format, capabilities.hasAacEncoder())
 
-        val tmp = File(context.cacheDir, "video_audio_${System.currentTimeMillis()}.tmp")
+        val tmp = File.createTempFile("video_audio_", ".tmp", context.cacheDir)
         try {
-            val copied = format == "m4a" && tryCopyAacTrack(inputUri, tmp)
+            val copied = format == "m4a" && tryCopyAacTrack(inputUri, tmp, shouldContinue)
             if (!copied) {
                 transcoder.transcode(
                     AudioTranscoder.Request(
@@ -77,56 +77,80 @@ class VideoToAudioUseCase @Inject constructor(
      * Returns false (leaving [outputFile] for the caller to overwrite)
      * when the video has no AAC track or the copy fails.
      */
-    private fun tryCopyAacTrack(inputUri: Uri, outputFile: File): Boolean {
-        val pfd = try {
-            context.contentResolver.openFileDescriptor(inputUri, "r")
+    private fun tryCopyAacTrack(inputUri: Uri, outputFile: File, shouldContinue: (() -> Boolean)? = null): Boolean {
+        var stagedFile: File? = null
+        val afd = try {
+            context.contentResolver.openAssetFileDescriptor(inputUri, "r")
         } catch (_: Exception) {
             null
-        } ?: return false
-        pfd.use {
-            val extractor = MediaExtractor()
-            var muxer: MediaMuxer? = null
-            try {
-                extractor.setDataSource(pfd.fileDescriptor)
-                var audioTrack = -1
-                var trackFormat: MediaFormat? = null
-                for (i in 0 until extractor.trackCount) {
-                    val f = extractor.getTrackFormat(i)
-                    if (f.getString(MediaFormat.KEY_MIME) == "audio/mp4a-latm") {
-                        audioTrack = i
-                        trackFormat = f
-                        break
-                    }
-                }
-                if (audioTrack < 0 || trackFormat == null) return false
-                extractor.selectTrack(audioTrack)
-                muxer = MediaMuxer(outputFile.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
-                val outTrack = muxer!!.addTrack(trackFormat)
-                muxer!!.start()
-                val buffer = ByteBuffer.allocate(256 * 1024)
-                val bufferInfo = android.media.MediaCodec.BufferInfo()
-                while (true) {
-                    buffer.clear()
-                    val sampleSize = extractor.readSampleData(buffer, 0)
-                    if (sampleSize < 0) break
-                    bufferInfo.set(
-                        0, sampleSize, extractor.sampleTime, extractor.sampleFlags
-                    )
-                    muxer!!.writeSampleData(outTrack, buffer, bufferInfo)
-                    extractor.advance()
-                }
-                return true
-            } catch (_: Exception) {
-                outputFile.delete()
-                return false
-            } finally {
-                try {
-                    muxer?.stop()
-                } catch (_: Exception) {
-                }
-                muxer?.release()
-                extractor.release()
+        }
+        val extractor = MediaExtractor()
+        var muxer: MediaMuxer? = null
+        var muxerStarted = false
+        try {
+            if (afd != null && afd.declaredLength < 0 && afd.startOffset == 0L) {
+                extractor.setDataSource(afd.fileDescriptor)
+            } else if (afd != null && afd.declaredLength > 0) {
+                extractor.setDataSource(afd.fileDescriptor, afd.startOffset, afd.declaredLength)
+            } else {
+                val temp = File.createTempFile("video_stage_", ".tmp", context.cacheDir)
+                stagedFile = temp
+                context.contentResolver.openInputStream(inputUri)?.use { input ->
+                    temp.outputStream().use { output -> input.copyTo(output) }
+                } ?: return false
+                extractor.setDataSource(temp.absolutePath)
             }
+            var audioTrack = -1
+            var trackFormat: MediaFormat? = null
+            for (i in 0 until extractor.trackCount) {
+                val f = extractor.getTrackFormat(i)
+                if (f.getString(MediaFormat.KEY_MIME) == "audio/mp4a-latm") {
+                    audioTrack = i
+                    trackFormat = f
+                    break
+                }
+            }
+            if (audioTrack < 0 || trackFormat == null) return false
+            extractor.selectTrack(audioTrack)
+            muxer = MediaMuxer(outputFile.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+            val outTrack = muxer.addTrack(trackFormat)
+            muxer.start()
+            muxerStarted = true
+            val buffer = ByteBuffer.allocate(256 * 1024)
+            val bufferInfo = android.media.MediaCodec.BufferInfo()
+            while (true) {
+                if (shouldContinue?.invoke() == false) {
+                    throw kotlinx.coroutines.CancellationException("Video to audio cancelled")
+                }
+                buffer.clear()
+                val sampleSize = extractor.readSampleData(buffer, 0)
+                if (sampleSize < 0) break
+                bufferInfo.set(
+                    0, sampleSize, extractor.sampleTime, extractor.sampleFlags
+                )
+                muxer.writeSampleData(outTrack, buffer, bufferInfo)
+                extractor.advance()
+            }
+            if (shouldContinue?.invoke() == false) {
+                throw kotlinx.coroutines.CancellationException("Video to audio cancelled")
+            }
+            muxer.stop()
+            muxerStarted = false
+            return true
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            outputFile.delete()
+            throw e
+        } catch (_: Exception) {
+            outputFile.delete()
+            return false
+        } finally {
+            if (muxerStarted) {
+                runCatching { muxer?.stop() }
+            }
+            runCatching { muxer?.release() }
+            runCatching { extractor.release() }
+            runCatching { afd?.close() }
+            stagedFile?.delete()
         }
     }
 }

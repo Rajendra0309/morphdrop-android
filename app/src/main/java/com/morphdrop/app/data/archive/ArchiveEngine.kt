@@ -52,6 +52,7 @@ sealed class ArchiveException(message: String) : Exception(message) {
     class UnsafeEntry(message: String) : ArchiveException(message)
     class TooLarge(message: String) : ArchiveException(message)
     class CorruptArchive(message: String) : ArchiveException(message)
+    class OutputWriteException(message: String, cause: Throwable? = null) : ArchiveException(message)
 }
 
 /**
@@ -99,12 +100,16 @@ class ArchiveEngine(
          * phrase the warning as "looks truncated", never as a count.
          */
         fun hasZipEndRecord(tail: ByteArray): Boolean {
-            // EOCD signature, little-endian: 0x50 0x4B 0x05 0x06.
-            for (i in 0..tail.size - 4) {
+            if (tail.size < 22) return false
+            // Scan backwards from tail.size - 22 down to 0
+            for (i in (tail.size - 22) downTo 0) {
                 if (tail[i] == 0x50.toByte() && tail[i + 1] == 0x4B.toByte() &&
                     tail[i + 2] == 0x05.toByte() && tail[i + 3] == 0x06.toByte()
                 ) {
-                    return true
+                    val commentLen = (tail[i + 20].toInt() and 0xFF) or ((tail[i + 21].toInt() and 0xFF) shl 8)
+                    if (i + 22 + commentLen <= tail.size) {
+                        return true
+                    }
                 }
             }
             return false
@@ -116,43 +121,61 @@ class ArchiveEngine(
     /** Lists an archive's entries without extracting anything. */
     fun listEntries(input: InputStream, format: ArchiveFormat): List<ArchiveEntryInfo> {
         val entries = mutableListOf<ArchiveEntryInfo>()
-        when (format) {
-            ArchiveFormat.ZIP -> {
-                ZipArchiveInputStream(input).use { zip ->
-                    var entry = zip.nextEntry
-                    var pending: org.apache.commons.compress.archivers.zip.ZipArchiveEntry? = null
-                    // An entry's size is final only once its data has
-                    // been read: a streaming writer leaves the local
-                    // header at 0 and puts the real size in the data
-                    // descriptor after the data. Advancing to the next
-                    // entry drains the previous one, so record each
-                    // entry one step late — recording immediately is
-                    // what made the preview show "0 B" for every entry
-                    // of an archive the app itself created.
-                    while (entry != null) {
+        try {
+            when (format) {
+                ArchiveFormat.ZIP -> {
+                    ZipArchiveInputStream(input).use { zip ->
+                        var entry = try {
+                            zip.nextEntry
+                        } catch (e: LinkageError) {
+                            throw ArchiveException.UnsupportedFormat("Unsupported compression algorithm in archive entry: ${e.message}")
+                        }
+                        var pending: ZipArchiveEntry? = null
+                        var count = 0
+                        while (entry != null) {
+                            count++
+                            if (count > maxEntries) break
+                            pending?.let { prev ->
+                                entries += ArchiveEntryInfo(prev.name, prev.size.coerceAtLeast(0), prev.isDirectory)
+                            }
+                            pending = entry
+                            entry = try {
+                                zip.nextEntry
+                            } catch (e: LinkageError) {
+                                throw ArchiveException.UnsupportedFormat("Unsupported compression algorithm in archive entry: ${e.message}")
+                            }
+                        }
                         pending?.let { prev ->
                             entries += ArchiveEntryInfo(prev.name, prev.size.coerceAtLeast(0), prev.isDirectory)
                         }
-                        pending = entry
-                        entry = zip.nextEntry
-                    }
-                    pending?.let { prev ->
-                        entries += ArchiveEntryInfo(prev.name, prev.size.coerceAtLeast(0), prev.isDirectory)
                     }
                 }
-            }
-            ArchiveFormat.TAR, ArchiveFormat.TAR_GZ -> {
-                tarInputStream(input, format).use { tar ->
-                    var entry: TarArchiveEntry? = tar.nextEntry
-                    while (entry != null) {
-                        entries += ArchiveEntryInfo(entry.name, entry.size.coerceAtLeast(0), entry.isDirectory)
-                        entry = tar.nextEntry
+                ArchiveFormat.TAR, ArchiveFormat.TAR_GZ -> {
+                    tarInputStream(input, format).use { tar ->
+                        var entry: TarArchiveEntry? = try {
+                            tar.nextEntry
+                        } catch (e: LinkageError) {
+                            throw ArchiveException.UnsupportedFormat("Unsupported compression algorithm in archive entry: ${e.message}")
+                        }
+                        var count = 0
+                        while (entry != null) {
+                            count++
+                            if (count > maxEntries) break
+                            entries += ArchiveEntryInfo(entry.name, entry.size.coerceAtLeast(0), entry.isDirectory)
+                            entry = try {
+                                tar.nextEntry
+                            } catch (e: LinkageError) {
+                                throw ArchiveException.UnsupportedFormat("Unsupported compression algorithm in archive entry: ${e.message}")
+                            }
+                        }
                     }
                 }
+                ArchiveFormat.SEVENZ -> throw ArchiveException.UnsupportedFormat(
+                    "7z archives need a seekable file — use listEntriesFromFile instead."
+                )
             }
-            ArchiveFormat.SEVENZ -> throw ArchiveException.UnsupportedFormat(
-                "7z archives need a seekable file — use listEntriesFromFile instead."
-            )
+        } catch (e: LinkageError) {
+            throw ArchiveException.UnsupportedFormat("Unsupported archive entry format: ${e.message}")
         }
         if (entries.isEmpty()) throw ArchiveException.EmptyArchive("This archive contains no files.")
         return entries
@@ -161,12 +184,28 @@ class ArchiveEngine(
     /** Lists a 7z archive's entries. SevenZFile needs a seekable file, not a stream. */
     fun listEntriesFromFile(file: File): List<ArchiveEntryInfo> {
         val entries = mutableListOf<ArchiveEntryInfo>()
-        SevenZFile.builder().setFile(file).get().use { sevenZ ->
-            var entry = sevenZ.nextEntry
-            while (entry != null) {
-                entries += ArchiveEntryInfo(entry.name, entry.size.coerceAtLeast(0), entry.isDirectory)
-                entry = sevenZ.nextEntry
+        try {
+            java.nio.channels.FileChannel.open(file.toPath(), java.nio.file.StandardOpenOption.READ).use { channel ->
+                SevenZFile.builder()
+                    .setSeekableByteChannel(channel)
+                    .setMaxMemoryLimitKiB(256 * 1024)
+                    .get().use { sevenZ ->
+                        var entry = sevenZ.nextEntry
+                        var count = 0
+                        while (entry != null) {
+                            count++
+                            if (count > maxEntries) break
+                            entries += ArchiveEntryInfo(entry.name, entry.size.coerceAtLeast(0), entry.isDirectory)
+                            entry = sevenZ.nextEntry
+                        }
+                    }
             }
+        } catch (e: org.apache.commons.compress.MemoryLimitException) {
+            throw ArchiveException.TooLarge("7z archive exceeds memory limits to unpack.")
+        } catch (e: ArchiveException) {
+            throw e
+        } catch (e: Exception) {
+            throw ArchiveException.CorruptArchive("This file couldn't be read as a 7z archive: ${e.message}")
         }
         if (entries.isEmpty()) throw ArchiveException.EmptyArchive("This archive contains no files.")
         return entries
@@ -279,42 +318,80 @@ class ArchiveEngine(
         val extracted = mutableListOf<File>()
         var totalWritten = 0L
         var entryCount = 0
+        val seenDestPaths = mutableSetOf<String>()
         val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
 
-        fun guardEntry(name: String): File {
-            val dest = File(outputDir, name)
-            val destPath = dest.canonicalPath
+        fun resolveDestFile(name: String, isDirectory: Boolean): File {
+            val rawDest = File(outputDir, name)
+            val destPath = rawDest.canonicalPath
             val basePath = outputDir.canonicalPath.let {
                 if (it.endsWith(File.separator)) it else it + File.separator
             }
             if (destPath != outputDir.canonicalPath && !destPath.startsWith(basePath)) {
                 throw ArchiveException.UnsafeEntry("Archive entry '$name' would escape the destination folder.")
             }
+            if (isDirectory) return rawDest
+            var dest = rawDest
+            if (destPath in seenDestPaths) {
+                val parent = dest.parentFile
+                val fileName = dest.name
+                val stem = fileName.substringBeforeLast('.', fileName)
+                val ext = fileName.substringAfterLast('.', "").let { if (it.isNotEmpty() && fileName.contains('.')) ".$it" else "" }
+                var n = 2
+                while (true) {
+                    val candidate = File(parent, "$stem ($n)$ext")
+                    if (candidate.canonicalPath !in seenDestPaths) {
+                        dest = candidate
+                        break
+                    }
+                    n++
+                }
+            }
+            seenDestPaths.add(dest.canonicalPath)
             return dest
         }
 
         fun writeEntry(entryName: String, isDirectory: Boolean, readBytes: (ByteArray) -> Int) {
             entryCount++
             if (entryCount > maxEntries) throw ArchiveException.TooLarge("This archive has too many entries to extract safely.")
-            val dest = guardEntry(entryName)
+            val dest = resolveDestFile(entryName, isDirectory)
             if (isDirectory || entryName.endsWith("/")) {
                 dest.mkdirs()
                 return
             }
-            dest.parentFile?.mkdirs()
-            dest.outputStream().use { out ->
-                var read: Int
-                while (readBytes(buffer).also { read = it } != -1) {
-                    if (shouldContinue?.invoke() == false) throw kotlinx.coroutines.CancellationException("Extraction cancelled")
-                    totalWritten += read
-                    if (totalWritten > maxTotalUncompressedBytes) {
-                        throw ArchiveException.TooLarge("This archive would unpack to more than ${maxTotalUncompressedBytes / 1_000_000} MB.")
-                    }
-                    out.write(buffer, 0, read)
-                    if (totalInputBytes > 0) {
-                        onProgress?.invoke((counting.bytesRead.toFloat() / totalInputBytes).coerceIn(0f, 1f))
+            try {
+                dest.parentFile?.mkdirs()
+            } catch (e: Exception) {
+                throw ArchiveException.OutputWriteException("Failed to create directory for '${dest.name}': ${e.message}", e)
+            }
+            try {
+                dest.outputStream().use { out ->
+                    var read: Int
+                    while (readBytes(buffer).also { read = it } != -1) {
+                        if (shouldContinue?.invoke() == false) throw kotlinx.coroutines.CancellationException("Extraction cancelled")
+                        totalWritten += read
+                        if (totalWritten > maxTotalUncompressedBytes) {
+                            throw ArchiveException.TooLarge("This archive would unpack to more than ${maxTotalUncompressedBytes / 1_000_000} MB.")
+                        }
+                        try {
+                            out.write(buffer, 0, read)
+                        } catch (e: Exception) {
+                            throw ArchiveException.OutputWriteException("Failed to write to '${dest.name}': ${e.message}", e)
+                        }
+                        if (totalInputBytes > 0) {
+                            onProgress?.invoke((counting.bytesRead.toFloat() / totalInputBytes).coerceIn(0f, 1f))
+                        }
                     }
                 }
+            } catch (e: ArchiveException) {
+                throw e
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (e is java.io.FileNotFoundException || e is java.io.SyncFailedException) {
+                    throw ArchiveException.OutputWriteException("Failed to open output file '${dest.name}': ${e.message}", e)
+                }
+                throw e
             }
             extracted += dest
         }
@@ -323,21 +400,47 @@ class ArchiveEngine(
             when (format) {
                 ArchiveFormat.ZIP -> {
                     ZipArchiveInputStream(counting).use { zip ->
-                        var entry = zip.nextEntry
-                        if (entry == null) throw ArchiveException.EmptyArchive("This archive contains no files.")
+                        var entry = try {
+                            zip.nextEntry
+                        } catch (e: LinkageError) {
+                            throw ArchiveException.UnsupportedFormat("Unsupported compression algorithm in archive entry: ${e.message}")
+                        } catch (e: Exception) {
+                            if (extracted.isNotEmpty()) null else throw e
+                        }
+                        if (entry == null && extracted.isEmpty()) throw ArchiveException.EmptyArchive("This archive contains no files.")
                         while (entry != null) {
                             writeEntry(entry.name, entry.isDirectory) { buf -> zip.read(buf) }
-                            entry = zip.nextEntry
+                            entry = try {
+                                zip.nextEntry
+                            } catch (e: LinkageError) {
+                                throw ArchiveException.UnsupportedFormat("Unsupported compression algorithm in archive entry: ${e.message}")
+                            } catch (e: Exception) {
+                                if (extracted.isNotEmpty()) break
+                                throw e
+                            }
                         }
                     }
                 }
                 ArchiveFormat.TAR, ArchiveFormat.TAR_GZ -> {
                     tarInputStream(counting, format).use { tar ->
-                        var entry: TarArchiveEntry? = tar.nextEntry
-                        if (entry == null) throw ArchiveException.EmptyArchive("This archive contains no files.")
+                        var entry: TarArchiveEntry? = try {
+                            tar.nextEntry
+                        } catch (e: LinkageError) {
+                            throw ArchiveException.UnsupportedFormat("Unsupported compression algorithm in archive entry: ${e.message}")
+                        } catch (e: Exception) {
+                            if (extracted.isNotEmpty()) null else throw e
+                        }
+                        if (entry == null && extracted.isEmpty()) throw ArchiveException.EmptyArchive("This archive contains no files.")
                         while (entry != null) {
                             writeEntry(entry.name, entry.isDirectory) { buf -> tar.read(buf) }
-                            entry = tar.nextEntry
+                            entry = try {
+                                tar.nextEntry
+                            } catch (e: LinkageError) {
+                                throw ArchiveException.UnsupportedFormat("Unsupported compression algorithm in archive entry: ${e.message}")
+                            } catch (e: Exception) {
+                                if (extracted.isNotEmpty()) break
+                                throw e
+                            }
                         }
                     }
                 }
@@ -366,55 +469,98 @@ class ArchiveEngine(
         val extracted = mutableListOf<File>()
         var totalWritten = 0L
         var entryCount = 0
+        val seenDestPaths = mutableSetOf<String>()
         val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-        try {
-            SevenZFile.builder().setFile(file).get().use { sevenZ ->
-                var entry = sevenZ.nextEntry
-                if (entry == null) throw ArchiveException.EmptyArchive("This archive contains no files.")
-                // Total size is needed for progress, so first pass sums the
-                // entry sizes; SevenZFile is forward-only, so reopen to read.
-                var totalSize = 0L
-                while (entry != null) {
-                    totalSize += entry.size.coerceAtLeast(0)
-                    entry = sevenZ.nextEntry
-                }
-                SevenZFile.builder().setFile(file).get().use { reader ->
-                    var next = reader.nextEntry
-                    while (next != null) {
-                        val name = next.name
-                        val isDir = next.isDirectory
-                        entryCount++
-                        if (entryCount > maxEntries) throw ArchiveException.TooLarge("This archive has too many entries to extract safely.")
-                        val dest = File(outputDir, name)
-                        val destPath = dest.canonicalPath
-                        val basePath = outputDir.canonicalPath.let {
-                            if (it.endsWith(File.separator)) it else it + File.separator
-                        }
-                        if (destPath != outputDir.canonicalPath && !destPath.startsWith(basePath)) {
-                            throw ArchiveException.UnsafeEntry("Archive entry '$name' would escape the destination folder.")
-                        }
-                        if (!isDir) {
-                            dest.parentFile?.mkdirs()
-                            dest.outputStream().use { out ->
-                                var read: Int
-                                while (reader.read(buffer).also { read = it } != -1) {
-                                    if (shouldContinue?.invoke() == false) throw kotlinx.coroutines.CancellationException("Extraction cancelled")
-                                    totalWritten += read
-                                    if (totalWritten > maxTotalUncompressedBytes) {
-                                        throw ArchiveException.TooLarge("This archive would unpack to more than ${maxTotalUncompressedBytes / 1_000_000} MB.")
-                                    }
-                                    out.write(buffer, 0, read)
-                                }
-                            }
-                            extracted += dest
-                        } else {
-                            dest.mkdirs()
-                        }
-                        if (totalSize > 0) onProgress?.invoke((totalWritten.toFloat() / totalSize).coerceIn(0f, 1f))
-                        next = reader.nextEntry
+
+        fun resolveDestFile(name: String, isDirectory: Boolean): File {
+            val rawDest = File(outputDir, name)
+            val destPath = rawDest.canonicalPath
+            val basePath = outputDir.canonicalPath.let {
+                if (it.endsWith(File.separator)) it else it + File.separator
+            }
+            if (destPath != outputDir.canonicalPath && !destPath.startsWith(basePath)) {
+                throw ArchiveException.UnsafeEntry("Archive entry '$name' would escape the destination folder.")
+            }
+            if (isDirectory) return rawDest
+            var dest = rawDest
+            if (destPath in seenDestPaths) {
+                val parent = dest.parentFile
+                val fileName = dest.name
+                val stem = fileName.substringBeforeLast('.', fileName)
+                val ext = fileName.substringAfterLast('.', "").let { if (it.isNotEmpty() && fileName.contains('.')) ".$it" else "" }
+                var n = 2
+                while (true) {
+                    val candidate = File(parent, "$stem ($n)$ext")
+                    if (candidate.canonicalPath !in seenDestPaths) {
+                        dest = candidate
+                        break
                     }
+                    n++
                 }
             }
+            seenDestPaths.add(dest.canonicalPath)
+            return dest
+        }
+
+        try {
+            java.nio.channels.FileChannel.open(file.toPath(), java.nio.file.StandardOpenOption.READ).use { channel ->
+                SevenZFile.builder()
+                    .setSeekableByteChannel(channel)
+                    .setMaxMemoryLimitKiB(256 * 1024)
+                    .get().use { sevenZ ->
+                        val allEntries = sevenZ.entries.toList()
+                        if (allEntries.isEmpty()) throw ArchiveException.EmptyArchive("This archive contains no files.")
+                        val totalSize = allEntries.sumOf { it.size.coerceAtLeast(0) }
+                        var next = sevenZ.nextEntry
+                        while (next != null) {
+                            val name = next.name
+                            val isDir = next.isDirectory
+                            entryCount++
+                            if (entryCount > maxEntries) throw ArchiveException.TooLarge("This archive has too many entries to extract safely.")
+                            val dest = resolveDestFile(name, isDir)
+                            if (!isDir) {
+                                try {
+                                    dest.parentFile?.mkdirs()
+                                } catch (e: Exception) {
+                                    throw ArchiveException.OutputWriteException("Failed to create directory for '${dest.name}': ${e.message}", e)
+                                }
+                                try {
+                                    dest.outputStream().use { out ->
+                                        var read: Int
+                                        while (sevenZ.read(buffer).also { read = it } != -1) {
+                                            if (shouldContinue?.invoke() == false) throw kotlinx.coroutines.CancellationException("Extraction cancelled")
+                                            totalWritten += read
+                                            if (totalWritten > maxTotalUncompressedBytes) {
+                                                throw ArchiveException.TooLarge("This archive would unpack to more than ${maxTotalUncompressedBytes / 1_000_000} MB.")
+                                            }
+                                            try {
+                                                out.write(buffer, 0, read)
+                                            } catch (e: Exception) {
+                                                throw ArchiveException.OutputWriteException("Failed to write to '${dest.name}': ${e.message}", e)
+                                            }
+                                        }
+                                    }
+                                } catch (e: ArchiveException) {
+                                    throw e
+                                } catch (e: kotlinx.coroutines.CancellationException) {
+                                    throw e
+                                } catch (e: Exception) {
+                                    if (e is java.io.FileNotFoundException || e is java.io.SyncFailedException) {
+                                        throw ArchiveException.OutputWriteException("Failed to open output file '${dest.name}': ${e.message}", e)
+                                    }
+                                    throw e
+                                }
+                                extracted += dest
+                            } else {
+                                dest.mkdirs()
+                            }
+                            if (totalSize > 0) onProgress?.invoke((totalWritten.toFloat() / totalSize).coerceIn(0f, 1f))
+                            next = sevenZ.nextEntry
+                        }
+                    }
+            }
+        } catch (e: org.apache.commons.compress.MemoryLimitException) {
+            throw ArchiveException.TooLarge("7z archive exceeds memory limits to unpack.")
         } catch (e: ArchiveException) {
             throw e
         } catch (e: kotlinx.coroutines.CancellationException) {

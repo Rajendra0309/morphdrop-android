@@ -309,7 +309,8 @@ fun HomeScreenContent(
                 } else {
                     travelPx = deltaPx
                 }
-                if (headerVisibleState.value && travelPx > hideAfterPx) {
+                val atTop = gridState.firstVisibleItemIndex == 0 && gridState.firstVisibleItemScrollOffset == 0
+                if (headerVisibleState.value && travelPx > hideAfterPx && !atTop) {
                     headerVisibleState.value = false
                     travelPx = 0f
                 } else if (!headerVisibleState.value && travelPx < -showAfterPx) {
@@ -1151,7 +1152,9 @@ private fun candidateToolsForUri(context: android.content.Context, uri: Uri): Li
         ext in listOf("mp4", "mkv", "mov", "webm", "3gp") ->
             listOf("video_to_audio", "metadata_editor")
         ext == "zip" -> listOf("zip_extract", "metadata_editor")
-        ext in listOf("tar", "gz", "tgz") -> listOf("tar_extract", "metadata_editor")
+        com.morphdrop.app.data.archive.ArchiveFormat.detect(name) == com.morphdrop.app.data.archive.ArchiveFormat.TAR ||
+            com.morphdrop.app.data.archive.ArchiveFormat.detect(name) == com.morphdrop.app.data.archive.ArchiveFormat.TAR_GZ ->
+            listOf("tar_extract", "metadata_editor")
         ext == "7z" -> listOf("sevenz_extract", "metadata_editor")
         // Fallback for unknown extensions: sniff the MIME type.
         mime.startsWith("image/") ->

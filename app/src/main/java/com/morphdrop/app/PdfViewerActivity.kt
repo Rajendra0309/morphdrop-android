@@ -164,23 +164,29 @@ class PdfViewerActivity : ComponentActivity() {
             // "SI-14_bb094950.pdf" in the title bar. Collisions are handled
             // by uniqueFile() ("name (2).pdf") instead of a hash.
             val dest = uniqueFile(destDir, "$safeName.pdf")
-            val temp = java.io.File(destDir, "${safeName}_${uriHash}.tmp")
+            var committed = false
             try {
-                contentResolver.openInputStream(uri)?.use { input ->
-                    temp.outputStream().use { output -> input.copyTo(output) }
-                } ?: return null
-                if (!temp.renameTo(dest)) {
-                    temp.copyTo(dest, overwrite = true)
-                    temp.delete()
+                val temp = java.io.File(destDir, "${safeName}_${uriHash}.tmp")
+                try {
+                    contentResolver.openInputStream(uri)?.use { input ->
+                        temp.outputStream().use { output -> input.copyTo(output) }
+                    } ?: return null
+                    if (!temp.renameTo(dest)) {
+                        temp.copyTo(dest, overwrite = true)
+                        temp.delete()
+                    }
+                    committed = true
+                } finally {
+                    if (temp.exists()) temp.delete()
                 }
+                androidx.core.content.FileProvider.getUriForFile(
+                    this,
+                    "${packageName}.fileprovider",
+                    dest
+                )
             } finally {
-                if (temp.exists()) temp.delete()
+                if (!committed && dest.exists()) dest.delete()
             }
-            androidx.core.content.FileProvider.getUriForFile(
-                this,
-                "${packageName}.fileprovider",
-                dest
-            )
         }.getOrNull()
     }
 
@@ -208,13 +214,14 @@ class PdfViewerActivity : ComponentActivity() {
 
     /** Returns a non-colliding file for [fileName] inside [dir]. */
     private fun uniqueFile(dir: java.io.File, fileName: String): java.io.File {
-        var candidate = java.io.File(dir, fileName)
-        var n = 1
         val stem = fileName.substringBeforeLast('.')
-        while (candidate.exists()) {
-            n++
+        var candidate = java.io.File(dir, fileName)
+        if (candidate.createNewFile()) return candidate
+        var n = 2
+        while (true) {
             candidate = java.io.File(dir, "$stem ($n).pdf")
+            if (candidate.createNewFile()) return candidate
+            n++
         }
-        return candidate
     }
 }

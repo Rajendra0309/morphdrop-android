@@ -96,8 +96,16 @@ class ResultViewModel @Inject constructor(
                 when (workInfo.state) {
                     WorkInfo.State.SUCCEEDED -> {
                         val outputUriStr = workInfo.outputData.getString(ConversionWorker.KEY_OUTPUT_URI)
-                        val outputUrisStr = workInfo.outputData.getString(ConversionWorker.KEY_OUTPUT_URIS)
-                            ?: outputUriStr
+                        val outputUrisFileStr = workInfo.outputData.getString(ConversionWorker.KEY_OUTPUT_URIS_FILE)
+                        val outputUrisStr = if (!outputUrisFileStr.isNullOrBlank()) {
+                            runCatching {
+                                context.contentResolver.openInputStream(Uri.parse(outputUrisFileStr))?.bufferedReader()?.use {
+                                    it.readText()
+                                }
+                            }.getOrNull()
+                        } else {
+                            workInfo.outputData.getString(ConversionWorker.KEY_OUTPUT_URIS)
+                        } ?: outputUriStr
 
                         val uriList = outputUrisStr
                             ?.split(",")

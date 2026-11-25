@@ -44,7 +44,7 @@ class AudioConverterUseCase @Inject constructor(
         val format = outputFormat.lowercase()
         AudioMatrix.validateOutput(format, capabilities.hasAacEncoder())
 
-        val tmp = File(context.cacheDir, "audio_convert_${System.currentTimeMillis()}.tmp")
+        val tmp = File.createTempFile("audio_convert_", ".tmp", context.cacheDir)
         try {
             transcoder.transcode(
                 AudioTranscoder.Request(

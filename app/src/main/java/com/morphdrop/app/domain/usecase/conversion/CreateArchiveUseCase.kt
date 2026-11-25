@@ -45,19 +45,36 @@ class CreateArchiveUseCase @Inject constructor(
         // (ZIP was immune only because "zip" has no dot.)
         val baseName = FileHelper.stripArchiveExtension(outputFileName)
 
-        val tmp = File(context.cacheDir, "archive_create_${System.currentTimeMillis()}.tmp")
+        val tmp = File.createTempFile("archive_create_", ".tmp", context.cacheDir)
+        val tempFilesToClean = mutableListOf<File>()
+        val openedStreams = mutableListOf<java.io.InputStream>()
         try {
             var totalBytes = 0L
             val entries = inputUris.map { uri ->
-                val name = FileHelper.getFileName(context, uri)
-                    .ifBlank { "file" }
-                val size = context.contentResolver.openFileDescriptor(uri, "r")
-                    ?.use { pfd -> pfd.statSize.takeIf { it >= 0 } ?: 0L }
-                    ?: 0L
-                totalBytes += size
-                val stream = context.contentResolver.openInputStream(uri)
-                    ?: throw IllegalArgumentException("Could not open '$name'.")
-                ArchiveEngine.SizedArchiveEntrySource(name, stream, size)
+                val name = FileHelper.getFileName(context, uri).ifBlank { "file" }
+                var size = runCatching {
+                    context.contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
+                        pfd.statSize.takeIf { it >= 0 }
+                    }
+                }.getOrNull() ?: -1L
+
+                val stream: java.io.InputStream
+                if (format == ArchiveFormat.TAR_GZ && size < 0) {
+                    val stageTemp = File.createTempFile("stage_tar_", ".tmp", context.cacheDir)
+                    tempFilesToClean += stageTemp
+                    context.contentResolver.openInputStream(uri)?.use { inStream ->
+                        stageTemp.outputStream().use { outStream -> inStream.copyTo(outStream) }
+                    } ?: throw IllegalArgumentException("Could not open '$name'.")
+                    size = stageTemp.length()
+                    stream = stageTemp.inputStream()
+                } else {
+                    stream = context.contentResolver.openInputStream(uri)
+                        ?: throw IllegalArgumentException("Could not open '$name'.")
+                }
+                openedStreams += stream
+                val validSize = size.coerceAtLeast(0L)
+                totalBytes += validSize
+                ArchiveEngine.SizedArchiveEntrySource(name, stream, validSize)
             }
             try {
                 // The engine closes each stream after its entry is written;
@@ -72,10 +89,11 @@ class CreateArchiveUseCase @Inject constructor(
                     }
                 }
             } finally {
-                entries.forEach { runCatching { it.inputStream.close() } }
+                openedStreams.forEach { runCatching { it.close() } }
             }
             FileHelper.saveStreamToFile(context, settingsRepository, "$baseName.$ext", tmp)
         } finally {
+            tempFilesToClean.forEach { runCatching { it.delete() } }
             tmp.delete()
         }
     }

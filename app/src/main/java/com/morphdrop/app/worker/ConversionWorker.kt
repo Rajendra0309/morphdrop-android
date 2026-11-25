@@ -93,6 +93,7 @@ class ConversionWorker @AssistedInject constructor(
         const val KEY_CONVERSION_TYPE = "conversion_type"
         const val KEY_INPUT_URI = "input_uri"
         const val KEY_INPUT_URIS = "input_uris"
+        const val KEY_INPUT_URIS_FILE = "input_uris_file"
         const val KEY_OUTPUT_FILE_NAME = "output_file_name"
         const val KEY_QUALITY = "quality"
         const val KEY_PAGE_RANGE = "page_range"
@@ -111,6 +112,7 @@ class ConversionWorker @AssistedInject constructor(
 
         const val KEY_OUTPUT_URI = "output_uri"
         const val KEY_OUTPUT_URIS = "output_uris"
+        const val KEY_OUTPUT_URIS_FILE = "output_uris_file"
         const val KEY_ERROR = "error"
         /** A partial-recovery note (e.g. a truncated ZIP): shown on Result, never a failure. */
         const val KEY_PARTIAL_WARNING = "partial_warning"
@@ -170,7 +172,17 @@ class ConversionWorker @AssistedInject constructor(
         }
 
         val inputUriString = inputData.getString(KEY_INPUT_URI)
-        val inputUrisArray = inputData.getStringArray(KEY_INPUT_URIS)
+        val inputUrisFileString = inputData.getString(KEY_INPUT_URIS_FILE)
+        val inputUrisArray = if (!inputUrisFileString.isNullOrBlank()) {
+            runCatching {
+                val fileUri = Uri.parse(inputUrisFileString)
+                appContext.contentResolver.openInputStream(fileUri)?.bufferedReader()?.use { reader ->
+                    reader.readLines().filter { it.isNotBlank() }.toTypedArray()
+                }
+            }.getOrNull()
+        } else {
+            inputData.getStringArray(KEY_INPUT_URIS)
+        }
         val inputFileName = inputUriString?.let {
             FileHelper.getFileName(appContext, Uri.parse(it))
         } ?: if (!inputUrisArray.isNullOrEmpty()) {
@@ -1112,20 +1124,33 @@ class ConversionWorker @AssistedInject constructor(
             com.morphdrop.app.ui.widget.WidgetUpdateHelper.updateAllWidgets(appContext)
 
             val primaryOutputUri = resultUris.firstOrNull()
+            val outUrisBytes = outUrisString.toByteArray(Charsets.UTF_8)
+            val resultDataBuilder = androidx.work.Data.Builder()
+                .putString(KEY_OUTPUT_URI, primaryOutputUri.toString())
+                .putLong(KEY_INPUT_SIZE_BYTES, totalInputBytes)
+                .putString(KEY_PARTIAL_WARNING, partialWarning ?: "")
+
+            if (outUrisBytes.size > 7 * 1024) {
+                val outFile = java.io.File(appContext.cacheDir, "output_uris_${java.util.UUID.randomUUID()}.txt")
+                outFile.writeText(outUrisString)
+                val outUri = androidx.core.content.FileProvider.getUriForFile(
+                    appContext,
+                    "${appContext.packageName}.fileprovider",
+                    outFile
+                )
+                resultDataBuilder.putString(KEY_OUTPUT_URIS_FILE, outUri.toString())
+            } else {
+                resultDataBuilder.putString(KEY_OUTPUT_URIS, outUrisString)
+            }
+            val resultData = resultDataBuilder.build()
+
             notificationHelper.showCompletionNotification(
                 notificationId,
                 mapIdToDisplayName(conversionType),
                 primaryOutputUri
             )
 
-            Result.success(
-                workDataOf(
-                    KEY_OUTPUT_URI to primaryOutputUri.toString(),
-                    KEY_OUTPUT_URIS to outUrisString,
-                    KEY_INPUT_SIZE_BYTES to totalInputBytes,
-                    KEY_PARTIAL_WARNING to (partialWarning ?: "")
-                )
-            )
+            Result.success(resultData)
         } catch (e: Exception) {
             // Handle cancellation gracefully
             if (e is kotlinx.coroutines.CancellationException || isStopped) {

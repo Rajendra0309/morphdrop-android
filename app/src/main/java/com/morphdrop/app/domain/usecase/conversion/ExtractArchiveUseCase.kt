@@ -55,11 +55,12 @@ class ExtractArchiveUseCase @Inject constructor(
             FileHelper.stripArchiveExtension(inputName).ifBlank { "extracted" }
         }
         val baseFolder = settingsRepository.outputFolderName.first()
-        val workDir = File(context.cacheDir, "archive_extract_${System.currentTimeMillis()}").apply { mkdirs() }
+        val workDir = File(context.cacheDir, "archive_extract_${java.util.UUID.randomUUID()}").apply { mkdirs() }
+        val saved = mutableListOf<Uri>()
         try {
             val extractedFiles: List<File> = if (format == ArchiveFormat.SEVENZ) {
                 // SevenZFile needs a seekable file, not a stream.
-                val tmp = File(context.cacheDir, "archive_input_${System.currentTimeMillis()}.7z")
+                val tmp = File.createTempFile("archive_input_", ".7z", context.cacheDir)
                 try {
                     context.contentResolver.openInputStream(inputUri)?.use { input ->
                         tmp.outputStream().use { out -> input.copyTo(out) }
@@ -75,11 +76,17 @@ class ExtractArchiveUseCase @Inject constructor(
             }
             if (extractedFiles.isEmpty()) throw ArchiveException.EmptyArchive("This archive contains no files.")
             // Preserve subfolders inside the archive in Downloads.
-            val saved = extractedFiles.map { file ->
-                val relative = file.relativeTo(workDir).path
-                val parent = relative.substringBeforeLast('/', "")
-                val targetFolder = if (parent.isBlank()) "$baseFolder/$folderName" else "$baseFolder/$folderName/$parent"
-                FileHelper.saveStreamToFile(context, targetFolder, file.name, file)
+            try {
+                for (file in extractedFiles) {
+                    val relative = file.relativeTo(workDir).path
+                    val parent = relative.substringBeforeLast('/', "")
+                    val targetFolder = if (parent.isBlank()) "$baseFolder/$folderName" else "$baseFolder/$folderName/$parent"
+                    val uri = FileHelper.saveStreamToFile(context, targetFolder, file.name, file)
+                    saved += uri
+                }
+            } catch (e: Throwable) {
+                saved.forEach { uri -> runCatching { context.contentResolver.delete(uri, null, null) } }
+                throw e
             }
             // A truncated ZIP still yields its complete entries, so the
             // extract above succeeds — and without this check the Result
@@ -113,6 +120,7 @@ class ExtractArchiveUseCase @Inject constructor(
             val pfd = context.contentResolver.openFileDescriptor(inputUri, "r") ?: return false
             try {
                 val size = pfd.statSize
+                if (size < 0) return false
                 if (size < 22) return true
                 val tailSize = minOf(size, 65_557L).toInt()
                 val tail = ByteArray(tailSize)
@@ -132,7 +140,7 @@ class ExtractArchiveUseCase @Inject constructor(
     /** Lists an archive's entries (names, sizes) without extracting anything. */
     suspend fun listEntries(inputUri: Uri, format: ArchiveFormat) = withContext(Dispatchers.IO) {
         if (format == ArchiveFormat.SEVENZ) {
-            val tmp = File(context.cacheDir, "archive_input_${System.currentTimeMillis()}.7z")
+            val tmp = File.createTempFile("archive_input_", ".7z", context.cacheDir)
             try {
                 context.contentResolver.openInputStream(inputUri)?.use { input ->
                     tmp.outputStream().use { out -> input.copyTo(out) }

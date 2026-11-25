@@ -62,8 +62,11 @@ class AudioTrimmerUseCase @Inject constructor(
             }
             startMs to (endMs?.takeIf { it != 0L })
         }
+        if (start > Long.MAX_VALUE / 1000L || (end != null && end > Long.MAX_VALUE / 1000L)) {
+            throw IllegalArgumentException("Trim time is too large to represent.")
+        }
 
-        val tmp = File(context.cacheDir, "audio_trim_${System.currentTimeMillis()}.tmp")
+        val tmp = File.createTempFile("audio_trim_", ".tmp", context.cacheDir)
         try {
             transcoder.transcode(
                 AudioTranscoder.Request(

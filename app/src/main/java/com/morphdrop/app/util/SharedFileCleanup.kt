@@ -28,17 +28,38 @@ object SharedFileCleanup {
     fun isOwnCacheCopy(context: Context, uri: Uri): Boolean {
         if (uri.authority != "${context.packageName}.fileprovider") return false
         val path = uri.path ?: return false
-        return path.contains("shared_incoming")
+        return path.contains("shared_incoming") || path.contains("shared_text")
     }
 
     /** Deletes [uri] only when it is one of MorphDrop's own cache copies. */
     fun deleteIfOwnCacheCopy(context: Context, uri: Uri) {
         if (!isOwnCacheCopy(context, uri)) return
         runCatching {
-            val file = java.io.File(context.cacheDir, uri.path?.substringAfter("shared_incoming/")?.let {
-                "shared_incoming/$it"
-            } ?: return)
-            if (file.exists()) file.delete()
+            val path = uri.path ?: return
+            val file = when {
+                path.contains("shared_incoming/") -> {
+                    val rel = path.substringAfter("shared_incoming/")
+                    val f = java.io.File(context.cacheDir, "shared_incoming/$rel")
+                    val base = java.io.File(context.cacheDir, "shared_incoming").canonicalPath.let {
+                        if (it.endsWith(java.io.File.separator)) it else it + java.io.File.separator
+                    }
+                    if (!f.canonicalPath.startsWith(base)) return
+                    f
+                }
+                path.contains("shared_text/") -> {
+                    val rel = path.substringAfter("shared_text/")
+                    val f = java.io.File(context.filesDir, "shared_text/$rel")
+                    val base = java.io.File(context.filesDir, "shared_text").canonicalPath.let {
+                        if (it.endsWith(java.io.File.separator)) it else it + java.io.File.separator
+                    }
+                    if (!f.canonicalPath.startsWith(base)) return
+                    f
+                }
+                else -> return
+            }
+            if (file.exists()) {
+                if (file.isDirectory) file.deleteRecursively() else file.delete()
+            }
             // Each copy lives in its own subfolder; remove the folder too
             // when it is left empty, so no orphan dirs accumulate.
             file.parentFile?.takeIf { it.exists() && it.list()?.isEmpty() == true }?.delete()

@@ -27,6 +27,9 @@ class WavWriter(
 
     fun writePcm(bytes: ByteArray, offset: Int = 0, length: Int = bytes.size) {
         check(!closed) { "WavWriter is closed." }
+        if (dataBytes + length > 0xffffffffL - 36L) {
+            throw IllegalArgumentException("Audio data exceeds RIFF size limit of 4 GB.")
+        }
         out.write(bytes, offset, length)
         dataBytes += length
     }
@@ -48,11 +51,12 @@ class WavWriter(
 
         /** Builds a standard 44-byte PCM WAV header for [dataBytes]. */
         fun wavHeaderBytes(sampleRate: Int, channels: Int, dataBytes: Long): ByteArray {
+            require(dataBytes in 0L..(0xffffffffL - 36L)) { "Audio data size exceeds RIFF limit: $dataBytes" }
             val byteRate = sampleRate * channels * 2
             val blockAlign = (channels * 2).toShort()
             return ByteBuffer.allocate(HEADER_SIZE).order(ByteOrder.LITTLE_ENDIAN).apply {
                 put("RIFF".toByteArray(Charsets.US_ASCII))
-                putInt((36 + dataBytes).toInt())
+                putInt((36L + dataBytes).toInt())
                 put("WAVE".toByteArray(Charsets.US_ASCII))
                 put("fmt ".toByteArray(Charsets.US_ASCII))
                 putInt(16) // PCM subchunk size

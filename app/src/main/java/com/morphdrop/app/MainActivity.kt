@@ -112,8 +112,8 @@ class MainActivity : ComponentActivity() {
                 }
                 return
             }
-            val firstSharedName = getUriFileName(sharedUris.first())
             lifecycleScope.launch(Dispatchers.IO) {
+                val firstSharedName = getUriFileName(sharedUris.first())
                 val hasPersistableGrant =
                     (intent.flags and Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION) != 0
                 val finalUris = if (hasPersistableGrant) {

@@ -187,7 +187,7 @@ fun ConversionCard(
                 )
             } else if (conversionType.id == "tar_extract") {
                 FormatChip(
-                    format = "TAR.GZ → FOLDER",
+                    format = "TAR / TAR.GZ → FOLDER",
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                     contentColor = MaterialTheme.colorScheme.onPrimaryContainer
                 )

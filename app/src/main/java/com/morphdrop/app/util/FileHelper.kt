@@ -117,15 +117,23 @@ object FileHelper {
             val collection = android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI
             val uri = resolver.insert(collection, contentValues) ?: throw FileNotFoundException("Could not create MediaStore entry")
             
-            resolver.openOutputStream(uri)?.use { it.write(data) }
-
             try {
+                val out = resolver.openOutputStream(uri)
+                    ?: throw FileNotFoundException("Could not open MediaStore output stream for $uri")
+                out.use { it.write(data) }
+
                 val updateValues = android.content.ContentValues().apply {
                     put(android.provider.MediaStore.MediaColumns.IS_PENDING, 0)
                     put(android.provider.MediaStore.MediaColumns.SIZE, data.size.toLong())
                 }
-                resolver.update(uri, updateValues, null, null)
-            } catch (_: Exception) {}
+                val updated = resolver.update(uri, updateValues, null, null)
+                if (updated <= 0) {
+                    android.util.Log.w("FileHelper", "Failed to clear IS_PENDING on MediaStore entry $uri")
+                }
+            } catch (e: Throwable) {
+                resolver.delete(uri, null, null)
+                throw e
+            }
 
             return uri
         } else {
@@ -169,19 +177,27 @@ object FileHelper {
             val collection = android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI
             val uri = resolver.insert(collection, contentValues) ?: throw FileNotFoundException("Could not create MediaStore entry")
 
-            resolver.openOutputStream(uri)?.use { out ->
-                sourceFile.inputStream().use { input ->
-                    input.copyTo(out, DEFAULT_BUFFER_SIZE)
-                }
-            }
-
             try {
+                val out = resolver.openOutputStream(uri)
+                    ?: throw FileNotFoundException("Could not open MediaStore output stream for $uri")
+                out.use { output ->
+                    sourceFile.inputStream().use { input ->
+                        input.copyTo(output, DEFAULT_BUFFER_SIZE)
+                    }
+                }
+
                 val updateValues = android.content.ContentValues().apply {
                     put(android.provider.MediaStore.MediaColumns.IS_PENDING, 0)
                     put(android.provider.MediaStore.MediaColumns.SIZE, sourceFile.length())
                 }
-                resolver.update(uri, updateValues, null, null)
-            } catch (_: Exception) {}
+                val updated = resolver.update(uri, updateValues, null, null)
+                if (updated <= 0) {
+                    android.util.Log.w("FileHelper", "Failed to clear IS_PENDING on MediaStore entry $uri")
+                }
+            } catch (e: Throwable) {
+                resolver.delete(uri, null, null)
+                throw e
+            }
 
             return uri
         } else {

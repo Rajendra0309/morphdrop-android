@@ -146,8 +146,8 @@ fun ConversionConfigScreen(
         "zip_create" -> arrayOf("*/*")
         "zip_extract" -> arrayOf("application/zip", "application/x-zip-compressed")
         "tar_create" -> arrayOf("*/*")
-        "tar_extract" -> arrayOf("application/x-tar", "application/gzip", "application/x-gzip")
-        "sevenz_extract" -> arrayOf("application/x-7z-compressed")
+        "tar_extract" -> arrayOf("application/x-tar", "application/gzip", "application/x-gzip", "application/octet-stream")
+        "sevenz_extract" -> arrayOf("application/x-7z-compressed", "application/octet-stream")
         else -> arrayOf("*/*")
     }
 

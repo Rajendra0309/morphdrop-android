@@ -138,7 +138,8 @@ class ConversionConfigViewModel @Inject constructor(
     @param:ApplicationContext private val context: Context,
     private val settingsRepository: SettingsRepository,
     private val metadataUseCase: com.morphdrop.app.domain.usecase.conversion.MetadataUseCase,
-    private val extractArchiveUseCase: com.morphdrop.app.domain.usecase.conversion.ExtractArchiveUseCase
+    private val extractArchiveUseCase: com.morphdrop.app.domain.usecase.conversion.ExtractArchiveUseCase,
+    private val audioCapabilities: com.morphdrop.app.data.audio.AudioCapabilities
 ) : ViewModel() {
 
     private val rawConversionTypeId: String = savedStateHandle["conversionTypeId"] ?: ""
@@ -169,6 +170,7 @@ class ConversionConfigViewModel @Inject constructor(
     val hasPreset: StateFlow<Boolean> = _hasPreset.asStateFlow()
 
     private var pdfLoadingJob: kotlinx.coroutines.Job? = null
+    private var archivePreviewJob: kotlinx.coroutines.Job? = null
     private var fileSelectionGeneration = 0L
 
     init {
@@ -182,21 +184,26 @@ class ConversionConfigViewModel @Inject constructor(
                 val preset = settingsRepository.toolPreset(type.id).first()
 
                 _state.update { current ->
+                    val availableFormats = getFormatsForType(type)
+                    val rawFormat = if (isImageOutput(type)) savedFormat else type.outputType.extension
+                    val resolvedInitialFormat = if (rawFormat in availableFormats) rawFormat else availableFormats.firstOrNull() ?: rawFormat
                     var next = current.copy(
-                        outputFormat = if (isImageOutput(type)) savedFormat else type.outputType.extension,
+                        outputFormat = resolvedInitialFormat,
                         quality = if (isImageOutput(type)) savedQuality else if (type.id == "compress_pdf") 60 else current.quality,
                         resizeOption = savedResize,
                         stripMetadata = savedStrip,
                         showQualitySlider = isImageOutput(type) || type.id == "compress_pdf",
                         showPageRange = type.id in listOf("split_pdf", "pdf_to_images", "organize_pdf"),
-                        availableOutputFormats = getFormatsForType(type),
+                        availableOutputFormats = availableFormats,
                         compressionPreset = if (type.id == "compress_pdf") "Recommended" else current.compressionPreset
                     )
                     // Per-tool preset (last-used settings) wins over the globals above.
                     if (preset != null) {
                         _hasPreset.value = true
+                        val presetFmt = preset.outputFormat.ifBlank { next.outputFormat }
+                        val safePresetFmt = if (presetFmt in availableFormats) presetFmt else availableFormats.firstOrNull() ?: presetFmt
                         next = next.copy(
-                            outputFormat = preset.outputFormat.ifBlank { next.outputFormat },
+                            outputFormat = safePresetFmt,
                             quality = preset.quality,
                             resizeOption = preset.resizeOption.ifBlank { next.resizeOption },
                             stripMetadata = preset.stripMetadata,
@@ -237,7 +244,7 @@ class ConversionConfigViewModel @Inject constructor(
                         && current.outputFileName.contains('.')
                         && !isFolderOutput(type)
                     ) {
-                        val base = current.outputFileName.substringBeforeLast('.')
+                        val base = FileHelper.stripArchiveExtension(current.outputFileName)
                         next = next.copy(outputFileName = "$base.${next.outputFormat}")
                     }
                     next.copy(isConvertEnabled = isStateValid(next))
@@ -274,7 +281,7 @@ class ConversionConfigViewModel @Inject constructor(
             "zip_create" -> emptyList() // Empty list = ALL file types allowed!
             "zip_extract" -> listOf("zip")
             "tar_create" -> emptyList() // Empty list = ALL file types allowed!
-            "tar_extract" -> listOf("tar", "gz", "tgz")
+            "tar_extract" -> listOf("tar", "tar.gz", "tgz", "gz")
             "sevenz_extract" -> listOf("7z")
             "txt_to_pdf", "text_to_pdf" -> listOf("txt")
             "md_to_pdf" -> listOf("md", "markdown")
@@ -365,10 +372,10 @@ class ConversionConfigViewModel @Inject constructor(
             val allowedText = allowedExts.joinToString(", ") { ".$it" }
             _state.update {
                 it.copy(
-                    selectedFileUris = selectedUris,
-                    selectedFileNames = names,
-                    selectedFileSize = totalSize,
-                    isBatchMode = selectedUris.size > 1,
+                    selectedFileUris = emptyList(),
+                    selectedFileNames = emptyList(),
+                    selectedFileSize = 0L,
+                    isBatchMode = false,
                     selectedPreviewUri = null,
                     isConvertEnabled = false,
                     errorMessage = "Invalid file type: '$invalidFileName'. ${type?.name ?: "This tool"} only accepts $allowedText files."
@@ -381,22 +388,8 @@ class ConversionConfigViewModel @Inject constructor(
         // Compound extensions included: "packed.tar.gz" extracts to
         // "packed_extracted", not "packed.tar_extracted".
         val baseName = FileHelper.stripArchiveExtension(firstFileName)
-        val outputExt = _state.value.outputFormat.ifBlank {
-            _state.value.conversionType?.outputType?.extension ?: "pdf"
-        }
 
         val isMultipleImages = selectedUris.size > 1
-        val outName = if (isMultipleImages && type?.id != "merge_pdf") {
-            val timestamp = java.text.SimpleDateFormat("yyyy-MM-dd_HH-mm", java.util.Locale.US).format(java.util.Date())
-            "Batch_$timestamp"
-        } else if (isFolderOutput(type)) {
-            "${baseName}_extracted"
-        } else if (type?.id == "merge_pdf" && isMultipleImages) {
-            "${baseName}_merged.$outputExt"
-        } else {
-            "${baseName}_converted.$outputExt"
-        }
-
         val allImageItems = currentImageItems + newImageItems
         val firstSelectedUri = selectedUris.firstOrNull()
         val firstSelectedMime = firstSelectedUri?.let { FileHelper.getMimeType(context, it) } ?: ""
@@ -405,8 +398,22 @@ class ConversionConfigViewModel @Inject constructor(
 
         if (currentGeneration != fileSelectionGeneration) return@launch
 
-        _state.update {
-            val s = it.copy(
+        _state.update { current ->
+            val outputExt = current.outputFormat.ifBlank {
+                current.conversionType?.outputType?.extension ?: "pdf"
+            }
+            val outName = if (isMultipleImages && type?.id != "merge_pdf") {
+                val timestamp = java.text.SimpleDateFormat("yyyy-MM-dd_HH-mm", java.util.Locale.US).format(java.util.Date())
+                "Batch_$timestamp"
+            } else if (isFolderOutput(type)) {
+                "${baseName}_extracted"
+            } else if (type?.id == "merge_pdf" && isMultipleImages) {
+                "${baseName}_merged.$outputExt"
+            } else {
+                "${baseName}_converted.$outputExt"
+            }
+
+            val s = current.copy(
                 selectedFileUris = selectedUris,
                 selectedFileNames = names,
                 selectedFileSize = totalSize,
@@ -414,7 +421,7 @@ class ConversionConfigViewModel @Inject constructor(
                 mergeItems = selectedUris.mapIndexed { idx, uri ->
                     MergeItem(uri, names.getOrElse(idx) { "File" })
                 },
-                outputFileName = if (it.outputFileName.isBlank() || !append) outName else it.outputFileName,
+                outputFileName = if (current.outputFileName.isBlank() || !append) outName else current.outputFileName,
                 isBatchMode = selectedUris.size > 1,
                 selectedPreviewUri = if (isFirstAnImage) firstSelectedUri else null,
                 errorMessage = null,
@@ -508,14 +515,18 @@ class ConversionConfigViewModel @Inject constructor(
             val duration = probeAudioDurationMs(context, selectedUris.first())
             if (currentGeneration != fileSelectionGeneration) return@launch
             _state.update { s ->
-                val next = s.copy(audioDurationMs = duration ?: 0L)
-                next.copy(isConvertEnabled = isStateValid(next))
+                val withDuration = s.copy(audioDurationMs = duration ?: 0L)
+                val trimError = trimErrorMessageFor(withDuration)
+                withDuration.copy(
+                    trimErrorMessage = trimError,
+                    isConvertEnabled = trimError == null && isStateValid(withDuration)
+                )
             }
         }
 
         if (type?.id in ARCHIVE_EXTRACT_TOOL_IDS && selectedUris.isNotEmpty()) {
             if (currentGeneration != fileSelectionGeneration) return@launch
-            loadArchivePreview(context, selectedUris.first())
+            loadArchivePreview(context, selectedUris.first(), currentGeneration)
         }
         }
     }
@@ -525,7 +536,8 @@ class ConversionConfigViewModel @Inject constructor(
      * screen. A stale listing is never shown: the generation guard and
      * the uri check both drop results that arrive after a newer file.
      */
-    fun loadArchivePreview(context: Context, uri: Uri) {
+    fun loadArchivePreview(context: Context, uri: Uri, generation: Long = fileSelectionGeneration) {
+        archivePreviewJob?.cancel()
         val fileName = FileHelper.getFileName(context, uri)
         val format = com.morphdrop.app.data.archive.ArchiveFormat.detect(fileName)
         if (format == null) {
@@ -539,8 +551,9 @@ class ConversionConfigViewModel @Inject constructor(
             return
         }
         _state.update { it.copy(isArchivePreviewLoading = true, archivePreviewError = null) }
-        viewModelScope.launch {
+        archivePreviewJob = viewModelScope.launch {
             val entries = runCatching { extractArchiveUseCase.listEntries(uri, format) }
+            if (generation != fileSelectionGeneration) return@launch
             _state.update { current ->
                 if (current.selectedFileUris.firstOrNull() != uri) return@update current
                 entries.fold(
@@ -1119,12 +1132,16 @@ class ConversionConfigViewModel @Inject constructor(
                 s.trimStartSeconds.isBlank() -> 0L
                 else -> s.trimStartSeconds.toLongOrNull() ?: return false
             }
-            if (s.trimEndSeconds.isNotBlank() && s.trimEndSeconds.toLongOrNull() == null) return false
+            if (start > Long.MAX_VALUE / 1000L) return false
+            val end = s.trimEndSeconds.toLongOrNull()
+            if (s.trimEndSeconds.isNotBlank()) {
+                if (end == null || end > Long.MAX_VALUE / 1000L) return false
+            }
             // Seconds vs milliseconds: never compare seconds against
             // audioDurationMs directly — AudioMatrix converts first.
             if (com.morphdrop.app.domain.model.AudioMatrix.trimErrorForSeconds(
                     startSeconds = start,
-                    endSeconds = s.trimEndSeconds.toLongOrNull(),
+                    endSeconds = end,
                     durationMs = s.audioDurationMs
                 ) != null
             ) return false
@@ -1139,12 +1156,15 @@ class ConversionConfigViewModel @Inject constructor(
             s.trimStartSeconds.isBlank() -> 0L
             else -> s.trimStartSeconds.toLongOrNull() ?: return "Trim times must be whole seconds."
         }
-        if (s.trimEndSeconds.isNotBlank() && s.trimEndSeconds.toLongOrNull() == null) {
-            return "Trim times must be whole seconds."
+        if (start > Long.MAX_VALUE / 1000L) return "Start time is too large."
+        val end = s.trimEndSeconds.toLongOrNull()
+        if (s.trimEndSeconds.isNotBlank()) {
+            if (end == null) return "Trim times must be whole seconds."
+            if (end > Long.MAX_VALUE / 1000L) return "End time is too large."
         }
         return com.morphdrop.app.domain.model.AudioMatrix.trimErrorForSeconds(
             startSeconds = start,
-            endSeconds = s.trimEndSeconds.toLongOrNull(),
+            endSeconds = end,
             durationMs = s.audioDurationMs
         )
     }
@@ -1206,10 +1226,25 @@ class ConversionConfigViewModel @Inject constructor(
 
         return try {
             val uriStrings: Array<String?> = Array(uris.size) { uris[it].toString() }
+            val totalUriBytes = uriStrings.sumOf { it?.toByteArray(Charsets.UTF_8)?.size ?: 0 }
             val dataBuilder = androidx.work.Data.Builder()
                 .putString(com.morphdrop.app.worker.ConversionWorker.KEY_CONVERSION_TYPE, type.id)
                 .putString(com.morphdrop.app.worker.ConversionWorker.KEY_INPUT_URI, uris.first().toString())
-                .putStringArray(com.morphdrop.app.worker.ConversionWorker.KEY_INPUT_URIS, uriStrings)
+
+            if (totalUriBytes > 7 * 1024) {
+                val tempUrisFile = File(context.cacheDir, "input_uris_${java.util.UUID.randomUUID()}.txt")
+                tempUrisFile.writeText(uris.joinToString("\n") { it.toString() })
+                val fileUri = androidx.core.content.FileProvider.getUriForFile(
+                    context,
+                    "${context.packageName}.fileprovider",
+                    tempUrisFile
+                )
+                dataBuilder.putString(com.morphdrop.app.worker.ConversionWorker.KEY_INPUT_URIS_FILE, fileUri.toString())
+            } else {
+                dataBuilder.putStringArray(com.morphdrop.app.worker.ConversionWorker.KEY_INPUT_URIS, uriStrings)
+            }
+
+            dataBuilder
                 .putString(com.morphdrop.app.worker.ConversionWorker.KEY_OUTPUT_FILE_NAME, currentState.outputFileName)
                 .putString(com.morphdrop.app.worker.ConversionWorker.KEY_TARGET_FORMAT, currentState.outputFormat)
                 .putInt(com.morphdrop.app.worker.ConversionWorker.KEY_QUALITY, currentState.quality)
@@ -1217,8 +1252,10 @@ class ConversionConfigViewModel @Inject constructor(
                 .putBoolean(com.morphdrop.app.worker.ConversionWorker.KEY_STRIP_METADATA, currentState.stripMetadata)
 
             if (type.id == "audio_trimmer") {
-                val startMs = (currentState.trimStartSeconds.toLongOrNull() ?: 0L) * 1000
-                val endMs = currentState.trimEndSeconds.toLongOrNull()?.let { it * 1000 } ?: 0L
+                val startSec = currentState.trimStartSeconds.toLongOrNull() ?: 0L
+                val endSec = currentState.trimEndSeconds.toLongOrNull()
+                val startMs = if (startSec <= Long.MAX_VALUE / 1000L) startSec * 1000L else Long.MAX_VALUE
+                val endMs = if (endSec != null && endSec <= Long.MAX_VALUE / 1000L) endSec * 1000L else 0L
                 dataBuilder.putLong(com.morphdrop.app.worker.ConversionWorker.KEY_TRIM_START_MS, startMs)
                 dataBuilder.putLong(com.morphdrop.app.worker.ConversionWorker.KEY_TRIM_END_MS, endMs)
             }
@@ -1408,14 +1445,15 @@ class ConversionConfigViewModel @Inject constructor(
     }
 
     private fun getFormatsForType(type: ConversionType): List<String> {
+        val hasAac = runCatching { audioCapabilities.hasAacEncoder() }.getOrDefault(false)
         return when (type.id) {
             "pdf_to_images" -> listOf("png", "jpg")
             "image_converter" -> listOf("png", "jpg", "webp", "bmp")
             "image_resize" -> listOf("png", "jpg", "webp", "bmp")
             "heic_to_image" -> listOf("jpg", "png")
-            "audio_converter" -> listOf("wav", "m4a")
-            "audio_trimmer" -> listOf("wav", "m4a")
-            "video_to_audio" -> listOf("m4a", "wav")
+            "audio_converter" -> if (hasAac) listOf("wav", "m4a") else listOf("wav")
+            "audio_trimmer" -> if (hasAac) listOf("wav", "m4a") else listOf("wav")
+            "video_to_audio" -> if (hasAac) listOf("m4a", "wav") else listOf("wav")
             "compress_images" -> listOf("png", "jpg", "webp", "bmp")
             else -> listOf(type.outputType.extension)
         }

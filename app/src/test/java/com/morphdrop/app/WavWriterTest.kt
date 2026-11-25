@@ -33,11 +33,13 @@ class WavWriterTest {
             assertArrayEquals(pcm, bytes.copyOfRange(44, bytes.size))
 
             // And the reader side parses the same file back.
-            val reader = WavPcmReader(file.inputStream())
-            assertEquals(44100, reader.sampleRate)
-            assertEquals(2, reader.channels)
-            assertArrayEquals(pcm, reader.readConvertedChunk(1024))
-            reader.close()
+            file.inputStream().use { input ->
+                val reader = WavPcmReader(input)
+                assertEquals(44100, reader.sampleRate)
+                assertEquals(2, reader.channels)
+                assertArrayEquals(pcm, reader.readConvertedChunk(1024))
+                reader.close()
+            }
         } finally {
             file.delete()
         }
@@ -48,11 +50,13 @@ class WavWriterTest {
         val file = File.createTempFile("morphdrop_not_wav", ".bin")
         try {
             file.writeBytes("this is definitely not a riff file".toByteArray(Charsets.US_ASCII))
-            try {
-                WavPcmReader(file.inputStream())
-                throw AssertionError("Expected UnsupportedWavException")
-            } catch (e: WavPcmReader.UnsupportedWavException) {
-                assertTrue(e.message!!.contains("not a WAV"))
+            file.inputStream().use { input ->
+                try {
+                    WavPcmReader(input)
+                    throw AssertionError("Expected UnsupportedWavException")
+                } catch (e: WavPcmReader.UnsupportedWavException) {
+                    assertTrue(e.message!!.contains("not a WAV"))
+                }
             }
         } finally {
             file.delete()

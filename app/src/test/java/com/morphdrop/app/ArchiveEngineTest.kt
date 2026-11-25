@@ -103,15 +103,16 @@ class ArchiveEngineTest {
                 zip.finish()
             }
         }.toByteArray()
-        val dir = createTempDir("archive-test").apply { mkdirs() }
+        val testRoot = createTempDir("archive-test-root").apply { mkdirs() }
+        val dir = File(testRoot, "output").apply { mkdirs() }
         try {
             assertThrows(ArchiveException.UnsafeEntry::class.java) {
                 engine.extract(ByteArrayInputStream(bytes), ArchiveFormat.ZIP, dir, bytes.size.toLong())
             }
             assertTrue(!File(dir, "evil.txt").exists())
-            assertTrue(!File(dir.parentFile, "evil.txt").exists())
+            assertTrue(!File(testRoot, "evil.txt").exists())
         } finally {
-            dir.deleteRecursively()
+            testRoot.deleteRecursively()
         }
     }
 
