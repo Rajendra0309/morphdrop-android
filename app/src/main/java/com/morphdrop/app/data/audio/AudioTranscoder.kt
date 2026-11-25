@@ -190,28 +190,37 @@ class AudioTranscoder @Inject constructor(
         val extractor = MediaExtractor()
         try {
             if (afd != null && isSeekable(afd.fileDescriptor)) {
-                if (afd.declaredLength < 0 && afd.startOffset == 0L) {
-                    extractor.setDataSource(afd.fileDescriptor)
-                } else if (afd.declaredLength > 0) {
+                if (afd.declaredLength == 0L) {
+                    throw AudioTranscoderException("This file has no audio track.")
+                } else if (afd.declaredLength > 0L) {
                     extractor.setDataSource(afd.fileDescriptor, afd.startOffset, afd.declaredLength)
-                } else {
+                } else if (afd.declaredLength < 0L && afd.startOffset == 0L) {
                     extractor.setDataSource(afd.fileDescriptor)
+                } else {
+                    throw AudioTranscoderException("This file has no audio track.")
                 }
             } else {
                 val temp = File.createTempFile("audio_stage_", ".tmp", context.cacheDir)
                 stagedFile = temp
-                context.contentResolver.openInputStream(request.inputUri)?.use { input ->
-                    temp.outputStream().use { output ->
-                        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                        var read: Int
-                        while (input.read(buffer).also { read = it } != -1) {
-                            if (request.shouldContinue?.invoke() == false) {
-                                throw CancellationException("Audio conversion cancelled")
+                val inStream = context.contentResolver.openInputStream(request.inputUri)
+                    ?: throw AudioTranscoderException("Could not open the input audio file.")
+                try {
+                    inStream.use { input ->
+                        temp.outputStream().use { output ->
+                            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                            var read: Int
+                            while (input.read(buffer).also { read = it } != -1) {
+                                if (request.shouldContinue?.invoke() == false) {
+                                    throw CancellationException("Audio conversion cancelled")
+                                }
+                                output.write(buffer, 0, read)
                             }
-                            output.write(buffer, 0, read)
                         }
                     }
-                } ?: throw AudioTranscoderException("Could not open the input audio file.")
+                } catch (e: Exception) {
+                    if (e is CancellationException) throw e
+                    throw AudioTranscoderException("Could not write audio. Check free storage.", e)
+                }
                 extractor.setDataSource(temp.absolutePath)
             }
             val trackInfo = selectFirstAudioTrack(extractor)
@@ -252,14 +261,29 @@ class AudioTranscoder @Inject constructor(
                             onProgress = request.onProgress,
                             shouldContinue = request.shouldContinue,
                             initSink = { actualRate, actualChannels ->
-                                writer = WavWriter(request.outputFile, actualRate, actualChannels)
+                                try {
+                                    writer = WavWriter(request.outputFile, actualRate, actualChannels)
+                                } catch (e: Exception) {
+                                    if (e is CancellationException) throw e
+                                    throw AudioTranscoderException("Could not write audio. Check free storage.", e)
+                                }
                             },
                             onPcm = { bytes, _ ->
-                                writer?.writePcm(bytes)
+                                try {
+                                    writer?.writePcm(bytes)
+                                } catch (e: Exception) {
+                                    if (e is CancellationException) throw e
+                                    throw AudioTranscoderException("Could not write audio. Check free storage.", e)
+                                }
                             }
                         )
                     } finally {
-                        writer?.close()
+                        try {
+                            writer?.close()
+                        } catch (e: Exception) {
+                            if (e is CancellationException) throw e
+                            throw AudioTranscoderException("Could not write audio. Check free storage.", e)
+                        }
                     }
                 }
                 "m4a" -> {
@@ -278,10 +302,20 @@ class AudioTranscoder @Inject constructor(
                             onProgress = request.onProgress,
                             shouldContinue = request.shouldContinue,
                             initSink = { actualRate, actualChannels ->
-                                encoder = AacEncoder(actualRate, actualChannels, request.outputFile)
+                                try {
+                                    encoder = AacEncoder(actualRate, actualChannels, request.outputFile)
+                                } catch (e: Exception) {
+                                    if (e is CancellationException) throw e
+                                    throw AudioTranscoderException("Could not write audio. Check free storage.", e)
+                                }
                             },
                             onPcm = { bytes, ptsUs ->
-                                encoder?.writePcm(bytes, ptsUs)
+                                try {
+                                    encoder?.writePcm(bytes, ptsUs)
+                                } catch (e: Exception) {
+                                    if (e is CancellationException) throw e
+                                    throw AudioTranscoderException("Could not write audio. Check free storage.", e)
+                                }
                             }
                         )
                         isSuccess = true

@@ -26,6 +26,7 @@ class WavPcmReader(input: InputStream) {
     private val stream = BufferedInputStream(input)
     private val sourceBits: Int
     private val sourceFormat: Int
+    private val isOpenEnded: Boolean
     private var dataRemaining: Long
     private var closed = false
 
@@ -60,7 +61,16 @@ class WavPcmReader(input: InputStream) {
                         parsedChannels = readShortLe(fmt, 2)
                         parsedSampleRate = readIntLe(fmt, 4)
                         parsedBits = readShortLe(fmt, 14)
-                        val extraBytes = (chunkSize - 16) + (chunkSize and 1L)
+                        var consumed = 16L
+                        if (parsedFormat == -2 && chunkSize >= 40) { // WAVE_FORMAT_EXTENSIBLE (0xFFFE)
+                            val ext = ByteArray(24)
+                            if (readFully(ext) != 24) {
+                                throw UnsupportedWavException("This WAV file has a truncated format header.")
+                            }
+                            parsedFormat = readShortLe(ext, 8) // first 2 bytes of SubFormat GUID
+                            consumed = 40L
+                        }
+                        val extraBytes = (chunkSize - consumed) + (chunkSize and 1L)
                         if (extraBytes > 0) skipFully(extraBytes)
                     }
                     "data" -> {
@@ -76,9 +86,10 @@ class WavPcmReader(input: InputStream) {
             if (parsedChannels <= 0 || parsedSampleRate <= 0) {
                 throw UnsupportedWavException("This WAV file has an invalid format header.")
             }
+            val displayFormat = parsedFormat and 0xFFFF
             if (parsedFormat != 1 && parsedFormat != 3) {
                 throw UnsupportedWavException(
-                    "This WAV encoding (format $parsedFormat) is not supported. " +
+                    "This WAV encoding (format $displayFormat) is not supported. " +
                         "Only PCM and float WAV files are supported."
                 )
             }
@@ -92,6 +103,7 @@ class WavPcmReader(input: InputStream) {
             sampleRate = parsedSampleRate
             sourceBits = parsedBits
             sourceFormat = parsedFormat
+            isOpenEnded = parsedDataSize == 0xFFFFFFFFL
             dataRemaining = parsedDataSize
         } catch (t: Throwable) {
             runCatching { stream.close() }
@@ -120,13 +132,16 @@ class WavPcmReader(input: InputStream) {
         val raw = ByteArray(sourceWanted)
         val read = readFully(raw)
         if (read <= 0) {
-            if (dataRemaining > 0) {
+            if (!isOpenEnded && dataRemaining > 0) {
                 throw UnsupportedWavException("Unexpected end of WAV data: stream truncated ($dataRemaining bytes missing).")
             }
             return null
         }
         if (read < sourceWanted) {
-            throw UnsupportedWavException("Unexpected end of WAV data: stream truncated ($dataRemaining bytes missing).")
+            if (!isOpenEnded) {
+                dataRemaining -= read
+                throw UnsupportedWavException("Unexpected end of WAV data: stream truncated ($dataRemaining bytes missing).")
+            }
         }
         dataRemaining -= read
         val wholeFrames = read / sourceFrame

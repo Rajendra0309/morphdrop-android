@@ -127,7 +127,7 @@ class MainActivity : ComponentActivity() {
                     // copy into app-private cache like the old route did.
                     // A copy that fails is DROPPED, never passed on: the
                     // raw URI is un-grantable and crashed the viewer.
-                    sharedUris.mapNotNull { uri -> copySharedUriToCache(uri) }
+                    sharedUris.mapNotNull { uri -> copySharedUriToCache(uri, intent?.type) }
                 }
                 if (finalUris.isEmpty()) {
                     withContext(Dispatchers.Main) {
@@ -256,7 +256,7 @@ class MainActivity : ComponentActivity() {
         return name ?: uri.lastPathSegment ?: ""
     }
 
-    private fun copySharedUriToCache(uri: Uri): Uri? {
+    private fun copySharedUriToCache(uri: Uri, requestMimeType: String? = null): Uri? {
         return runCatching {
             val rawName = getUriFileName(uri).substringAfterLast('/').substringAfterLast('\\')
             // One shared filename rule for the whole app (FileHelper):
@@ -266,7 +266,7 @@ class MainActivity : ComponentActivity() {
             var safeName = com.morphdrop.app.util.FileHelper.sanitizeFileName(rawName)
                 .ifBlank { "shared_file" }
             if (!safeName.contains('.')) {
-                val mime = contentResolver.getType(uri) ?: intent.type
+                val mime = contentResolver.getType(uri) ?: requestMimeType ?: intent?.type
                 val ext = mime?.let { android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(it) }
                 if (!ext.isNullOrBlank()) {
                     safeName = "$safeName.$ext"
@@ -379,7 +379,7 @@ class MainActivity : ComponentActivity() {
             }
             incomingUris
         } else {
-            incomingUris.map { uri -> copySharedUriToCache(uri) ?: uri }
+            incomingUris.map { uri -> copySharedUriToCache(uri, intent?.type) ?: uri }
         }
 
         val firstUri = uris.first()

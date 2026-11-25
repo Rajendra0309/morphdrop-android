@@ -144,8 +144,8 @@ object FileHelper {
             @Suppress("DEPRECATION")
             val dir = File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), folderName)
             if (!dir.exists()) dir.mkdirs()
-            val finalFile = File(dir, fileName)
-            val tempFile = File(dir, ".tmp_${System.currentTimeMillis()}_${java.util.UUID.randomUUID().toString().take(8)}_$fileName")
+            val finalFile = getUniqueLegacyFile(dir, fileName)
+            val tempFile = File.createTempFile("morphdrop_", ".tmp", dir)
             try {
                 tempFile.writeBytes(data)
                 if (finalFile.exists()) {
@@ -163,6 +163,20 @@ object FileHelper {
                 throw e
             }
         }
+    }
+
+    private fun getUniqueLegacyFile(dir: File, fileName: String): File {
+        var candidate = File(dir, fileName)
+        if (!candidate.exists()) return candidate
+        val dotIndex = fileName.lastIndexOf('.')
+        val baseName = if (dotIndex > 0) fileName.substring(0, dotIndex) else fileName
+        val ext = if (dotIndex > 0) fileName.substring(dotIndex) else ""
+        var counter = 1
+        while (candidate.exists()) {
+            candidate = File(dir, "$baseName ($counter)$ext")
+            counter++
+        }
+        return candidate
     }
 
     /**
@@ -226,8 +240,8 @@ object FileHelper {
             @Suppress("DEPRECATION")
             val dir = File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), folderName)
             if (!dir.exists()) dir.mkdirs()
-            val finalFile = File(dir, fileName)
-            val tempFile = File(dir, ".tmp_${System.currentTimeMillis()}_${java.util.UUID.randomUUID().toString().take(8)}_$fileName")
+            val finalFile = getUniqueLegacyFile(dir, fileName)
+            val tempFile = File.createTempFile("morphdrop_", ".tmp", dir)
             try {
                 sourceFile.inputStream().use { input ->
                     tempFile.outputStream().use { output -> input.copyTo(output, DEFAULT_BUFFER_SIZE) }

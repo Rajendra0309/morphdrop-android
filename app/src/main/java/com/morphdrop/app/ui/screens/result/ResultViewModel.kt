@@ -121,7 +121,7 @@ class ResultViewModel @Inject constructor(
                                 ?: emptyList()
                         }
 
-                        if (readManifestError != null && uriList.isEmpty()) {
+                        if (readManifestError != null) {
                             _uiState.update {
                                 it.copy(
                                     title = "Conversion Failed",

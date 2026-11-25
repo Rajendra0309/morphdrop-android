@@ -50,7 +50,7 @@ class ArchiveEngineTest {
         val dir = createTempDir("archive-test").apply { mkdirs() }
         try {
             val extracted = engine.extract(ByteArrayInputStream(zipBytes), ArchiveFormat.ZIP, dir, zipBytes.size.toLong())
-            assertEquals(2, extracted.size)
+            assertEquals(2, extracted.files.size)
             assertEquals("hello", File(dir, "hello.txt").readText())
             assertEquals("# readme", File(dir, "docs/readme.md").readText())
         } finally {
@@ -71,7 +71,7 @@ class ArchiveEngineTest {
         val dir = createTempDir("archive-test").apply { mkdirs() }
         try {
             val extracted = engine.extract(ByteArrayInputStream(bytes), ArchiveFormat.TAR_GZ, dir, bytes.size.toLong())
-            assertEquals(1, extracted.size)
+            assertEquals(1, extracted.files.size)
             assertEquals("aaa", File(dir, "a.txt").readText())
         } finally {
             dir.deleteRecursively()
@@ -163,7 +163,7 @@ class ArchiveEngineTest {
         val dir = createTempDir("archive-test").apply { mkdirs() }
         try {
             val extracted = engine.extract(ByteArrayInputStream(bytes), ArchiveFormat.TAR, dir, bytes.size.toLong())
-            assertEquals(1, extracted.size)
+            assertEquals(1, extracted.files.size)
             assertEquals("plain", File(dir, "plain.txt").readText())
         } finally {
             dir.deleteRecursively()
@@ -221,7 +221,7 @@ class ArchiveEngineTest {
             val listed = engine.listEntriesFromFile(sevenZFile)
             assertEquals(listOf("seven.txt"), listed.map { it.name })
             val extracted = engine.extractFromFile(sevenZFile, dir)
-            assertEquals(1, extracted.size)
+            assertEquals(1, extracted.files.size)
             assertEquals("seven", File(dir, "seven.txt").readText())
         } finally {
             dir.deleteRecursively()

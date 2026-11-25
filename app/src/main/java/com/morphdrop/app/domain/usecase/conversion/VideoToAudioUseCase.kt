@@ -89,12 +89,14 @@ class VideoToAudioUseCase @Inject constructor(
         var muxerStarted = false
         try {
             if (afd != null && AudioTranscoder.isSeekable(afd.fileDescriptor)) {
-                if (afd.declaredLength < 0 && afd.startOffset == 0L) {
-                    extractor.setDataSource(afd.fileDescriptor)
-                } else if (afd.declaredLength > 0) {
+                if (afd.declaredLength == 0L) {
+                    return false
+                } else if (afd.declaredLength > 0L) {
                     extractor.setDataSource(afd.fileDescriptor, afd.startOffset, afd.declaredLength)
-                } else {
+                } else if (afd.declaredLength < 0L && afd.startOffset == 0L) {
                     extractor.setDataSource(afd.fileDescriptor)
+                } else {
+                    return false
                 }
             } else {
                 val temp = File.createTempFile("video_stage_", ".tmp", context.cacheDir)

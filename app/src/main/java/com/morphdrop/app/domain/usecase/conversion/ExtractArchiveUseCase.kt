@@ -82,6 +82,9 @@ class ExtractArchiveUseCase @Inject constructor(
             // Preserve subfolders inside the archive in Downloads.
             try {
                 for (file in extractedFiles) {
+                    if (shouldContinue?.invoke() == false) {
+                        throw kotlinx.coroutines.CancellationException("Archive extraction cancelled.")
+                    }
                     val relative = file.relativeTo(workDir).path
                     val parent = relative.substringBeforeLast('/', "")
                     val targetFolder = if (parent.isBlank()) "$baseFolder/$folderName" else "$baseFolder/$folderName/$parent"
@@ -89,6 +92,9 @@ class ExtractArchiveUseCase @Inject constructor(
                     saved += uri
                     if (uri.scheme == "file") {
                         uri.path?.let { createdFilePaths.add(it) }
+                    }
+                    if (shouldContinue?.invoke() == false) {
+                        throw kotlinx.coroutines.CancellationException("Archive extraction cancelled.")
                     }
                 }
             } catch (e: Throwable) {

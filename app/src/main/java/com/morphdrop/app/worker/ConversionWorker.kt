@@ -174,6 +174,7 @@ class ConversionWorker @AssistedInject constructor(
 
         val inputUriString = inputData.getString(KEY_INPUT_URI)
         val inputUrisFileString = inputData.getString(KEY_INPUT_URIS_FILE)
+        var manifestReadError: Exception? = null
         val inputUrisArray = if (!inputUrisFileString.isNullOrBlank()) {
             try {
                 val fileUri = Uri.parse(inputUrisFileString)
@@ -183,7 +184,8 @@ class ConversionWorker @AssistedInject constructor(
                 lines
             } catch (e: Exception) {
                 Log.e("ConversionWorker", "Failed to read input URIs manifest file", e)
-                throw IllegalArgumentException("Failed to read input files list: ${e.message}", e)
+                manifestReadError = IllegalArgumentException("Failed to read input files list: ${e.message}", e)
+                null
             }
         } else {
             inputData.getStringArray(KEY_INPUT_URIS)
@@ -237,6 +239,7 @@ class ConversionWorker @AssistedInject constructor(
         val outputsToCleanup = mutableListOf<Uri>()
 
         try {
+            manifestReadError?.let { throw it }
             try {
                 val foregroundInfo = notificationHelper.createForegroundInfo(
                     notificationId,
@@ -788,9 +791,11 @@ class ConversionWorker @AssistedInject constructor(
                 "zip_create" -> runCreateArchive(ArchiveFormat.ZIP, "zip")
                 "tar_create" -> runCreateArchive(ArchiveFormat.TAR_GZ, "tar.gz")
                 "zip_extract" -> runExtractArchive(ArchiveFormat.ZIP)
-                "tar_extract" -> runExtractArchive(
-                    ArchiveFormat.detect(inputFileName) ?: ArchiveFormat.TAR_GZ
-                )
+                "tar_extract" -> {
+                    val format = ArchiveFormat.detect(inputFileName)
+                        ?: throw IllegalArgumentException("Unsupported archive type: $inputFileName")
+                    runExtractArchive(format)
+                }
                 "sevenz_extract" -> runExtractArchive(ArchiveFormat.SEVENZ)
 
                 "heic_to_image" -> {

@@ -545,7 +545,8 @@ class ConversionConfigViewModel @Inject constructor(
                 it.copy(
                     archiveEntries = null,
                     isArchivePreviewLoading = false,
-                    archivePreviewError = "This file isn't a supported archive."
+                    archivePreviewError = "This file isn't a supported archive.",
+                    isConvertEnabled = false
                 )
             }
             return
@@ -735,13 +736,17 @@ class ConversionConfigViewModel @Inject constructor(
 
     /** Dismiss the inline error banner. */
     fun clearError() {
-        _state.update { it.copy(errorMessage = null) }
+        _state.update {
+            val cleared = it.copy(errorMessage = null)
+            cleared.copy(isConvertEnabled = isStateValid(cleared))
+        }
     }
 
     /** Remove the selected input file(s) and reset dependent state. */
     fun removeSelectedFiles() {
         fileSelectionGeneration++
         pdfLoadingJob?.cancel()
+        archivePreviewJob?.cancel()
         _state.update {
             it.copy(
                 selectedFileUris = emptyList(),
@@ -761,6 +766,11 @@ class ConversionConfigViewModel @Inject constructor(
                 isBatchMode = false,
                 showOrganizerDialog = false,
                 fileMetadata = null,
+                audioDurationMs = 0L,
+                trimErrorMessage = null,
+                archiveEntries = null,
+                isArchivePreviewLoading = false,
+                archivePreviewError = null,
                 errorMessage = null,
                 isConvertEnabled = false
             )

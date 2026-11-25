@@ -22,11 +22,16 @@ data class ArchiveEntryInfo(
     val isDirectory: Boolean
 )
 
-/** A file to put into a new archive: its name inside the archive and its bytes. */
+/** A file to put into a new archive: its name inside the archive and a way to open its bytes. */
 open class ArchiveEntrySource(
     val name: String,
+    val openStream: () -> InputStream
+) {
+    constructor(name: String, inputStream: InputStream) : this(name, { inputStream })
+
     val inputStream: InputStream
-)
+        get() = openStream()
+}
 
 enum class ArchiveFormat {
     ZIP, TAR, TAR_GZ, SEVENZ;
@@ -58,7 +63,7 @@ sealed class ArchiveException(message: String, cause: Throwable? = null) : Excep
 data class ArchiveExtractResult(
     val files: List<File>,
     val hadReadFailure: Boolean = false
-) : List<File> by files
+)
 
 /**
  * Archive engine, built on Apache Commons Compress 1.28.0 (pure Java,
@@ -234,7 +239,7 @@ class ArchiveEngine(
                 if (shouldContinue?.invoke() == false) throw kotlinx.coroutines.CancellationException("Archive creation cancelled")
                 val entryName = uniqueName(source.name, seenNames)
                 zip.putArchiveEntry(ZipArchiveEntry(entryName))
-                source.inputStream.use { input ->
+                source.openStream().use { input ->
                     val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
                     var read: Int
                     while (input.read(buffer).also { read = it } != -1) {
@@ -276,7 +281,7 @@ class ArchiveEngine(
                     val entry = TarArchiveEntry(entryName)
                     entry.size = size
                     tar.putArchiveEntry(entry)
-                    source.inputStream.use { input ->
+                    source.openStream().use { input ->
                         val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
                         var read: Int
                         while (input.read(buffer).also { read = it } != -1) {
@@ -296,9 +301,11 @@ class ArchiveEngine(
     /** An entry source that also declares its size, which TAR requires up front. */
     class SizedArchiveEntrySource(
         name: String,
-        inputStream: InputStream,
+        openStream: () -> InputStream,
         val sizeBytes: Long
-    ) : ArchiveEntrySource(name, inputStream)
+    ) : ArchiveEntrySource(name, openStream) {
+        constructor(name: String, inputStream: InputStream, sizeBytes: Long) : this(name, { inputStream }, sizeBytes)
+    }
 
     // ---- extraction ----
 
@@ -377,7 +384,15 @@ class ArchiveEngine(
             try {
                 dest.outputStream().use { out ->
                     var read: Int
-                    while (readBytes(buffer).also { read = it } != -1) {
+                    while (true) {
+                        try {
+                            read = readBytes(buffer)
+                        } catch (e: Exception) {
+                            if (e is kotlinx.coroutines.CancellationException) throw e
+                            runCatching { dest.delete() }
+                            throw e
+                        }
+                        if (read == -1) break
                         if (shouldContinue?.invoke() == false) throw kotlinx.coroutines.CancellationException("Extraction cancelled")
                         totalWritten += read
                         if (totalWritten > maxTotalUncompressedBytes) {
@@ -394,10 +409,13 @@ class ArchiveEngine(
                     }
                 }
             } catch (e: ArchiveException) {
+                runCatching { dest.delete() }
                 throw e
             } catch (e: kotlinx.coroutines.CancellationException) {
+                runCatching { dest.delete() }
                 throw e
             } catch (e: Exception) {
+                runCatching { dest.delete() }
                 if (e is java.io.FileNotFoundException || e is java.io.SyncFailedException) {
                     throw ArchiveException.OutputWriteException("Failed to open output file '${dest.name}': ${e.message}", e)
                 }
@@ -422,7 +440,19 @@ class ArchiveEngine(
                         }
                         if (entry == null && extracted.isEmpty()) throw ArchiveException.EmptyArchive("This archive contains no files.")
                         while (entry != null) {
-                            writeEntry(entry.name, entry.isDirectory) { buf -> zip.read(buf) }
+                            try {
+                                writeEntry(entry.name, entry.isDirectory) { buf -> zip.read(buf) }
+                            } catch (e: ArchiveException) {
+                                throw e
+                            } catch (e: kotlinx.coroutines.CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                if (extracted.isNotEmpty()) {
+                                    hadReadFailure = true
+                                    break
+                                }
+                                throw e
+                            }
                             entry = try {
                                 zip.nextEntry
                             } catch (e: LinkageError) {
@@ -451,7 +481,19 @@ class ArchiveEngine(
                         }
                         if (entry == null && extracted.isEmpty()) throw ArchiveException.EmptyArchive("This archive contains no files.")
                         while (entry != null) {
-                            writeEntry(entry.name, entry.isDirectory) { buf -> tar.read(buf) }
+                            try {
+                                writeEntry(entry.name, entry.isDirectory) { buf -> tar.read(buf) }
+                            } catch (e: ArchiveException) {
+                                throw e
+                            } catch (e: kotlinx.coroutines.CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                if (extracted.isNotEmpty()) {
+                                    hadReadFailure = true
+                                    break
+                                }
+                                throw e
+                            }
                             entry = try {
                                 tar.nextEntry
                             } catch (e: LinkageError) {
